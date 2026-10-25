@@ -122,8 +122,14 @@ final starProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref
   return List<Map<String, dynamic>>.from(data);
 });
 
+/// True when a calendar entry is meant for this grade code ('VIII', 'LKG' …). An empty list means the whole school.
+bool eventIsFor(Map<String, dynamic> e, String? grade) {
+  final g = List<String>.from(e['grades'] ?? const []);
+  return g.isEmpty || grade == null || g.contains(grade.toUpperCase());
+}
+
 final calendarProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final data = await db.from('calendar_event').select('title,starts_on,ends_on,kind,academic_year!inner(is_current)').eq('academic_year.is_current', true).order('starts_on', ascending: true);
+  final data = await db.from('calendar_event').select('title,starts_on,ends_on,kind,grades,academic_year!inner(is_current)').eq('academic_year.is_current', true).order('starts_on', ascending: true);
   return List<Map<String, dynamic>>.from(data);
 });
 
