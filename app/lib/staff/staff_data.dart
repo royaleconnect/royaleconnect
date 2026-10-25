@@ -13,8 +13,11 @@ Map<String, dynamic> _me(dynamic ref) => (ref.read(sessionProvider).value as Ses
 String myId(dynamic ref) => _me(ref)["id"];
 
 /// Current academic year row.
-final yearProvider = FutureProvider<Map<String, dynamic>>((ref) async =>
-    await db.from('academic_year').select('id,label').eq('is_current', true).single());
+final yearProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  final y = await db.from('academic_year').select('id,label').eq('is_current', true).maybeSingle();
+  if (y == null) throw Exception('No current academic year is visible. Ask IT to run the database setup script (0005_reference_reads.sql) or mark a year as current.');
+  return y;
+});
 
 /// Sections this staff member works with (class teacher / subject teacher / coordinator / office → all).
 final mySectionsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
