@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../auth/session.dart';
 import '../core/data.dart';
+import '../core/data2.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
 
@@ -18,6 +19,8 @@ class HomeScreen extends ConsumerWidget {
     final notices = ref.watch(noticesProvider);
     final unread = ref.watch(unreadMessagesProvider).value ?? 0;
     final transport = ref.watch(transportProvider).value;
+    final calendar = ref.watch(calendarProvider).value ?? const [];
+    final gradeCode = ref.watch(enrolmentProvider).value?['section']?['grade']?['code'] as String?;
     final cs = Theme.of(context).colorScheme;
     final t = Theme.of(context).textTheme;
     final now = DateTime.now();
@@ -26,7 +29,7 @@ class HomeScreen extends ConsumerWidget {
 
     return Scaffold(
       body: RefreshIndicator(
-        onRefresh: () async { ref.invalidate(feesProvider); ref.invalidate(noticesProvider); ref.invalidate(unreadMessagesProvider); },
+        onRefresh: () async { ref.invalidate(calendarProvider); ref.invalidate(feesProvider); ref.invalidate(noticesProvider); ref.invalidate(unreadMessagesProvider); },
         child: CustomScrollView(slivers: [
           SliverToBoxAdapter(child: BrandHeader(padding: const EdgeInsets.fromLTRB(20, 12, 20, 20), hairline: false, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
@@ -52,7 +55,7 @@ class HomeScreen extends ConsumerWidget {
             Text(greet, style: t.headlineMedium?.copyWith(color: Colors.white)),
             const SizedBox(height: 16),
             // morning card — sits inside the header
-            _MorningCard(fees: fees.value, transport: transport, cls: st.cls),
+            _MorningCard(fees: fees.value, transport: transport, cls: st.cls, calendar: calendar, grade: gradeCode),
           ]))),
           SliverPadding(padding: const EdgeInsets.fromLTRB(20, 16, 20, 24), sliver: SliverList(delegate: SliverChildListDelegate([
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -120,15 +123,51 @@ String _hm(dynamic t) { final x = (t ?? '').toString(); return x.length >= 5 ? x
 
 class _MorningCard extends StatelessWidget {
   final FeeSummary? fees; final Map<String, dynamic>? transport; final String cls;
-  const _MorningCard({this.fees, this.transport, required this.cls});
+  final List<Map<String, dynamic>> calendar; final String? grade;
+  const _MorningCard({this.fees, this.transport, required this.cls, this.calendar = const [], this.grade});
+
+  static String _iso(DateTime d) => DateFormat('yyyy-MM-dd').format(d);
+  /// 'Onam Holiday' → 'Onam', 'Dussehra break (Holiday)' → 'Dussehra break'
+  static String _clean(String t) => t.replaceAll(RegExp(r'\s*\(holiday\)|\s*[–-]\s*holiday\b|\s+holiday$', caseSensitive: false), '').trim();
+
+  /// Calendar entries on [d] that are meant for this student's grade.
+  List<Map<String, dynamic>> _on(DateTime d) {
+    final x = _iso(d);
+    return calendar.where((e) => (e['starts_on'] as String).compareTo(x) <= 0 && ((e['ends_on'] ?? e['starts_on']) as String).compareTo(x) >= 0 && eventIsFor(e, grade)).toList();
+  }
+  Map<String, dynamic>? _holiday(DateTime d) { for (final e in _on(d)) { if (e['kind'] == 'holiday') return e; } return null; }
+  bool _schoolDay(DateTime d) => d.weekday < 6 && _holiday(d) == null;
+
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now(); final weekend = now.weekday >= 6;
+    final now = DateTime.now(); final today = DateTime(now.year, now.month, now.day); final weekend = now.weekday >= 6;
+    final tomorrow = today.add(const Duration(days: 1));
+    // the next day the student actually has school (skips Sundays, Saturdays and holidays)
+    var back = tomorrow;
+    for (var i = 0; i < 30 && !_schoolDay(back); i++) { back = back.add(const Duration(days: 1)); }
+    final gap = back.difference(today).inDays;
+    final resume = gap == 1 ? 'tomorrow' : gap < 7 ? DateFormat('EEEE').format(back) : DateFormat('EEEE, d MMM').format(back);
+
+    final hol = _holiday(today);
+    final todays = _on(today).where((e) => e['kind'] != 'holiday').toList();
+    final holTomorrow = hol == null && !weekend ? _holiday(tomorrow) : null;
+    final keyTomorrow = hol == null ? _on(tomorrow).where((e) => e['kind'] == 'exam' || e['kind'] == 'ptm').toList() : const <Map<String, dynamic>>[];
+    const holidayRed = Color(0xFFFF6B6B), examAmber = Color(0xFFF2B84B), ptmViolet = Color(0xFFB79CF0);
+    String label(String k) => k == 'exam' ? 'Exam' : k == 'ptm' ? 'Parent–teacher meeting' : 'At school today';
+    Color dot(String k) => k == 'exam' ? examAmber : k == 'ptm' ? ptmViolet : Brand.blue;
+
     final next = fees?.unpaid.isNotEmpty == true ? fees!.unpaid.first : null;
+    final noSchool = hol != null || weekend;
     final items = <(String, String, Color)>[
-      weekend ? ('No school today', 'Classes resume ${now.weekday == 6 ? 'Monday' : 'tomorrow'}', Brand.muted) : ('Regular day', 'Check the timetable for what to carry', Brand.blue),
-      if (next != null) ('Fee: ${inr(next.amount)} ${next.overdue ? 'overdue' : 'due ${DateFormat('d MMM').format(DateTime.parse(next.dueOn))}'}', next.title, next.overdue ? Brand.crimsonDeep : Brand.green),
-      if (transport != null) ('Bus · ${transport!['route']?['name'] ?? ''}', '${transport!['stop']?['name'] ?? ''} · drop ${_hm(transport!['route']?['afternoon_start'])}', Brand.blue),
+      if (hol != null) ('Holiday · ${_clean(hol['title'])}', 'No school today · classes resume $resume', holidayRed)
+      else if (weekend) ('No school today', 'Classes resume $resume', Brand.muted)
+      else ('School day', 'Check the timetable for what to carry', Brand.blue),
+      for (final e in todays.take(3)) (e['title'] as String, label(e['kind']), dot(e['kind'])),
+      if (todays.length > 3) ('+${todays.length - 3} more today', 'See the calendar', Brand.muted),
+      if (holTomorrow != null) ('Tomorrow: ${_clean(holTomorrow['title'])}', 'Holiday · no school tomorrow', holidayRed),
+      for (final e in keyTomorrow.take(2)) ('Tomorrow: ${e['title']}', label(e['kind']), dot(e['kind'])),
+      if (next != null) ('Fee: ${inr(next.amount)} ${next.overdue ? 'overdue' : 'due ${DateFormat('d MMM').format(DateTime.parse(next.dueOn))}'}', next.title, next.overdue ? holidayRed : Brand.green),
+      if (transport != null && !noSchool) ('Bus · ${transport!['route']?['name'] ?? ''}', '${transport!['stop']?['name'] ?? ''} · drop ${_hm(transport!['route']?['afternoon_start'])}', Brand.blue),
     ];
     return Container(padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
         decoration: BoxDecoration(gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF1D1A20), Color(0xFF2C2730)]),
@@ -154,13 +193,14 @@ class _FeeCard extends StatelessWidget {
       return _CardShell(child: Row(children: [const Avatar('✓', bg: Brand.greenTint, fg: Brand.green), const SizedBox(width: 14),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('All fees paid for this year', style: TextStyle(fontWeight: FontWeight.w800)), Text('${inr(f.total)} received · receipts under Fees', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant))]))]));
     }
+    final dark = Theme.of(context).brightness == Brightness.dark; // brighter red / amber so the label reads on the dark card
     final od = f.overdue; final odAmt = od.fold<num>(0, (a, r) => a + r.amount);
     final next = f.dueSoon.isNotEmpty ? f.dueSoon.first : (f.upcoming.isNotEmpty ? f.upcoming.first : null);
     final head = od.isNotEmpty ? od.firstWhere((r) => !r.isLate, orElse: () => od.first) : next!;
     return InkWell(onTap: () => context.go('/fees'), borderRadius: BorderRadius.circular(22), child: _CardShell(child: Column(children: [
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Eyebrow(od.isNotEmpty ? 'Overdue · since ${DateFormat('d MMM').format(DateTime.parse(head.dueOn))}' : 'Due ${DateFormat('d MMM').format(DateTime.parse(head.dueOn))} · ${head.daysUntil()} days left', color: od.isNotEmpty ? Brand.crimsonDeep : Brand.amber),
+          Eyebrow(od.isNotEmpty ? 'Overdue · since ${DateFormat('d MMM').format(DateTime.parse(head.dueOn))}' : 'Due ${DateFormat('d MMM').format(DateTime.parse(head.dueOn))} · ${head.daysUntil()} days left', color: od.isNotEmpty ? (dark ? const Color(0xFFFF6B6B) : Brand.crimsonDeep) : (dark ? const Color(0xFFF2B84B) : Brand.amber)),
           Text(inr(od.isNotEmpty ? odAmt : head.amount), style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -.5)),
           Text(od.isNotEmpty && od.any((r) => r.isLate) ? '${head.title} incl. late fee' : head.title, style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
         ])),
@@ -208,3 +248,4 @@ class _NoticeRow extends StatelessWidget {
     ]))));
   }
 }
+
