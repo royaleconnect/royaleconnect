@@ -55,7 +55,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _run(Future<void> Function() f) async {
     setState(() { busy = true; error = null; });
-    try { await f(); } on AuthError catch (e) { setState(() => error = e.message); } catch (_) { setState(() => error = 'Could not reach the school server. Check your internet and try again.'); }
+    try { await f(); } on AuthError catch (e) { setState(() => error = e.message); } catch (e) { setState(() => error = 'Could not complete sign-in: $e'); }
     if (mounted) setState(() => busy = false);
   }
 
@@ -172,7 +172,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
           if (a.text != b.text) { setState(() => error = "The two passwords don't match."); return; }
           setState(() { busy = true; error = null; });
           try { await ref.read(sessionProvider.notifier).changePassword(a.text); if (mounted) context.go('/'); }
-          on AuthError catch (e) { setState(() => error = e.message); } catch (_) { setState(() => error = 'Could not reach the school server.'); }
+          on AuthError catch (e) { setState(() => error = e.message); } catch (e) { setState(() => error = 'Could not complete: $e'); }
           if (mounted) setState(() => busy = false);
         }),
       ])),
