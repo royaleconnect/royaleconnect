@@ -4,8 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/config.dart';
+import '../core/data.dart' show setDbToken;
 
 /// A student as returned by the login functions.
 class StudentRef {
@@ -62,10 +62,8 @@ class SessionController extends AsyncNotifier<Session?> {
     return s;
   }
 
-  void _applyToken(String token) {
-    // every PostgREST call from now on carries our token → RLS applies the student_ids / staff_id claims
-    Supabase.instance.client.headers['Authorization'] = 'Bearer $token';
-  }
+  // every PostgREST call from now on carries our token → RLS applies the student_ids / staff_id claims
+  void _applyToken(String token) => setDbToken(token);
 
   Future<Map<String, dynamic>> _call(String fn, Map<String, dynamic> body, {String? bearer}) async {
     final r = await http.post(Uri.parse('${AppConfig.functionsUrl}/$fn'),
@@ -113,7 +111,7 @@ class SessionController extends AsyncNotifier<Session?> {
 
   Future<void> signOut() async {
     await _clear();
-    Supabase.instance.client.headers.remove('Authorization');
+    setDbToken(null);
     state = const AsyncData(null);
   }
 }
