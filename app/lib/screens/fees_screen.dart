@@ -16,7 +16,7 @@ class FeesScreen extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
       body: Column(children: [
-        BrandHeader(padding: const EdgeInsets.fromLTRB(20, 8, 20, 60), hairline: false, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        BrandHeader(padding: const EdgeInsets.fromLTRB(20, 8, 20, 16), hairline: false, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             IconButton(onPressed: () => context.go('/'), icon: const Icon(Icons.arrow_back_rounded, color: Colors.white)),
             const Expanded(child: Text('Fees', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800))),
@@ -29,8 +29,8 @@ class FeesScreen extends ConsumerWidget {
         Expanded(child: fees.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => Center(child: Text('Could not load fees.\n$e', textAlign: TextAlign.center)),
-          data: (f) => RefreshIndicator(onRefresh: () async => ref.invalidate(feesProvider), child: ListView(padding: const EdgeInsets.fromLTRB(20, 0, 20, 110), children: [
-            Transform.translate(offset: const Offset(0, -44), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          data: (f) => RefreshIndicator(onRefresh: () async => ref.invalidate(feesProvider), child: ListView(padding: const EdgeInsets.fromLTRB(20, 16, 20, 110), children: [
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Container(padding: const EdgeInsets.all(18), decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(22), boxShadow: [BoxShadow(color: Brand.crimsonDeep.withValues(alpha: .12), blurRadius: 30, offset: const Offset(0, 10))]),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     Row(crossAxisAlignment: CrossAxisAlignment.end, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -56,7 +56,7 @@ class FeesScreen extends ConsumerWidget {
                 Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
               ])))),
               if (f.unpaid.isEmpty) const Padding(padding: EdgeInsets.only(top: 14), child: NoteBox("Nothing left to pay for this year. Next year's fee structure appears here in March.")),
-            ])),
+            ]),
           ])),
         )),
       ]),
