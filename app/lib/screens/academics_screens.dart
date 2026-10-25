@@ -187,32 +187,57 @@ class StarScreen extends ConsumerWidget {
 }
 
 // ---------------------------------------------------------------- calendar
-class CalendarScreen extends ConsumerWidget {
+/// The school year planner. Opens at the current month; earlier months one tap away.
+class CalendarScreen extends ConsumerStatefulWidget {
   const CalendarScreen({super.key});
-  static const colors = {'holiday': (Brand.green, Brand.greenTint), 'exam': (Brand.crimsonDeep, Brand.crimsonTint), 'ptm': (Brand.violet, Brand.violetTint), 'event': (Brand.blue, Brand.blueTint)};
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CalendarScreen> createState() => _CalendarScreenState();
+}
+class _CalendarScreenState extends ConsumerState<CalendarScreen> {
+  bool showPast = false; String filter = 'all';
+  static const colors = {'holiday': (Brand.crimsonDeep, Brand.crimsonTint), 'exam': (Brand.amber, Brand.amberTint), 'ptm': (Brand.violet, Brand.violetTint), 'event': (Brand.blue, Brand.blueTint)};
+  static const labels = {'all': 'All', 'holiday': 'Holidays', 'exam': 'Exams', 'ptm': 'Parents', 'event': 'Events'};
+  @override
+  Widget build(BuildContext context) {
     final ev = ref.watch(calendarProvider);
     final cs = Theme.of(context).colorScheme;
-    return AppPage(title: 'Calendar', body: ev.when(loading: _loading, error: (e, _) => _empty(context, '$e'), data: (list) {
-      if (list.isEmpty) return _empty(context, 'The academic calendar appears here once the office publishes it.');
-      final groups = <String, List<Map<String, dynamic>>>{};
-      for (final e in list) groups.putIfAbsent(DateFormat('MMMM yyyy').format(DateTime.parse(e['starts_on'])), () => []).add(e);
-      final today = DateTime.now().toIso8601String().substring(0, 10);
-      return ListView(padding: const EdgeInsets.all(20), children: [for (final g in groups.entries) ...[
-        Padding(padding: const EdgeInsets.only(bottom: 8, top: 6), child: Eyebrow(g.key, color: cs.onSurfaceVariant)),
-        for (final e in g.value) _card(context, Row(children: [
-          Container(width: 48, padding: const EdgeInsets.symmetric(vertical: 6), decoration: BoxDecoration(color: (colors[e['kind']] ?? (Brand.muted, Brand.surface2)).$2, borderRadius: BorderRadius.circular(12)),
-              child: Column(children: [Text(DateFormat('d').format(DateTime.parse(e['starts_on'])), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: (colors[e['kind']] ?? (Brand.muted, Brand.surface2)).$1)), Text(DateFormat('EEE').format(DateTime.parse(e['starts_on'])), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant))])),
-          const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(e['title'], style: const TextStyle(fontWeight: FontWeight.w800)),
-            Text('${e['kind'].toString()[0].toUpperCase()}${e['kind'].toString().substring(1)}${e['ends_on'] != null && e['ends_on'] != e['starts_on'] ? ' · till ${DateFormat('d MMM').format(DateTime.parse(e['ends_on']))}' : ''}', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-          ])),
-          if (e['starts_on'] == today) const Pill('Today', fg: Brand.crimsonDeep, bg: Brand.crimsonTint),
-        ], ), padding: const EdgeInsets.fromLTRB(10, 10, 14, 10)),
-      ]]);
-    }));
+    final now = DateTime.now(); final today = DateFormat('yyyy-MM-dd').format(now); final monthStart = DateFormat('yyyy-MM-01').format(now);
+    return AppPage(title: 'Calendar',
+      headerExtra: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [for (final e in labels.entries) Padding(padding: const EdgeInsets.only(right: 8), child: ChoiceChip(
+        label: Text(e.value), selected: filter == e.key, onSelected: (_) => setState(() => filter = e.key), showCheckmark: false, side: BorderSide.none,
+        selectedColor: Colors.white, backgroundColor: Colors.white.withValues(alpha: .14), labelStyle: TextStyle(fontWeight: FontWeight.w700, color: filter == e.key ? Brand.crimsonDeep : Colors.white)))])),
+      body: ev.when(loading: _loading, error: (e, _) => _empty(context, '$e'), data: (all) {
+        if (all.isEmpty) return _empty(context, 'The academic calendar appears here once the office publishes it.');
+        final byKind = filter == 'all' ? all : all.where((e) => e['kind'] == filter).toList();
+        final list = showPast ? byKind : byKind.where((e) => ((e['ends_on'] ?? e['starts_on']) as String).compareTo(monthStart) >= 0).toList();
+        final hidden = byKind.length - list.length;
+        final groups = <String, List<Map<String, dynamic>>>{};
+        for (final e in list) { groups.putIfAbsent(DateFormat('MMMM yyyy').format(DateTime.parse(e['starts_on'])), () => []).add(e); }
+        return ListView(padding: const EdgeInsets.all(20), children: [
+          if (hidden > 0) Padding(padding: const EdgeInsets.only(bottom: 8), child: OutlinedButton.icon(onPressed: () => setState(() => showPast = true), icon: const Icon(Icons.history_rounded, size: 18), label: Text('Show earlier months ($hidden)'))),
+          if (list.isEmpty) _empty(context, 'Nothing in this category from now on.'),
+          for (final g in groups.entries) ...[
+            Padding(padding: const EdgeInsets.only(bottom: 8, top: 10), child: Eyebrow(g.key, color: cs.onSurfaceVariant)),
+            for (final e in g.value) Builder(builder: (_) {
+              final c = colors[e['kind']] ?? (Brand.muted, Brand.surface2);
+              final d = DateTime.parse(e['starts_on']); final isToday = e['starts_on'] == today || (e['ends_on'] != null && e['starts_on'].compareTo(today) <= 0 && e['ends_on'].compareTo(today) >= 0);
+              final past = ((e['ends_on'] ?? e['starts_on']) as String).compareTo(today) < 0;
+              return Opacity(opacity: past ? .55 : 1, child: _card(context, Row(children: [
+                Container(width: 48, padding: const EdgeInsets.symmetric(vertical: 6), decoration: BoxDecoration(color: c.$2, borderRadius: BorderRadius.circular(12)),
+                    child: Column(children: [Text(DateFormat('d').format(d), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: c.$1)), Text(DateFormat('EEE').format(d), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: c.$1))])),
+                const SizedBox(width: 12),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(e['title'], style: TextStyle(fontWeight: e['kind'] == 'holiday' ? FontWeight.w800 : FontWeight.w700, color: e['kind'] == 'holiday' ? Brand.crimsonDeep : null)),
+                  if (e['ends_on'] != null && e['ends_on'] != e['starts_on']) Text('${DateFormat('d MMM').format(d)} – ${DateFormat('d MMM yyyy').format(DateTime.parse(e['ends_on']))}', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                ])),
+                if (isToday) const Pill('Today', fg: Brand.crimsonDeep, bg: Brand.crimsonTint),
+              ]), padding: const EdgeInsets.fromLTRB(10, 10, 14, 10)));
+            }),
+          ],
+          const SizedBox(height: 8),
+          Text('As per the school diary. The school may revise dates; changes appear here automatically.', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+        ]);
+      }));
   }
 }
 
