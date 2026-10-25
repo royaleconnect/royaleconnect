@@ -25,6 +25,7 @@ final profileProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) 
 /// Signed URL for a private storage object (valid 1 hour). Cached per path while the screen is alive.
 final signedUrlProvider = FutureProvider.autoDispose.family<String, String>((ref, path) async {
   ref.keepAlive();
+  if (path.startsWith('http')) return path; // plain web link (sample data, external files)
   return db.storage.from('files').createSignedUrl(path, 3600);
 });
 
@@ -161,7 +162,11 @@ Future<void> applyLeave(String studentId, DateTime from, DateTime to, String rea
 final momentsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final s = ref.watch(sessionProvider).value?.active;
   if (s == null) return [];
-  final data = await db.from('moment').select('id,caption,photo_paths,posted_at,posted_by_staff:posted_by(display_name),moment_like(student_id)').not('posted_at', 'is', null).order('posted_at', ascending: false).limit(40);
+  final e = await ref.watch(enrolmentProvider.future);
+  if (e == null) return [];
+  // only the active child's class (or whole grade) — a family login can cover siblings in other classes
+  final data = await db.from('moment').select('id,caption,photo_paths,posted_at,posted_by_staff:posted_by(display_name),moment_like(student_id)')
+      .or('section_id.eq.${e['section']['id']},grade_id.eq.${e['section']['grade']['id']}').not('posted_at', 'is', null).order('posted_at', ascending: false).limit(40);
   return List<Map<String, dynamic>>.from(data);
 });
 
