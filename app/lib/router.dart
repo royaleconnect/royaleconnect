@@ -15,6 +15,9 @@ import 'screens/pay_screen.dart';
 import 'screens/placeholders.dart';
 import 'screens/students_screen.dart';
 import 'shell.dart';
+import 'staff/staff_screens_1.dart';
+import 'staff/staff_screens_2.dart';
+import 'staff/staff_shell.dart';
 
 /// Makes go_router re-run `redirect` whenever the session changes.
 class _SessionListenable extends ChangeNotifier {
@@ -31,10 +34,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       final s = ref.read(sessionProvider);
       if (s.isLoading) return '/splash';
       final loc = state.matchedLocation;
-      final open = loc == '/splash' || loc.startsWith('/login');
+      final open = loc == '/splash' || loc.startsWith('/login') || loc == '/staff-login';
       final session = s.value;
-      if (session == null) return open ? null : '/login';           // not signed in
+      if (session == null) return open ? null : (loc.startsWith('/staff') ? '/staff-login' : '/login');   // not signed in
       if (session.kind == 'crew') return loc == '/driver' ? null : '/driver';
+      if (session.isStaff) {
+        if (session.mustChangePassword) return loc == '/staff/set-password' ? null : '/staff/set-password';
+        return loc.startsWith('/staff') ? null : '/staff';                // staff live under /staff
+      }
+      if (loc.startsWith('/staff')) return '/';                               // a family login never sees the panel
       if (session.mustChangePassword) return loc == '/set-password' ? null : '/set-password';
       if (session.activeStudentId == null && session.students.length > 1) return loc == '/students' || loc == '/login/add' ? null : '/students';
       if (open) return '/';                                           // signed in, leave the public pages
@@ -46,6 +54,27 @@ final routerProvider = Provider<GoRouter>((ref) {
         GoRoute(path: 'add', builder: (_, __) => const LoginScreen(addSibling: true)),
       ]),
       GoRoute(path: '/set-password', builder: (_, __) => const SetPasswordScreen()),
+      GoRoute(path: '/staff-login', builder: (_, __) => const StaffLoginScreen()),
+      GoRoute(path: '/staff/set-password', builder: (_, __) => const StaffSetPasswordScreen()),
+      ShellRoute(builder: (_, __, child) => StaffShell(child: child), routes: [
+        GoRoute(path: '/staff', builder: (_, __) => const StaffOverviewScreen()),
+        GoRoute(path: '/staff/messages', builder: (_, __) => const StaffMessagesScreen()),
+        GoRoute(path: '/staff/announcements', builder: (_, __) => const StaffAnnouncementsScreen()),
+        GoRoute(path: '/staff/diary', builder: (_, __) => const StaffDiaryScreen()),
+        GoRoute(path: '/staff/leave', builder: (_, __) => const StaffLeaveScreen()),
+        GoRoute(path: '/staff/exams', builder: (_, __) => const StaffExamsScreen()),
+        GoRoute(path: '/staff/marks', builder: (_, __) => const StaffMarksScreen()),
+        GoRoute(path: '/staff/plan', builder: (_, __) => const StaffPlanScreen()),
+        GoRoute(path: '/staff/worksheets', builder: (_, __) => const StaffWorksheetsScreen()),
+        GoRoute(path: '/staff/star', builder: (_, __) => const StaffStarScreen()),
+        GoRoute(path: '/staff/moments', builder: (_, __) => const StaffMomentsScreen()),
+        GoRoute(path: '/staff/feedback', builder: (_, __) => const StaffFeedbackScreen()),
+        GoRoute(path: '/staff/fees', builder: (_, __) => const StaffFeesScreen()),
+        GoRoute(path: '/staff/transport', builder: (_, __) => const StaffTransportScreen()),
+        GoRoute(path: '/staff/students', builder: (_, __) => const StaffStudentsScreen()),
+        GoRoute(path: '/staff/users', builder: (_, __) => const StaffUsersScreen()),
+        GoRoute(path: '/staff/me', builder: (_, __) => const StaffMeScreen()),
+      ]),
       GoRoute(path: '/students', builder: (_, __) => const StudentsScreen()),
       GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
       GoRoute(path: '/driver', builder: (_, __) => const DriverScreen()),
