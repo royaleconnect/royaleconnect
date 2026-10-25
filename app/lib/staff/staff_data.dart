@@ -44,12 +44,12 @@ final myAssignmentsProvider = FutureProvider.autoDispose<List<Map<String, dynami
   return List<Map<String, dynamic>>.from(data);
 });
 
-final subjectsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async => List<Map<String, dynamic>>.from(await db.from('subject').select('id,name,short').order('name')));
-final gradesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async => List<Map<String, dynamic>>.from(await db.from('grade').select('id,code,name,division,sort_order').order('sort_order')));
+final subjectsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async => List<Map<String, dynamic>>.from(await db.from('subject').select('id,name,short').order('name', ascending: true)));
+final gradesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async => List<Map<String, dynamic>>.from(await db.from('grade').select('id,code,name,division,sort_order').order('sort_order', ascending: true)));
 
 /// Students of a section (current year), with phones for the office.
 final sectionStudentsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, sectionId) async {
-  final data = await db.from('enrolment').select('roll_no,student:student_id(id,admission_no,full_name,photo_path,active,family_phone(phone,label))').eq('section_id', sectionId).order('roll_no');
+  final data = await db.from('enrolment').select('roll_no,student:student_id(id,admission_no,full_name,photo_path,active,family_phone(phone,label))').eq('section_id', sectionId).order('roll_no', ascending: true);
   final rows = List<Map<String, dynamic>>.from(data);
   rows.sort((a, b) => ((a['roll_no'] ?? 999) as int).compareTo((b['roll_no'] ?? 999) as int));
   return rows;
@@ -130,7 +130,7 @@ Future<void> postAnnouncement(WidgetRef ref, {required String category, required
 // ---------------------------------------------------------------- diary
 final staffDiaryProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, (String, String)>((ref, key) async {
   final (sectionId, isoDate) = key;
-  final data = await db.from('diary_entry').select('id,kind,title,body,for_date,due_on,needs_submission,posted_at,subject:subject_id(name),author:author_id(display_name)').eq('section_id', sectionId).eq('for_date', isoDate).order('created_at');
+  final data = await db.from('diary_entry').select('id,kind,title,body,for_date,due_on,needs_submission,posted_at,subject:subject_id(name),author:author_id(display_name)').eq('section_id', sectionId).eq('for_date', isoDate).order('created_at', ascending: true);
   return List<Map<String, dynamic>>.from(data);
 });
 
@@ -218,13 +218,13 @@ Future<void> replyFeedback(WidgetRef ref, String id, String reply, String status
 
 // ---------------------------------------------------------------- fees desk (office / accounts)
 final studentLedgerProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, studentId) async {
-  final data = await db.from('fee_ledger').select('id,title,amount,due_on,status,paid_on,parent_ledger_id,note,academic_year!inner(is_current)').eq('student_id', studentId).eq('academic_year.is_current', true).order('due_on');
+  final data = await db.from('fee_ledger').select('id,title,amount,due_on,status,paid_on,parent_ledger_id,note,academic_year!inner(is_current)').eq('student_id', studentId).eq('academic_year.is_current', true).order('due_on', ascending: true);
   return List<Map<String, dynamic>>.from(data);
 });
 final overdueReportProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final today = _d(DateTime.now());
   final data = await db.from('fee_ledger').select('id,title,amount,due_on,student:student_id(id,full_name,admission_no,enrolment(section:section_id(name,grade:grade_id(code)),academic_year!inner(is_current)))')
-      .eq('status', 'pending').lt('due_on', today).eq('student.enrolment.academic_year.is_current', true).order('due_on').limit(500);
+      .eq('status', 'pending').lt('due_on', today).eq('student.enrolment.academic_year.is_current', true).order('due_on', ascending: true).limit(500);
   return List<Map<String, dynamic>>.from(data);
 });
 final recentPaymentsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
@@ -234,7 +234,7 @@ final recentPaymentsProvider = FutureProvider.autoDispose<List<Map<String, dynam
 
 // ---------------------------------------------------------------- transport (in-charge / office)
 final routesProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final data = await db.from('route').select('id,name,bus_reg_no,active,morning_start,afternoon_start,driver:driver_staff_id(display_name,phone),conductor:conductor_staff_id(display_name,phone),route_stop(id,seq,name),transport_enrolment(student_id)').order('name');
+  final data = await db.from('route').select('id,name,bus_reg_no,active,morning_start,afternoon_start,driver:driver_staff_id(display_name,phone),conductor:conductor_staff_id(display_name,phone),route_stop(id,seq,name),transport_enrolment(student_id)').order('name', ascending: true);
   return List<Map<String, dynamic>>.from(data);
 });
 final runningTripsProvider = StreamProvider.autoDispose<List<Map<String, dynamic>>>((ref) async* {
@@ -246,7 +246,7 @@ final runningTripsProvider = StreamProvider.autoDispose<List<Map<String, dynamic
 
 // ---------------------------------------------------------------- staff directory (IT)
 final staffListProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async =>
-    List<Map<String, dynamic>>.from(await db.from('staff').select('id,email,full_name,display_name,roles,division,phone,active').order('full_name')));
+    List<Map<String, dynamic>>.from(await db.from('staff').select('id,email,full_name,display_name,roles,division,phone,active').order('full_name', ascending: true)));
 
 /// Call a server function with the staff token (password resets etc.). Throws with the server's message on failure.
 Future<Map<String, dynamic>> callFunction(WidgetRef ref, String fn, Map<String, dynamic> body) async {
