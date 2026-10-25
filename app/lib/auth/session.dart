@@ -28,17 +28,23 @@ class Session {
   final String? activeStudentId;
   final bool mustChangePassword;
   final Map<String, dynamic>? crew;
-  const Session({required this.token, required this.kind, this.students = const [], this.activeStudentId, this.mustChangePassword = false, this.crew});
+  final Map<String, dynamic>? staff;   // {id, name, email, roles, division} for kind == 'staff'
+  const Session({required this.token, required this.kind, this.students = const [], this.activeStudentId, this.mustChangePassword = false, this.crew, this.staff});
+
+  bool get isStaff => kind == 'staff';
+  List<String> get roles => List<String>.from(staff?['roles'] ?? const []);
+  bool hasRole(String r) => roles.contains(r);
+  bool get isOffice => roles.any((r) => const ['office', 'it_admin', 'principal', 'vice_principal'].contains(r));
 
   StudentRef? get active => students.isEmpty ? null : students.firstWhere((s) => s.id == activeStudentId, orElse: () => students.first);
   Session copyWith({String? activeStudentId, List<StudentRef>? students, bool? mustChangePassword, String? token}) => Session(
       token: token ?? this.token, kind: kind, students: students ?? this.students,
-      activeStudentId: activeStudentId ?? this.activeStudentId, mustChangePassword: mustChangePassword ?? this.mustChangePassword, crew: crew);
+      activeStudentId: activeStudentId ?? this.activeStudentId, mustChangePassword: mustChangePassword ?? this.mustChangePassword, crew: crew, staff: staff);
 
-  Map<String, dynamic> toJson() => {'token': token, 'kind': kind, 'students': students.map((s) => s.toJson()).toList(), 'active': activeStudentId, 'mcp': mustChangePassword, 'crew': crew};
+  Map<String, dynamic> toJson() => {'token': token, 'kind': kind, 'students': students.map((s) => s.toJson()).toList(), 'active': activeStudentId, 'mcp': mustChangePassword, 'crew': crew, 'staff': staff};
   factory Session.fromJson(Map<String, dynamic> j) => Session(
       token: j['token'], kind: j['kind'], students: (j['students'] as List? ?? []).map((e) => StudentRef.fromJson(Map<String, dynamic>.from(e))).toList(),
-      activeStudentId: j['active'], mustChangePassword: j['mcp'] ?? false, crew: j['crew'] == null ? null : Map<String, dynamic>.from(j['crew']));
+      activeStudentId: j['active'], mustChangePassword: j['mcp'] ?? false, crew: j['crew'] == null ? null : Map<String, dynamic>.from(j['crew']), staff: j['staff'] == null ? null : Map<String, dynamic>.from(j['staff']));
 }
 
 class AuthError implements Exception { final String message; AuthError(this.message); @override String toString() => message; }
@@ -87,6 +93,18 @@ class SessionController extends AsyncNotifier<Session?> {
     final students = (j['students'] as List).map((e) => StudentRef.fromJson(Map<String, dynamic>.from(e))).toList();
     final newId = students.firstWhere((s) => s.admissionNo == admissionNo.trim().toUpperCase(), orElse: () => students.first).id;
     await _save(Session(token: j['token'], kind: 'student', students: students, activeStudentId: linkToExisting ? state.value?.activeStudentId ?? newId : newId, mustChangePassword: j['must_change_password'] == true));
+  }
+
+  /// Staff: school email + password.
+  Future<void> loginStaff(String email, String password) async {
+    final j = await _call('login-staff', {'email': email, 'password': password, 'device_label': 'app'});
+    await _save(Session(token: j['token'], kind: 'staff', staff: Map<String, dynamic>.from(j['staff']), mustChangePassword: j['must_change_password'] == true));
+  }
+
+  Future<void> changeStaffPassword(String newPassword, {String? current}) async {
+    final s = state.value!;
+    await _call('password', {'action': 'change_staff', 'new_password': newPassword, if (current != null) 'current_password': current}, bearer: s.token);
+    await _save(s.copyWith(mustChangePassword: false));
   }
 
   Future<String> requestOtp(String phone) async => (await _call('login-otp', {'phone': phone}))['kind'];
