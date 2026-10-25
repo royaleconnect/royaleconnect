@@ -6,6 +6,7 @@ import '../core/data.dart';
 import '../core/data2.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
+import 'family_screens.dart' show StorageImage;
 
 /// Shared page frame: red header with back + title, body below.
 class AppPage extends StatelessWidget {
@@ -151,17 +152,37 @@ class StarScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final st = ref.watch(starProvider);
     final cs = Theme.of(context).colorScheme;
-    return AppPage(title: 'Star of the month', body: st.when(loading: _loading, error: (e, _) => _empty(context, '$e'), data: (list) => list.isEmpty ? _empty(context, 'The class teacher picks a star every month. The first one appears here.') :
-      ListView(padding: const EdgeInsets.all(20), children: [for (final (i, s) in list.indexed) _card(context, Row(children: [
-        Container(width: 54, height: 54, alignment: Alignment.center, decoration: BoxDecoration(gradient: i == 0 ? const LinearGradient(colors: [Brand.gold2, Brand.gold]) : null, color: i == 0 ? null : cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(18)),
-            child: Icon(Icons.star_rounded, color: i == 0 ? Colors.white : cs.onSurfaceVariant, size: 30)),
-        const SizedBox(width: 14),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(DateFormat('MMMM yyyy').format(DateTime.parse(s['month'])).toUpperCase(), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .8, color: cs.onSurfaceVariant)),
-          Text(s['student']?['full_name'] ?? '', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-          Text(s['reason'], style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant, height: 1.4)),
+    Widget photo(Map<String, dynamic> s, double size) { final p = s['photo_path'] ?? s['student']?['photo_path']; return p != null ? StorageImage(p, width: size, height: size, radius: BorderRadius.circular(size * .33)) : Avatar((s['student']?['full_name'] ?? '?').toString().split(' ').take(2).map((w) => w[0]).join(), size: size, bg: Brand.amberTint, fg: Brand.amber); }
+    return AppPage(title: 'Star of the month', body: st.when(loading: _loading, error: (e, _) => _empty(context, '$e'), data: (list) {
+      if (list.isEmpty) return _empty(context, 'The class teacher picks a star every month. The first one appears here.');
+      final top = list.first; final rest = list.skip(1).toList();
+      return ListView(padding: const EdgeInsets.all(20), children: [
+        Container(padding: const EdgeInsets.all(22), decoration: BoxDecoration(gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFFFFF6DD), Color(0xFFFBE7B5)]), borderRadius: BorderRadius.circular(24), border: Border.all(color: Brand.gold.withValues(alpha: .6))), child: Column(children: [
+          const Icon(Icons.star_rounded, color: Brand.gold, size: 30),
+          Text(DateFormat('MMMM yyyy').format(DateTime.parse(top['month'])).toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: Brand.amber)),
+          const SizedBox(height: 12),
+          photo(top, 112),
+          const SizedBox(height: 12),
+          Text(top['student']?['full_name'] ?? '', style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Brand.ink)),
+          const SizedBox(height: 6),
+          Text(top['reason'], textAlign: TextAlign.center, style: const TextStyle(color: Brand.ink, height: 1.45)),
+          const SizedBox(height: 6),
+          Text('— ${top['posted_by_staff']?['display_name'] ?? 'Class teacher'}', style: const TextStyle(fontSize: 12, color: Brand.amber, fontWeight: FontWeight.w700)),
         ])),
-      ]))])));
+        if (rest.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          Padding(padding: const EdgeInsets.only(bottom: 8), child: Eyebrow('Earlier this year', color: cs.onSurfaceVariant)),
+          for (final s in rest) _card(context, Row(children: [
+            photo(s, 48), const SizedBox(width: 14),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(DateFormat('MMMM yyyy').format(DateTime.parse(s['month'])).toUpperCase(), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .8, color: cs.onSurfaceVariant)),
+              Text(s['student']?['full_name'] ?? '', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              Text(s['reason'], style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant, height: 1.4)),
+            ])),
+          ])),
+        ],
+      ]);
+    }));
   }
 }
 
