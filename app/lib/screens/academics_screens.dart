@@ -204,6 +204,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   @override
   Widget build(BuildContext context) {
     final ev = ref.watch(calendarProvider);
+    final grade = ref.watch(enrolmentProvider).value?['section']?['grade']?['code'] as String?;
     final cs = Theme.of(context).colorScheme;
     final today = _iso(DateTime.now());
     final first = _iso(month), last = _iso(DateTime(month.year, month.month + 1, 0));
@@ -222,7 +223,15 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       ]),
       body: ev.when(loading: _loading, error: (e, _) => _empty(context, '$e'), data: (all) {
         // everything that touches this month (a break from 23 Dec to 1 Jan shows in both months), oldest first
-        final list = all.where((e) {
+        // working Saturdays (1st, 3rd, 5th) for Grades VI–XII, unless the calendar has a holiday that day
+        final sats = <Map<String, dynamic>>[];
+        for (var d = month; d.month == month.month; d = DateTime(d.year, d.month, d.day + 1)) {
+          if (!isWorkingSaturday(d, grade)) continue;
+          final x = _iso(d);
+          final off = all.any((e) => e['kind'] == 'holiday' && (e['starts_on'] as String).compareTo(x) <= 0 && ((e['ends_on'] ?? e['starts_on']) as String).compareTo(x) >= 0);
+          if (!off) sats.add({'title': 'Working Saturday (${saturdayOrdinal(d)} Saturday) – school is on', 'starts_on': x, 'ends_on': null, 'kind': 'event'});
+        }
+        final list = [...all, ...sats].where((e) {
           final s = e['starts_on'] as String; final en = (e['ends_on'] ?? s) as String;
           return s.compareTo(last) <= 0 && en.compareTo(first) >= 0 && (filter == 'all' || e['kind'] == filter);
         }).toList()..sort((a, b) => (a['starts_on'] as String).compareTo(b['starts_on'] as String));
