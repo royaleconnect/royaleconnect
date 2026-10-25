@@ -1,10 +1,10 @@
 # Deploys the server functions to the school's Supabase project — from GitHub, no laptop software.
 # Runs whenever anything under supabase/functions changes, or when started by hand (Actions → Deploy functions → Run workflow).
 # Needs two repository secrets (Settings → Secrets and variables → Actions):
-# SUPABASE_ACCESS_TOKEN – from https://supabase.com/dashboard/account/tokens
-# SUPABASE_JWT_SECRET – Supabase → Project Settings → API → JWT Settings → (legacy) JWT secret
+#   SUPABASE_ACCESS_TOKEN  – from https://supabase.com/dashboard/account/tokens
+#   SUPABASE_JWT_SECRET    – Supabase → Project Settings → API → JWT Settings → (legacy) JWT secret
 # Optional secrets, added later when those accounts exist: MSG91_AUTHKEY, MSG91_TEMPLATE_ID, FCM_SERVICE_ACCOUNT_JSON,
-# RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET
+#   RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET
 name: Deploy functions
 on:
   push:
@@ -43,7 +43,7 @@ jobs:
 
       - name: Deploy
         run: |
-          for f in login-student login-otp password nightly-fees send-notifications razorpay-order razorpay-webhook; do
+          for f in login-student login-staff login-otp password nightly-fees send-notifications razorpay-order razorpay-webhook; do
             supabase functions deploy "$f" --project-ref "$PROJECT_REF" --no-verify-jwt
           done
 
