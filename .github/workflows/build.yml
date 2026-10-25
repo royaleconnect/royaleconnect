@@ -50,16 +50,19 @@ jobs:
           flutter build web --release --base-href /royaleconnect/
           cp build/web/index.html build/web/404.html   # deep links (e.g. /pay/done) on GitHub Pages
 
-      - name: Build Android APK
-        working-directory: app
-        run: flutter build apk --release
-
       - name: Upload web for Pages
         uses: actions/upload-pages-artifact@v3
         with:
           path: app/build/web
 
+      - name: Build Android APK
+        id: apk
+        continue-on-error: true          # web still publishes if Android has a hiccup
+        working-directory: app
+        run: flutter build apk --release
+
       - name: Publish APK on the "latest" release
+        if: steps.apk.outcome == 'success'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
