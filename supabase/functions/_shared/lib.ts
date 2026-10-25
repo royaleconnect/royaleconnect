@@ -38,7 +38,7 @@ export const normAdmission = (s: string) => (s || "").trim().toUpperCase().repla
  *   role=authenticated, sub=<primary id>, student_ids=[...], staff_id, roles=[...], kind='student'|'staff'
  */
 export async function mintToken(claims: Record<string, unknown>, hours = 24 * 365) {
-  const secret = env("SUPABASE_JWT_SECRET");
+  const secret = env("APP_JWT_SECRET");
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
   return await jwtCreate({ alg: "HS256", typ: "JWT" }, {
     aud: "authenticated",
@@ -91,7 +91,7 @@ export async function audit(db: any, row: { actor_staff_id?: string; actor_stude
 export async function verifyToken(req: Request): Promise<any | null> {
   const tok = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!tok) return null;
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env("SUPABASE_JWT_SECRET")), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(env("APP_JWT_SECRET")), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
   try { return await jwtVerify(tok, key) as any; } catch { return null; }
 }
 
