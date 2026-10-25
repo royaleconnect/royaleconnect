@@ -34,7 +34,15 @@ class Contact { final String staffId, name, kind; final String? subject; Contact
 final contactsProvider = FutureProvider.autoDispose<List<Contact>>((ref) async {
   final s = ref.watch(sessionProvider).value?.active;
   if (s == null) return [];
-  final data = await db.from('student_contacts').select('staff_id,kind,staff:staff_id(display_name,roles),subject:subject_id(name)').eq('student_id', s.id);
+  // student_contacts is a view, so PostgREST cannot join it to staff / subject; fetch the names separately
+  final rows = await db.from('student_contacts').select('staff_id,kind,subject_id').eq('student_id', s.id);
+  final staffIds = {for (final r in rows) r['staff_id'] as String}.toList();
+  final subjectIds = {for (final r in rows) if (r['subject_id'] != null) r['subject_id'] as String}.toList();
+  final staff = staffIds.isEmpty ? <dynamic>[] : await db.from('staff').select('id,display_name,roles').inFilter('id', staffIds);
+  final subjects = subjectIds.isEmpty ? <dynamic>[] : await db.from('subject').select('id,name').inFilter('id', subjectIds);
+  final staffById = {for (final r in staff) r['id']: r};
+  final subjectById = {for (final r in subjects) r['id']: r};
+  final data = [for (final r in rows) {...r, 'staff': staffById[r['staff_id']], 'subject': subjectById[r['subject_id']]}];
   final seen = <String>{};
   final out = <Contact>[];
   // order: class teacher, subject teachers, coordinators / VP
