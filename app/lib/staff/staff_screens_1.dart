@@ -140,13 +140,38 @@ class _StaffMessagesScreenState extends ConsumerState<StaffMessagesScreen> {
           ),
         ]);
       });
-      if (!wide) return StaffPage(title: 'Messages', subtitle: 'Private chats with parents and students', scroll: true, body: Panel(padding: EdgeInsets.zero, child: list));
-      return StaffPage(title: 'Messages', subtitle: 'Private chats with parents and students. Delivered to the family between 6 am and 9 pm.', scroll: false, body: Padding(padding: const EdgeInsets.fromLTRB(24, 0, 24, 24), child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      final newBtn = FilledButton.icon(onPressed: () => _newMessage(context, wide), icon: const Icon(Icons.add_comment_rounded), label: const Text('New message'));
+      if (!wide) return StaffPage(title: 'Messages', subtitle: 'Private chats with parents and students', scroll: true, actions: [newBtn], body: Panel(padding: EdgeInsets.zero, child: list));
+      return StaffPage(title: 'Messages', subtitle: 'Private chats with parents and students. Delivered to the family between 6 am and 9 pm.', scroll: false, actions: [newBtn], body: Padding(padding: const EdgeInsets.fromLTRB(24, 0, 24, 24), child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         SizedBox(width: 360, child: Panel(padding: EdgeInsets.zero, child: SingleChildScrollView(child: list))),
         const SizedBox(width: 14),
         Expanded(child: Panel(padding: EdgeInsets.zero, child: open == null ? Center(child: Text('Pick a conversation', style: TextStyle(color: cs.onSurfaceVariant))) : _Thread(conversationId: open!, meta: (inbox.value ?? []).firstWhere((r) => r['id'] == open, orElse: () => {})))),
       ])));
     });
+  }
+
+  /// Pick a student from the sections this teacher works with and open (or resume) the chat with that family.
+  void _newMessage(BuildContext context, bool wide) {
+    String q = '';
+    showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, set) => AlertDialog(title: const Text('Message a family'), content: SizedBox(width: 480, height: 520, child: Column(children: [
+      TextField(autofocus: true, onChanged: (v) => set(() => q = v.toLowerCase()), decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: 'Search by name or admission number')),
+      const SizedBox(height: 8),
+      Expanded(child: Consumer(builder: (_, r, __) => r.watch(myStudentsProvider).when(loading: _loading, error: (e, _) => _err(e), data: (rows) {
+        final shown = rows.where((x) => q.isEmpty || (x['student']['full_name'] as String).toLowerCase().contains(q) || (x['student']['admission_no'] as String).toLowerCase().contains(q)).toList();
+        if (shown.isEmpty) return const Center(child: Text('No students found.'));
+        return ListView(children: [for (final x in shown) ListTile(
+          leading: Avatar((x['student']['full_name'] as String).split(' ').take(2).map((w) => w[0]).join(), size: 36),
+          title: Text(x['student']['full_name'], style: const TextStyle(fontWeight: FontWeight.w700)),
+          subtitle: Text('${sectionLabelOf(x['section'])} · Roll ${x['roll_no'] ?? '—'} · ${x['student']['admission_no']}'),
+          onTap: () async {
+            final id = await staffOpenConversation(ref, x['student']['id']);
+            ref.invalidate(inboxProvider);
+            if (!ctx.mounted) return; Navigator.pop(ctx);
+            setState(() { filter = 'all'; open = id; });
+            if (!wide && context.mounted) _openSheet(context, {'id': id, 'student': x['student'], 'staff_done': false});
+          })]);
+      }))),
+    ])), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close'))])));
   }
 
   void _openSheet(BuildContext context, Map<String, dynamic> r) => showModalBottomSheet(context: context, isScrollControlled: true, showDragHandle: true, builder: (_) => SizedBox(height: MediaQuery.of(context).size.height * .9, child: _Thread(conversationId: r['id'], meta: r)));

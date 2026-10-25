@@ -231,7 +231,14 @@ class _StaffStarScreenState extends ConsumerState<StaffStarScreen> {
     final secs = ref.watch(mySectionsProvider);
     sectionId ??= secs.value?.firstOrNull?['id'];
     final students = sectionId == null ? null : ref.watch(sectionStudentsProvider(sectionId!));
-    return StaffPage(title: 'Star of the month', subtitle: 'One student per section per month, with a line on why. Shown to the whole section.', body: Panel(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    final history = sectionId == null ? null : ref.watch(staffStarHistoryProvider(sectionId!));
+    return StaffPage(title: 'Star of the month', subtitle: 'One student per section per month, with a line on why. Shown to the whole section.', body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (history != null) history.when(loading: () => const SizedBox(), error: (e, _) => _err(e), data: (rows) => rows.isEmpty ? const SizedBox() : Panel(title: 'This year so far', child: Wrap(spacing: 10, runSpacing: 10, children: [for (final r in rows) Container(width: 220, padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Brand.amberTint.withValues(alpha: .5), borderRadius: BorderRadius.circular(14)), child: Row(children: [
+        r['student']?['photo_path'] != null ? StorageImage(r['student']['photo_path'], width: 44, height: 44, radius: BorderRadius.circular(14)) : Avatar((r['student']?['full_name'] ?? '?').toString().split(' ').take(2).map((w) => w[0]).join(), size: 44),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(DateFormat('MMM yyyy').format(DateTime.parse(r['month'])), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Brand.amber)), Text(r['student']?['full_name'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700))])),
+      ]))]))),
+      Panel(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Row(children: [
         Expanded(child: PickField<String>(label: 'Section', value: sectionId, items: [for (final s in secs.value ?? []) DropdownMenuItem(value: s['id'] as String, child: Text(sectionLabel(s)))], onChanged: (v) => setState(() { sectionId = v; studentId = null; }))),
         const SizedBox(width: 12),
@@ -245,10 +252,12 @@ class _StaffStarScreenState extends ConsumerState<StaffStarScreen> {
       PrimaryButton('Post star of the month', icon: Icons.star_rounded, busy: busy, onPressed: () async {
         if (sectionId == null || studentId == null || reason.text.trim().isEmpty) { toast(context, 'Pick a student and write a line.'); return; }
         setState(() => busy = true);
-        try { await postStar(ref, sectionId: sectionId!, studentId: studentId!, month: month, reason: reason.text.trim()); reason.clear(); if (mounted) toast(context, 'Posted.'); } catch (e) { if (mounted) toast(context, 'Not allowed or failed: $e'); }
+        try { await postStar(ref, sectionId: sectionId!, studentId: studentId!, month: month, reason: reason.text.trim()); reason.clear(); ref.invalidate(staffStarHistoryProvider(sectionId!)); if (mounted) toast(context, 'Posted.'); } catch (e) { if (mounted) toast(context, 'Not allowed or failed: $e'); }
         if (mounted) setState(() => busy = false);
       }),
-    ])));
+      const SizedBox(height: 6),
+      Text("The student's profile photo is shown with the star. Parents see this month at the top and the earlier months of the year below it.", style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+    ]))]));
   }
 }
 
@@ -276,9 +285,9 @@ class _StaffMomentsScreenState extends ConsumerState<StaffMomentsScreen> {
           OutlinedButton.icon(onPressed: busy ? null : () async {
             final xs = await ImagePicker().pickMultiImage(imageQuality: 82, maxWidth: 1600); if (xs.isEmpty) return;
             setState(() => busy = true);
-            try { for (final x in xs.take(6)) { final b = await x.readAsBytes(); final path = 'photos/${sectionId}/${DateTime.now().millisecondsSinceEpoch}_${x.name}'; await db.storage.from('files').uploadBinary(path, b, fileOptions: const FileOptions(contentType: 'image/jpeg')); paths.add(path); } } catch (e) { if (mounted) toast(context, 'Upload failed: $e'); }
+            try { for (final x in xs.take(10)) { final b = await x.readAsBytes(); final path = 'photos/${sectionId}/${DateTime.now().millisecondsSinceEpoch}_${x.name}'; await db.storage.from('files').uploadBinary(path, b, fileOptions: const FileOptions(contentType: 'image/jpeg')); paths.add(path); } } catch (e) { if (mounted) toast(context, 'Upload failed: $e'); }
             if (mounted) setState(() => busy = false);
-          }, icon: const Icon(Icons.add_photo_alternate_rounded, size: 18), label: const Text('Add photos (up to 6)')),
+          }, icon: const Icon(Icons.add_photo_alternate_rounded, size: 18), label: const Text('Add photos (up to 10)')),
         ]),
         const SizedBox(height: 12),
         PrimaryButton('Post to parents', icon: Icons.send_rounded, busy: busy, onPressed: () async {

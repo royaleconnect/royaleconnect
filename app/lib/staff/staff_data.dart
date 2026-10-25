@@ -83,9 +83,32 @@ final inboxProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((re
   return List<Map<String, dynamic>>.from(data);
 });
 
+/// Every student this staff member may message (class teacher: own section; subject teacher: sections taught; coordinator/VP/office: all theirs).
+final myStudentsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  final secs = await ref.watch(mySectionsProvider.future);
+  if (secs.isEmpty) return [];
+  final data = await db.from('enrolment').select('roll_no,section:section_id(id,name,grade:grade_id(code)),student:student_id(id,admission_no,full_name)')
+      .inFilter('section_id', [for (final x in secs) x['id']]);
+  final rows = List<Map<String, dynamic>>.from(data);
+  rows.sort((a, b) { final c = sectionLabelOf(a['section']).compareTo(sectionLabelOf(b['section'])); return c != 0 ? c : ((a['roll_no'] ?? 999) as int).compareTo((b['roll_no'] ?? 999) as int); });
+  return rows;
+});
+String sectionLabelOf(Map<String, dynamic>? sec) => '${sec?['grade']?['code'] ?? ''}-${sec?['name'] ?? ''}';
+
+/// Staff opens (or finds) the private chat with a student's family.
+Future<String> staffOpenConversation(WidgetRef ref, String studentId) async {
+  final me = myId(ref);
+  final ex = await db.from('conversation').select('id').eq('student_id', studentId).eq('staff_id', me).maybeSingle();
+  if (ex != null) return ex['id'];
+  final r = await db.from('conversation').insert({'student_id': studentId, 'staff_id': me}).select('id').single();
+  return r['id'];
+}
+
 Future<void> staffSend(String conversationId, String body) async {
   await db.from('message').insert({'conversation_id': conversationId, 'sender_kind': 'staff', 'body': body});
-  await db.from('conversation').update({'last_message_at': nowIso(), 'staff_unread': 0}).eq('id', conversationId);
+  // bump the family's unread counter so the parent app shows a badge
+  final c = await db.from('conversation').select('student_unread').eq('id', conversationId).single();
+  await db.from('conversation').update({'last_message_at': nowIso(), 'staff_unread': 0, 'student_unread': ((c['student_unread'] ?? 0) as int) + 1}).eq('id', conversationId);
 }
 Future<void> markDone(String conversationId, bool done) => db.from('conversation').update({'staff_done': done, 'staff_unread': 0}).eq('id', conversationId);
 
@@ -127,6 +150,11 @@ Future<void> decideLeave(WidgetRef ref, String id, bool approve) => db.from('lea
 // ---------------------------------------------------------------- star & moments
 Future<void> postStar(WidgetRef ref, {required String sectionId, required String studentId, required DateTime month, required String reason}) =>
     db.from('star_of_month').upsert({'section_id': sectionId, 'month': _d(DateTime(month.year, month.month, 1)), 'student_id': studentId, 'reason': reason, 'posted_by': myId(ref)}, onConflict: 'section_id,month');
+
+final staffStarHistoryProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, sectionId) async {
+  final data = await db.from('star_of_month').select('month,reason,photo_path,student:student_id(full_name,photo_path)').eq('section_id', sectionId).order('month', ascending: false).limit(12);
+  return List<Map<String, dynamic>>.from(data);
+});
 
 Future<void> postMoment(WidgetRef ref, {required String sectionId, required String caption, required List<String> paths}) =>
     db.from('moment').insert({'section_id': sectionId, 'caption': caption, 'photo_paths': paths, 'posted_by': myId(ref), 'posted_at': nowIso()});
