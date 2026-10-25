@@ -10,6 +10,9 @@ Deno.serve(async (req) => {
   try {
     const c = await verifyToken(req);
     if (!c) return json({ error: "Please sign in again." }, 401);
+    if (!Deno.env.get("RAZORPAY_KEY_ID") || !Deno.env.get("RAZORPAY_KEY_SECRET")) {
+      return json({ error: "Online payment is not switched on yet. Please pay at the school office." }, 503);
+    }
     const { student_id, fee_ledger_ids, channel } = await req.json();   // channel: "app" (Razorpay SDK) | "web" (hosted payment link)
     if (!(c.student_ids ?? []).includes(student_id)) return json({ error: "Not allowed." }, 403);
     if (!Array.isArray(fee_ledger_ids) || fee_ledger_ids.length === 0) return json({ error: "Choose at least one item to pay." }, 400);
@@ -31,7 +34,7 @@ Deno.serve(async (req) => {
     const paise = Math.round(sel.total * 100);
     const order = channel === "web"
       ? await fetch("https://api.razorpay.com/v1/payment_links", { method: "POST", headers, body: JSON.stringify({ amount: paise, currency: "INR", description: `${st.full_name} · ${year.label} fees`, reference_id: pay.id, notes,
-          callback_url: `${Deno.env.get("APP_WEB_URL") ?? "https://app.rcis.in"}/pay/done?payment_id=${pay.id}`, callback_method: "get", notify: { sms: false, email: false } }) }).then((r) => r.json())
+          callback_url: `${(Deno.env.get("APP_WEB_URL") ?? "https://royaleconnect.github.io/royaleconnect").replace(/\/$/, "")}/#/pay/done?payment_id=${pay.id}`, callback_method: "get", notify: { sms: false, email: false } }) }).then((r) => r.json())
       : await fetch("https://api.razorpay.com/v1/orders", { method: "POST", headers, body: JSON.stringify({ amount: paise, currency: "INR", receipt: pay.id, notes }) }).then((r) => r.json());
     if (!order.id) { await db.from("payment").update({ status: "failed", raw_payload: order }).eq("id", pay.id); return json({ error: "Could not start the payment. Try again in a minute." }, 502); }
 
