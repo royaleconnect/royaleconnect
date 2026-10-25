@@ -128,6 +128,12 @@ bool eventIsFor(Map<String, dynamic> e, String? grade) {
   return g.isEmpty || grade == null || g.contains(grade.toUpperCase());
 }
 
+/// Grades VI–XII have school on the 1st, 3rd and 5th Saturday of every month (unless the calendar marks a holiday).
+const seniorGrades = {'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'};
+bool isWorkingSaturday(DateTime d, String? grade) =>
+    d.weekday == DateTime.saturday && grade != null && seniorGrades.contains(grade.toUpperCase()) && const {1, 3, 5}.contains((d.day - 1) ~/ 7 + 1);
+String saturdayOrdinal(DateTime d) => const ['1st', '2nd', '3rd', '4th', '5th'][(d.day - 1) ~/ 7];
+
 final calendarProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final data = await db.from('calendar_event').select('title,starts_on,ends_on,kind,grades,academic_year!inner(is_current)').eq('academic_year.is_current', true).order('starts_on', ascending: true);
   return List<Map<String, dynamic>>.from(data);
