@@ -49,7 +49,7 @@ final feesProvider = FutureProvider.autoDispose<FeeSummary>((ref) async {
   if (s == null) return FeeSummary([]);
   final data = await db.from('fee_ledger')
       .select('id,title,amount,due_on,status,paid_on,parent_ledger_id,note,fee_head:fee_head_id(kind),academic_year!inner(is_current)')
-      .eq('student_id', s.id).eq('academic_year.is_current', true).order('due_on');
+      .eq('student_id', s.id).eq('academic_year.is_current', true).order('due_on', ascending: true);
   return FeeSummary([for (final r in data) FeeRow(r['id'], r['title'], r['amount'] as num, r['due_on'], r['status'], r['fee_head']?['kind'] ?? 'other', r['paid_on'], r['parent_ledger_id'], r['note'])]);
 });
 
@@ -76,7 +76,7 @@ class DiaryEntry { final String id, kind, title, forDate, by; final String? body
 final diaryProvider = FutureProvider.autoDispose.family<List<DiaryEntry>, String>((ref, isoDate) async {
   final data = await db.from('diary_entry')
       .select('id,kind,title,body,for_date,due_on,needs_submission,subject:subject_id(name),author:author_id(display_name)')
-      .eq('for_date', isoDate).not('posted_at', 'is', null).order('created_at');
+      .eq('for_date', isoDate).not('posted_at', 'is', null).order('created_at', ascending: true);
   return [for (final r in data) DiaryEntry(r['id'], r['kind'], r['title'], r['body'], r['for_date'], r['subject']?['name'], r['author']?['display_name'] ?? '', r['due_on'], r['needs_submission'] == true)];
 });
 
