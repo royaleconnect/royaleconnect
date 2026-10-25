@@ -57,7 +57,7 @@ final conversationsProvider = FutureProvider.autoDispose<List<Map<String, dynami
 });
 
 final messagesProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, conversationId) async {
-  final data = await db.from('message').select('id,sender_kind,body,attachment_path,attachment_name,attachment_mime,created_at,seen_at').eq('conversation_id', conversationId).order('created_at');
+  final data = await db.from('message').select('id,sender_kind,body,attachment_path,attachment_name,attachment_mime,created_at,seen_at').eq('conversation_id', conversationId).order('created_at', ascending: true);
   return List<Map<String, dynamic>>.from(data);
 });
 
@@ -80,7 +80,7 @@ Future<void> markConversationRead(String conversationId) => db.from('conversatio
 final timetableProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final e = await ref.watch(enrolmentProvider.future);
   if (e == null) return [];
-  final data = await db.from('timetable_slot').select('weekday,period,starts_at,label,needs_kit,subject:subject_id(name,short),staff:staff_id(display_name)').eq('section_id', e['section']['id']).order('weekday').order('period');
+  final data = await db.from('timetable_slot').select('weekday,period,starts_at,label,needs_kit,subject:subject_id(name,short),staff:staff_id(display_name)').eq('section_id', e['section']['id']).order('weekday', ascending: true).order('period', ascending: true);
   return List<Map<String, dynamic>>.from(data);
 });
 
@@ -115,7 +115,7 @@ final starProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref
 });
 
 final calendarProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final data = await db.from('calendar_event').select('title,starts_on,ends_on,kind,academic_year!inner(is_current)').eq('academic_year.is_current', true).order('starts_on');
+  final data = await db.from('calendar_event').select('title,starts_on,ends_on,kind,academic_year!inner(is_current)').eq('academic_year.is_current', true).order('starts_on', ascending: true);
   return List<Map<String, dynamic>>.from(data);
 });
 
