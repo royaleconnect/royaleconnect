@@ -47,6 +47,13 @@ class StaffShell extends ConsumerWidget {
     final ov = ref.watch(staffOverviewProvider).value ?? const {};
     int badge(String p) => p == '/staff/messages' ? (ov['unread'] ?? 0) : p == '/staff/leave' ? (ov['leaves'] ?? 0) : p == '/staff/feedback' ? (ov['feedback'] ?? 0) : 0;
     final cs = Theme.of(context).colorScheme;
+    // The app-wide button theme is "full width" (right for phone screens). Inside the panel, buttons size to their content.
+    final base = Theme.of(context);
+    final panelTheme = base.copyWith(
+      filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(minimumSize: const Size(0, 44), padding: const EdgeInsets.symmetric(horizontal: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800))),
+      outlinedButtonTheme: OutlinedButtonThemeData(style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44), padding: const EdgeInsets.symmetric(horizontal: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), side: BorderSide(color: cs.outline, width: 1.5), foregroundColor: cs.onSurface, textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700))),
+    );
+    final content = Theme(data: panelTheme, child: child);
 
     return LayoutBuilder(builder: (_, c) {
       final wide = c.maxWidth >= 960;
@@ -63,7 +70,7 @@ class StaffShell extends ConsumerWidget {
             Expanded(child: ListView(padding: const EdgeInsets.symmetric(horizontal: 10), children: [for (final m in menu) _NavTile(m, selected: loc == m.path || (m.path != '/staff' && loc.startsWith(m.path)), badge: badge(m.path), onTap: () => context.go(m.path))])),
             _MeTile(s, onSignOut: () async { await ref.read(sessionProvider.notifier).signOut(); if (context.mounted) context.go('/login'); }),
           ]))),
-          Expanded(child: ColoredBox(color: cs.surfaceContainerHighest.withValues(alpha: .35), child: child)),
+          Expanded(child: ColoredBox(color: cs.surfaceContainerHighest.withValues(alpha: .35), child: content)),
         ]));
       }
       // phone / tablet
@@ -72,7 +79,7 @@ class StaffShell extends ConsumerWidget {
         appBar: AppBar(backgroundColor: Brand.crimsonDeep, foregroundColor: Colors.white, elevation: 0,
           title: Text(menu.firstWhere((m) => loc == m.path || (m.path != '/staff' && loc.startsWith(m.path)), orElse: () => menu.first).label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
           actions: [IconButton(onPressed: () => _more(context, menu, loc, badge), icon: const Icon(Icons.menu_rounded))]),
-        body: child,
+        body: content,
         bottomNavigationBar: NavigationBar(
           selectedIndex: quick.indexWhere((m) => loc == m.path || (m.path != '/staff' && loc.startsWith(m.path))).clamp(0, quick.length - 1),
           onDestinationSelected: (i) => context.go(quick[i].path),
@@ -126,16 +133,23 @@ class StaffPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return LayoutBuilder(builder: (_, c) {
-      final w = c.maxWidth.isFinite ? (c.maxWidth < 1100 ? c.maxWidth : 1100.0) : 1100.0;
+      final full = c.maxWidth.isFinite ? c.maxWidth : MediaQuery.sizeOf(context).width;
+      final w = full < 1100 ? full : 1100.0;
       final header = Padding(padding: const EdgeInsets.fromLTRB(24, 22, 24, 12), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: t.headlineSmall?.copyWith(fontSize: 24)), if (subtitle != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(subtitle!, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)))])),
-        ...actions,
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: t.headlineSmall?.copyWith(fontSize: 24)),
+          if (subtitle != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(subtitle!, style: TextStyle(color: cs.onSurfaceVariant))),
+        ])),
+        for (final a in actions) Padding(padding: const EdgeInsets.only(left: 8), child: a),
       ]));
+      final column = Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [header, Padding(padding: const EdgeInsets.fromLTRB(24, 0, 24, 32), child: body)]);
       if (scroll) {
-        return SingleChildScrollView(child: Align(alignment: Alignment.topLeft, child: SizedBox(width: w, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [header, Padding(padding: const EdgeInsets.fromLTRB(24, 0, 24, 32), child: body)]))));
+        return SingleChildScrollView(child: Align(alignment: Alignment.topLeft, child: SizedBox(width: w, child: column)));
       }
-      return Align(alignment: Alignment.topLeft, child: SizedBox(width: w, height: c.maxHeight, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [header, Expanded(child: body)])));
+      return Align(alignment: Alignment.topLeft, child: SizedBox(width: w, height: c.maxHeight.isFinite ? c.maxHeight : MediaQuery.sizeOf(context).height,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [header, Expanded(child: body)])));
     });
   }
 }
