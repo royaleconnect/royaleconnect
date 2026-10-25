@@ -1,0 +1,114 @@
+import 'dart:convert';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/config.dart';
+
+/// A student as returned by the login functions.
+class StudentRef {
+  final String id, admissionNo, fullName;
+  final String? grade, gradeCode, section;
+  const StudentRef({required this.id, required this.admissionNo, required this.fullName, this.grade, this.gradeCode, this.section});
+  factory StudentRef.fromJson(Map<String, dynamic> j) => StudentRef(
+      id: j['id'], admissionNo: j['admission_no'], fullName: j['full_name'],
+      grade: j['grade'], gradeCode: j['grade_code'], section: j['section']);
+  Map<String, dynamic> toJson() => {'id': id, 'admission_no': admissionNo, 'full_name': fullName, 'grade': grade, 'grade_code': gradeCode, 'section': section};
+  String get initials => fullName.trim().split(RegExp(r'\s+')).take(2).map((w) => w[0]).join().toUpperCase();
+  String get cls => '${gradeCode ?? ''}-${section ?? ''}';
+}
+
+/// Everything the app knows about who is signed in on this phone.
+class Session {
+  final String token;
+  final String kind; // 'student' | 'crew' | 'staff'
+  final List<StudentRef> students;
+  final String? activeStudentId;
+  final bool mustChangePassword;
+  final Map<String, dynamic>? crew;
+  const Session({required this.token, required this.kind, this.students = const [], this.activeStudentId, this.mustChangePassword = false, this.crew});
+
+  StudentRef? get active => students.isEmpty ? null : students.firstWhere((s) => s.id == activeStudentId, orElse: () => students.first);
+  Session copyWith({String? activeStudentId, List<StudentRef>? students, bool? mustChangePassword, String? token}) => Session(
+      token: token ?? this.token, kind: kind, students: students ?? this.students,
+      activeStudentId: activeStudentId ?? this.activeStudentId, mustChangePassword: mustChangePassword ?? this.mustChangePassword, crew: crew);
+
+  Map<String, dynamic> toJson() => {'token': token, 'kind': kind, 'students': students.map((s) => s.toJson()).toList(), 'active': activeStudentId, 'mcp': mustChangePassword, 'crew': crew};
+  factory Session.fromJson(Map<String, dynamic> j) => Session(
+      token: j['token'], kind: j['kind'], students: (j['students'] as List? ?? []).map((e) => StudentRef.fromJson(Map<String, dynamic>.from(e))).toList(),
+      activeStudentId: j['active'], mustChangePassword: j['mcp'] ?? false, crew: j['crew'] == null ? null : Map<String, dynamic>.from(j['crew']));
+}
+
+class AuthError implements Exception { final String message; AuthError(this.message); @override String toString() => message; }
+
+/// Talks to the login edge functions and keeps the session on the device (secure storage).
+class SessionController extends AsyncNotifier<Session?> {
+  static const _store = FlutterSecureStorage();
+  static const _key = 'rc_session';
+
+  @override
+  Future<Session?> build() async {
+    final raw = await _store.read(key: _key);
+    if (raw == null) return null;
+    final s = Session.fromJson(jsonDecode(raw));
+    _applyToken(s.token);
+    return s;
+  }
+
+  void _applyToken(String token) {
+    // every PostgREST call from now on carries our token → RLS applies the student_ids / staff_id claims
+    Supabase.instance.client.headers['Authorization'] = 'Bearer $token';
+  }
+
+  Future<Map<String, dynamic>> _call(String fn, Map<String, dynamic> body, {String? bearer}) async {
+    final r = await http.post(Uri.parse('${AppConfig.functionsUrl}/$fn'),
+        headers: {'content-type': 'application/json', 'apikey': AppConfig.supabaseAnonKey, if (bearer != null) 'authorization': 'Bearer $bearer'},
+        body: jsonEncode(body));
+    final j = jsonDecode(r.body) as Map<String, dynamic>;
+    if (r.statusCode >= 400) throw AuthError(j['error'] ?? 'Something went wrong.');
+    return j;
+  }
+
+  Future<void> _save(Session s) async {
+    _applyToken(s.token);
+    await _store.write(key: _key, value: jsonEncode(s.toJson()));
+    state = AsyncData(s);
+  }
+
+  /// Admission number + password. `linkToExisting` keeps siblings already on this phone.
+  Future<void> loginWithPassword(String admissionNo, String password, {bool linkToExisting = false}) async {
+    final existing = linkToExisting ? (state.value?.students.map((s) => s.id).toList() ?? []) : <String>[];
+    final j = await _call('login-student', {'admission_no': admissionNo, 'password': password, 'link_to': existing, 'device_label': 'app'});
+    final students = (j['students'] as List).map((e) => StudentRef.fromJson(Map<String, dynamic>.from(e))).toList();
+    final newId = students.firstWhere((s) => s.admissionNo == admissionNo.trim().toUpperCase(), orElse: () => students.first).id;
+    await _save(Session(token: j['token'], kind: 'student', students: students, activeStudentId: linkToExisting ? state.value?.activeStudentId ?? newId : newId, mustChangePassword: j['must_change_password'] == true));
+  }
+
+  Future<String> requestOtp(String phone) async => (await _call('login-otp', {'phone': phone}))['kind'];
+
+  Future<void> loginWithOtp(String phone, String code) async {
+    final j = await _call('login-otp', {'phone': phone, 'code': code, 'device_label': 'app'});
+    if (j['kind'] == 'crew') {
+      await _save(Session(token: j['token'], kind: 'crew', crew: Map<String, dynamic>.from(j['crew'])));
+      return;
+    }
+    final students = (j['students'] as List).map((e) => StudentRef.fromJson(Map<String, dynamic>.from(e))).toList();
+    await _save(Session(token: j['token'], kind: 'student', students: students, activeStudentId: students.length == 1 ? students.first.id : null));
+  }
+
+  Future<void> changePassword(String newPassword, {String? current}) async {
+    final s = state.value!;
+    await _call('password', {'action': 'change', 'student_id': s.active!.id, 'new_password': newPassword, if (current != null) 'current_password': current}, bearer: s.token);
+    await _save(s.copyWith(mustChangePassword: false));
+  }
+
+  Future<void> selectStudent(String id) async => _save(state.value!.copyWith(activeStudentId: id));
+
+  Future<void> signOut() async {
+    await _store.delete(key: _key);
+    Supabase.instance.client.headers.remove('Authorization');
+    state = const AsyncData(null);
+  }
+}
+
+final sessionProvider = AsyncNotifierProvider<SessionController, Session?>(SessionController.new);
