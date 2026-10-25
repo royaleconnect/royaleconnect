@@ -19,5 +19,10 @@ class RoyaleConnectApp extends ConsumerWidget {
         theme: buildTheme(Brightness.light),
         darkTheme: buildTheme(Brightness.dark),
         routerConfig: ref.watch(routerProvider),
+        // On a laptop or tablet the app is framed at phone width, centred, so every screen keeps its intended proportions.
+        builder: (context, child) => LayoutBuilder(builder: (_, c) => c.maxWidth <= 600 ? child! : ColoredBox(
+            color: const Color(0xFFE9E4DC),
+            child: Center(child: ClipRRect(borderRadius: BorderRadius.circular(c.maxHeight > 900 ? 28 : 0), child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: 480, maxHeight: c.maxHeight > 900 ? 860 : c.maxHeight), child: child!))))),
       );
 }
