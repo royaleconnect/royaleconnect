@@ -166,6 +166,15 @@ class Panel extends StatelessWidget {
         if (fill) Expanded(child: child) else child,
       ]));
 }
+
+/// Dropdown bound to a list of maps.
+class PickField<T> extends StatelessWidget {
+  final String label; final T? value; final List<DropdownMenuItem<T>> items; final ValueChanged<T?> onChanged;
+  const PickField({super.key, required this.label, required this.value, required this.items, required this.onChanged});
+  @override
+  Widget build(BuildContext context) => DropdownButtonFormField<T>(value: value, items: items, onChanged: onChanged, decoration: InputDecoration(labelText: label), isExpanded: true);
+}
+
 String sectionLabel(Map<String, dynamic> sec) => '${sec['grade']?['code'] ?? ''}-${sec['name'] ?? ''}';
 
 void toast(BuildContext context, String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating, width: 420));
