@@ -2,15 +2,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../auth/session.dart';
+import 'config.dart';
 
 /// Opens a file stored in the private `files` bucket through a short-lived signed URL.
 Future<void> openStorageFile(String path) async {
-  final url = await Supabase.instance.client.storage.from('files').createSignedUrl(path, 600);
+  final url = await db.storage.from('files').createSignedUrl(path, 600);
   await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
 }
 
 /// Thin data layer over PostgREST. Every query is already filtered by RLS; the app only shapes it.
-final db = Supabase.instance.client;
+/// The client is rebuilt whenever the session token changes, so every request carries it.
+SupabaseClient db = SupabaseClient(AppConfig.supabaseUrl, AppConfig.supabaseAnonKey);
+void setDbToken(String? token) {
+  db = SupabaseClient(AppConfig.supabaseUrl, AppConfig.supabaseAnonKey, headers: token == null ? const {} : {'Authorization': 'Bearer $token'});
+}
 
 String _today() => DateTime.now().toIso8601String().substring(0, 10);
 
