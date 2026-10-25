@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -46,9 +48,14 @@ class SessionController extends AsyncNotifier<Session?> {
   static const _store = FlutterSecureStorage();
   static const _key = 'rc_session';
 
+  // On phones the session lives in the OS keychain; on the web the browser's storage is the only option anyway.
+  Future<String?> _read() async => kIsWeb ? (await SharedPreferences.getInstance()).getString(_key) : _store.read(key: _key);
+  Future<void> _write(String v) async { if (kIsWeb) { await (await SharedPreferences.getInstance()).setString(_key, v); } else { await _store.write(key: _key, value: v); } }
+  Future<void> _clear() async { if (kIsWeb) { await (await SharedPreferences.getInstance()).remove(_key); } else { await _store.delete(key: _key); } }
+
   @override
   Future<Session?> build() async {
-    final raw = await _store.read(key: _key);
+    final raw = await _read();
     if (raw == null) return null;
     final s = Session.fromJson(jsonDecode(raw));
     _applyToken(s.token);
@@ -71,7 +78,7 @@ class SessionController extends AsyncNotifier<Session?> {
 
   Future<void> _save(Session s) async {
     _applyToken(s.token);
-    await _store.write(key: _key, value: jsonEncode(s.toJson()));
+    await _write(jsonEncode(s.toJson()));
     state = AsyncData(s);
   }
 
@@ -105,7 +112,7 @@ class SessionController extends AsyncNotifier<Session?> {
   Future<void> selectStudent(String id) async => _save(state.value!.copyWith(activeStudentId: id));
 
   Future<void> signOut() async {
-    await _store.delete(key: _key);
+    await _clear();
     Supabase.instance.client.headers.remove('Authorization');
     state = const AsyncData(null);
   }
