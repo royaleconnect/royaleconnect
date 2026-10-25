@@ -30,7 +30,7 @@ jobs:
           set -e
           add() { if [ -n "$2" ]; then echo "$1=$2" >> .env.deploy; fi; }
           : > .env.deploy
-          add SUPABASE_JWT_SECRET      "${{ secrets.SUPABASE_JWT_SECRET }}"
+          add APP_JWT_SECRET           "${{ secrets.SUPABASE_JWT_SECRET }}"
           add APP_WEB_URL              "${{ secrets.APP_WEB_URL || 'https://royaleconnect.github.io/royaleconnect' }}"
           add MSG91_AUTHKEY            "${{ secrets.MSG91_AUTHKEY }}"
           add MSG91_TEMPLATE_ID        "${{ secrets.MSG91_TEMPLATE_ID }}"
