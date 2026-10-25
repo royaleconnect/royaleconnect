@@ -1,0 +1,80 @@
+# Builds Royale Connect automatically on every push to main:
+#   • web  → published to GitHub Pages  (https://royaleconnect.github.io/royaleconnect/)
+#   • Android APK → attached to a "latest" release on the repo's Releases page (install on any Android phone)
+# Nothing to install on anyone's computer. First run takes ~10 minutes; later runs ~5.
+name: Build app
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Create platform folders (android/ ios/ web/) if missing
+        working-directory: app
+        run: |
+          if [ ! -d android ]; then flutter create . --org in.rcis --project-name royale_connect --platforms android,web; fi
+          flutter pub get
+          dart run flutter_launcher_icons || true
+
+      - name: Analyze
+        working-directory: app
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Build web
+        working-directory: app
+        run: |
+          flutter build web --release --base-href /royaleconnect/
+          cp build/web/index.html build/web/404.html   # deep links (e.g. /pay/done) on GitHub Pages
+
+      - name: Build Android APK
+        working-directory: app
+        run: flutter build apk --release
+
+      - name: Upload web for Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: app/build/web
+
+      - name: Publish APK on the "latest" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Royale Connect — latest build
+          body: "Android: download royale-connect.apk and open it on the phone (allow 'install from this source' once). Web: https://royaleconnect.github.io/royaleconnect/"
+          files: app/build/app/outputs/flutter-apk/app-release.apk
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
+  pages:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
