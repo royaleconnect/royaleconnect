@@ -15,7 +15,7 @@ class AppShell extends ConsumerWidget {
       (Icons.home_rounded, Icons.home_outlined, 'Home'),
       (Icons.account_balance_wallet_rounded, Icons.account_balance_wallet_outlined, 'Fees'),
       (Icons.menu_book_rounded, Icons.menu_book_outlined, 'Diary'),
-      (Icons.campaign_rounded, Icons.campaign_outlined, 'Announcements'),
+      (Icons.campaign_rounded, Icons.campaign_outlined, 'Notices'),
       (Icons.directions_bus_rounded, Icons.directions_bus_outlined, 'Bus'),
       (Icons.school_rounded, Icons.school_outlined, 'Reports'),
     ];
