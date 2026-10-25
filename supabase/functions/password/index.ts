@@ -9,7 +9,7 @@ async function claims(req: Request) {
   const h = req.headers.get("authorization") ?? "";
   const tok = h.replace(/^Bearer\s+/i, "");
   if (!tok) return null;
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(Deno.env.get("SUPABASE_JWT_SECRET")!), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(Deno.env.get("APP_JWT_SECRET")!), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
   try { return await verify(tok, key) as any; } catch { return null; }
 }
 
