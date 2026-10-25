@@ -3,10 +3,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../auth/session.dart';
 import 'config.dart';
+import 'data2.dart' show enrolmentProvider;
 
 /// Opens a file stored in the private `files` bucket through a short-lived signed URL.
 Future<void> openStorageFile(String path) async {
-  final url = await db.storage.from('files').createSignedUrl(path, 600);
+  final url = path.startsWith('http') ? path : await db.storage.from('files').createSignedUrl(path, 600);
   await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
 }
 
@@ -59,11 +60,15 @@ class Notice { final String id, category, title, body, by, when, audience; final
 final noticesProvider = FutureProvider.autoDispose<List<Notice>>((ref) async {
   final s = ref.watch(sessionProvider).value?.active;
   if (s == null) return [];
-  final data = await db.from('announcement')
+  final e = await ref.watch(enrolmentProvider.future);
+  final secId = e?['section']?['id'], gradeId = e?['section']?['grade']?['id'];
+  final rows = await db.from('announcement')
       .select('id,category,title,body,attachment_path,sent_at,audience_all,audience_grade_ids,audience_section_ids,author:author_id(display_name),announcement_read(student_id)')
-      .not('sent_at', 'is', null).order('sent_at', ascending: false).limit(50);
+      .not('sent_at', 'is', null).order('sent_at', ascending: false).limit(80);
+  // a family login can cover siblings in different classes, so keep only what is meant for the active child
+  final data = rows.where((r) => r['audience_all'] == true || e == null || (r['audience_grade_ids'] as List).contains(gradeId) || (r['audience_section_ids'] as List).contains(secId)).take(50);
   return [for (final r in data) Notice(r['id'], r['category'], r['title'], r['body'], r['author']?['display_name'] ?? 'School office',
-      r['sent_at'], r['audience_all'] == true ? 'Whole school' : 'Your grade', r['category'] == 'urgent',
+      r['sent_at'], r['audience_all'] == true ? 'Whole school' : (r['audience_section_ids'] as List).contains(secId) ? 'Your class' : 'Your grade', r['category'] == 'urgent',
       (r['announcement_read'] as List).any((x) => x['student_id'] == s.id), r['attachment_path'])];
 });
 
@@ -74,9 +79,11 @@ class DiaryEntry { final String id, kind, title, forDate, by; final String? body
   DiaryEntry(this.id, this.kind, this.title, this.body, this.forDate, this.subject, this.by, this.dueOn, this.needsSubmission); }
 
 final diaryProvider = FutureProvider.autoDispose.family<List<DiaryEntry>, String>((ref, isoDate) async {
+  final e = await ref.watch(enrolmentProvider.future);
+  if (e == null) return [];
   final data = await db.from('diary_entry')
       .select('id,kind,title,body,for_date,due_on,needs_submission,subject:subject_id(name),author:author_id(display_name)')
-      .eq('for_date', isoDate).not('posted_at', 'is', null).order('created_at', ascending: true);
+      .eq('section_id', e['section']['id']).eq('for_date', isoDate).not('posted_at', 'is', null).order('created_at', ascending: true);
   return [for (final r in data) DiaryEntry(r['id'], r['kind'], r['title'], r['body'], r['for_date'], r['subject']?['name'], r['author']?['display_name'] ?? '', r['due_on'], r['needs_submission'] == true)];
 });
 
