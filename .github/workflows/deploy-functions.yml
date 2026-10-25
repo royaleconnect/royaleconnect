@@ -1,0 +1,56 @@
+# Deploys the server functions to the school's Supabase project — from GitHub, no laptop software.
+# Runs whenever anything under supabase/functions changes, or when started by hand (Actions → Deploy functions → Run workflow).
+# Needs two repository secrets (Settings → Secrets and variables → Actions):
+# SUPABASE_ACCESS_TOKEN – from https://supabase.com/dashboard/account/tokens
+# SUPABASE_JWT_SECRET – Supabase → Project Settings → API → JWT Settings → (legacy) JWT secret
+# Optional secrets, added later when those accounts exist: MSG91_AUTHKEY, MSG91_TEMPLATE_ID, FCM_SERVICE_ACCOUNT_JSON,
+# RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET
+name: Deploy functions
+on:
+  push:
+    branches: [main]
+    paths: ["supabase/functions/**", ".github/workflows/deploy-functions.yml"]
+  workflow_dispatch:
+
+env:
+  PROJECT_REF: upgvxhsxmdihmfmzknlq
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Set function secrets
+        run: |
+          set -e
+          cd supabase
+          add() { if [ -n "$2" ]; then echo "$1=$2" >> .env.deploy; fi; }
+          : > .env.deploy
+          add SUPABASE_JWT_SECRET      "${{ secrets.SUPABASE_JWT_SECRET }}"
+          add APP_WEB_URL              "${{ secrets.APP_WEB_URL || 'https://royaleconnect.github.io/royaleconnect' }}"
+          add MSG91_AUTHKEY            "${{ secrets.MSG91_AUTHKEY }}"
+          add MSG91_TEMPLATE_ID        "${{ secrets.MSG91_TEMPLATE_ID }}"
+          add FCM_SERVICE_ACCOUNT_JSON '${{ secrets.FCM_SERVICE_ACCOUNT_JSON }}'
+          add RAZORPAY_KEY_ID          "${{ secrets.RAZORPAY_KEY_ID }}"
+          add RAZORPAY_KEY_SECRET      "${{ secrets.RAZORPAY_KEY_SECRET }}"
+          add RAZORPAY_WEBHOOK_SECRET  "${{ secrets.RAZORPAY_WEBHOOK_SECRET }}"
+          supabase secrets set --env-file .env.deploy --project-ref "$PROJECT_REF"
+          rm .env.deploy
+
+      - name: Deploy
+        run: |
+          cd supabase
+          for f in login-student login-otp password nightly-fees send-notifications razorpay-order razorpay-webhook; do
+            supabase functions deploy "$f" --project-ref "$PROJECT_REF" --no-verify-jwt
+          done
+
+      - name: Smoke test (sample student)
+        run: |
+          curl -s -X POST "https://$PROJECT_REF.supabase.co/functions/v1/login-student" \
+            -H "apikey: sb_publishable_8mtHFfZ9Fk3p1YdG6gwydw_IXlULRxR" -H "content-type: application/json" \
+            -d '{"admission_no":"LK/10/2014","password":"Welcome1"}' | head -c 300; echo
