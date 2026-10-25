@@ -136,13 +136,15 @@ class _MorningCard extends StatelessWidget {
     return calendar.where((e) => (e['starts_on'] as String).compareTo(x) <= 0 && ((e['ends_on'] ?? e['starts_on']) as String).compareTo(x) >= 0 && eventIsFor(e, grade)).toList();
   }
   Map<String, dynamic>? _holiday(DateTime d) { for (final e in _on(d)) { if (e['kind'] == 'holiday') return e; } return null; }
-  bool _schoolDay(DateTime d) => d.weekday < 6 && _holiday(d) == null;
+  bool _schoolDay(DateTime d) => (d.weekday < 6 || isWorkingSaturday(d, grade)) && _holiday(d) == null;
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now(); final today = DateTime(now.year, now.month, now.day); final weekend = now.weekday >= 6;
+    final now = DateTime.now(); final today = DateTime(now.year, now.month, now.day);
+    final workingSat = isWorkingSaturday(today, grade);
+    final weekend = now.weekday == 7 || (now.weekday == 6 && !workingSat); // no school by the week pattern
     final tomorrow = today.add(const Duration(days: 1));
-    // the next day the student actually has school (skips Sundays, Saturdays and holidays)
+    // the next day the student actually has school (skips Sundays, off Saturdays and holidays)
     var back = tomorrow;
     for (var i = 0; i < 30 && !_schoolDay(back); i++) { back = back.add(const Duration(days: 1)); }
     final gap = back.difference(today).inDays;
@@ -161,10 +163,12 @@ class _MorningCard extends StatelessWidget {
     final items = <(String, String, Color)>[
       if (hol != null) ('Holiday · ${_clean(hol['title'])}', 'No school today · classes resume $resume', holidayRed)
       else if (weekend) ('No school today', 'Classes resume $resume', Brand.muted)
+      else if (workingSat) ('Working Saturday', 'School is on today (${saturdayOrdinal(today)} Saturday)', Brand.blue)
       else ('School day', 'Check the timetable for what to carry', Brand.blue),
       for (final e in todays.take(3)) (e['title'] as String, label(e['kind']), dot(e['kind'])),
       if (todays.length > 3) ('+${todays.length - 3} more today', 'See the calendar', Brand.muted),
-      if (holTomorrow != null) ('Tomorrow: ${_clean(holTomorrow['title'])}', 'Holiday · no school tomorrow', holidayRed),
+      if (holTomorrow != null) ('Tomorrow: ${_clean(holTomorrow['title'])}', 'Holiday · no school tomorrow', holidayRed)
+      else if (!noSchool && isWorkingSaturday(tomorrow, grade)) ('Tomorrow is a working Saturday', 'School is on (${saturdayOrdinal(tomorrow)} Saturday)', Brand.blue),
       for (final e in keyTomorrow.take(2)) ('Tomorrow: ${e['title']}', label(e['kind']), dot(e['kind'])),
       if (next != null) ('Fee: ${inr(next.amount)} ${next.overdue ? 'overdue' : 'due ${DateFormat('d MMM').format(DateTime.parse(next.dueOn))}'}', next.title, next.overdue ? holidayRed : Brand.green),
       if (transport != null && !noSchool) ('Bus · ${transport!['route']?['name'] ?? ''}', '${transport!['stop']?['name'] ?? ''} · drop ${_hm(transport!['route']?['afternoon_start'])}', Brand.blue),
@@ -248,4 +252,3 @@ class _NoticeRow extends StatelessWidget {
     ]))));
   }
 }
-
