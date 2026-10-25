@@ -187,56 +187,72 @@ class StarScreen extends ConsumerWidget {
 }
 
 // ---------------------------------------------------------------- calendar
-/// The school year planner. Opens at the current month; earlier months one tap away.
+/// The school year planner, one month at a time. Opens on the current month (so on 1 Nov it opens on November);
+/// arrows move to the previous / next month.
 class CalendarScreen extends ConsumerStatefulWidget {
   const CalendarScreen({super.key});
   @override
   ConsumerState<CalendarScreen> createState() => _CalendarScreenState();
 }
 class _CalendarScreenState extends ConsumerState<CalendarScreen> {
-  bool showPast = false; String filter = 'all';
+  DateTime month = DateTime(DateTime.now().year, DateTime.now().month);
+  String filter = 'all';
   static const colors = {'holiday': (Brand.crimsonDeep, Brand.crimsonTint), 'exam': (Brand.amber, Brand.amberTint), 'ptm': (Brand.violet, Brand.violetTint), 'event': (Brand.blue, Brand.blueTint)};
   static const labels = {'all': 'All', 'holiday': 'Holidays', 'exam': 'Exams', 'ptm': 'Parents', 'event': 'Events'};
+  static String _iso(DateTime d) => DateFormat('yyyy-MM-dd').format(d);
+
   @override
   Widget build(BuildContext context) {
     final ev = ref.watch(calendarProvider);
     final cs = Theme.of(context).colorScheme;
-    final now = DateTime.now(); final today = DateFormat('yyyy-MM-dd').format(now); final monthStart = DateFormat('yyyy-MM-01').format(now);
+    final today = _iso(DateTime.now());
+    final first = _iso(month), last = _iso(DateTime(month.year, month.month + 1, 0));
     return AppPage(title: 'Calendar',
-      headerExtra: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [for (final e in labels.entries) Padding(padding: const EdgeInsets.only(right: 8), child: ChoiceChip(
-        label: Text(e.value), selected: filter == e.key, onSelected: (_) => setState(() => filter = e.key), showCheckmark: false, side: BorderSide.none,
-        selectedColor: Colors.white, backgroundColor: Colors.white.withValues(alpha: .14), labelStyle: TextStyle(fontWeight: FontWeight.w700, color: filter == e.key ? Brand.crimsonDeep : Colors.white)))])),
+      headerExtra: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          IconButton(onPressed: () => setState(() => month = DateTime(month.year, month.month - 1)), icon: const Icon(Icons.chevron_left_rounded, color: Colors.white, size: 30), tooltip: 'Previous month'),
+          Expanded(child: GestureDetector(onTap: () => setState(() => month = DateTime(DateTime.now().year, DateTime.now().month)),
+              child: Text(DateFormat('MMMM yyyy').format(month), textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)))),
+          IconButton(onPressed: () => setState(() => month = DateTime(month.year, month.month + 1)), icon: const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 30), tooltip: 'Next month'),
+        ]),
+        const SizedBox(height: 6),
+        SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [for (final e in labels.entries) Padding(padding: const EdgeInsets.only(right: 8), child: ChoiceChip(
+          label: Text(e.value), selected: filter == e.key, onSelected: (_) => setState(() => filter = e.key), showCheckmark: false, side: BorderSide.none,
+          selectedColor: Colors.white, backgroundColor: Colors.white.withValues(alpha: .14), labelStyle: TextStyle(fontWeight: FontWeight.w700, color: filter == e.key ? Brand.crimsonDeep : Colors.white)))])),
+      ]),
       body: ev.when(loading: _loading, error: (e, _) => _empty(context, '$e'), data: (all) {
-        if (all.isEmpty) return _empty(context, 'The academic calendar appears here once the office publishes it.');
-        final byKind = filter == 'all' ? all : all.where((e) => e['kind'] == filter).toList();
-        final list = showPast ? byKind : byKind.where((e) => ((e['ends_on'] ?? e['starts_on']) as String).compareTo(monthStart) >= 0).toList();
-        final hidden = byKind.length - list.length;
-        final groups = <String, List<Map<String, dynamic>>>{};
-        for (final e in list) { groups.putIfAbsent(DateFormat('MMMM yyyy').format(DateTime.parse(e['starts_on'])), () => []).add(e); }
-        return ListView(padding: const EdgeInsets.all(20), children: [
-          if (hidden > 0) Padding(padding: const EdgeInsets.only(bottom: 8), child: OutlinedButton.icon(onPressed: () => setState(() => showPast = true), icon: const Icon(Icons.history_rounded, size: 18), label: Text('Show earlier months ($hidden)'))),
-          if (list.isEmpty) _empty(context, 'Nothing in this category from now on.'),
-          for (final g in groups.entries) ...[
-            Padding(padding: const EdgeInsets.only(bottom: 8, top: 10), child: Eyebrow(g.key, color: cs.onSurfaceVariant)),
-            for (final e in g.value) Builder(builder: (_) {
+        // everything that touches this month (a break from 23 Dec to 1 Jan shows in both months), oldest first
+        final list = all.where((e) {
+          final s = e['starts_on'] as String; final en = (e['ends_on'] ?? s) as String;
+          return s.compareTo(last) <= 0 && en.compareTo(first) >= 0 && (filter == 'all' || e['kind'] == filter);
+        }).toList()..sort((a, b) => (a['starts_on'] as String).compareTo(b['starts_on'] as String));
+        final isThisMonth = month.year == DateTime.now().year && month.month == DateTime.now().month;
+        return GestureDetector(
+          // swipe left / right also changes the month
+          onHorizontalDragEnd: (d) { final v = d.primaryVelocity ?? 0; if (v.abs() > 300) setState(() => month = DateTime(month.year, month.month + (v < 0 ? 1 : -1))); },
+          child: ListView(padding: const EdgeInsets.all(20), children: [
+            if (!isThisMonth) Padding(padding: const EdgeInsets.only(bottom: 10), child: Center(child: TextButton.icon(onPressed: () => setState(() => month = DateTime(DateTime.now().year, DateTime.now().month)), icon: const Icon(Icons.today_rounded, size: 18), label: const Text('Back to this month')))),
+            if (list.isEmpty) _empty(context, filter == 'all' ? 'Nothing on the school calendar for ${DateFormat('MMMM').format(month)}.' : 'No ${labels[filter]!.toLowerCase()} in ${DateFormat('MMMM').format(month)}.'),
+            for (final e in list) Builder(builder: (_) {
               final c = colors[e['kind']] ?? (Brand.muted, Brand.surface2);
-              final d = DateTime.parse(e['starts_on']); final isToday = e['starts_on'] == today || (e['ends_on'] != null && e['starts_on'].compareTo(today) <= 0 && e['ends_on'].compareTo(today) >= 0);
-              final past = ((e['ends_on'] ?? e['starts_on']) as String).compareTo(today) < 0;
-              return Opacity(opacity: past ? .55 : 1, child: _card(context, Row(children: [
-                Container(width: 48, padding: const EdgeInsets.symmetric(vertical: 6), decoration: BoxDecoration(color: c.$2, borderRadius: BorderRadius.circular(12)),
+              final s = e['starts_on'] as String; final en = (e['ends_on'] ?? s) as String; final d = DateTime.parse(s);
+              final isToday = s.compareTo(today) <= 0 && en.compareTo(today) >= 0;
+              final past = en.compareTo(today) < 0;
+              return Opacity(opacity: past ? .5 : 1, child: _card(context, Row(children: [
+                Container(width: 48, padding: const EdgeInsets.symmetric(vertical: 6), decoration: BoxDecoration(color: c.$2, borderRadius: BorderRadius.circular(12), border: isToday ? Border.all(color: Brand.crimson, width: 2) : null),
                     child: Column(children: [Text(DateFormat('d').format(d), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: c.$1)), Text(DateFormat('EEE').format(d), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: c.$1))])),
                 const SizedBox(width: 12),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(e['title'], style: TextStyle(fontWeight: e['kind'] == 'holiday' ? FontWeight.w800 : FontWeight.w700, color: e['kind'] == 'holiday' ? Brand.crimsonDeep : null)),
-                  if (e['ends_on'] != null && e['ends_on'] != e['starts_on']) Text('${DateFormat('d MMM').format(d)} – ${DateFormat('d MMM yyyy').format(DateTime.parse(e['ends_on']))}', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                  if (en != s) Text('${DateFormat('d MMM').format(d)} – ${DateFormat('d MMM yyyy').format(DateTime.parse(en))}', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                 ])),
                 if (isToday) const Pill('Today', fg: Brand.crimsonDeep, bg: Brand.crimsonTint),
               ]), padding: const EdgeInsets.fromLTRB(10, 10, 14, 10)));
             }),
-          ],
-          const SizedBox(height: 8),
-          Text('As per the school diary. The school may revise dates; changes appear here automatically.', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-        ]);
+            const SizedBox(height: 8),
+            Text('As per the school diary. The school may revise dates; changes appear here automatically.', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+          ]),
+        );
       }));
   }
 }
