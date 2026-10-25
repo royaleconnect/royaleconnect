@@ -156,24 +156,16 @@ class StaffPage extends StatelessWidget {
 
 /// White card used everywhere in the panel.
 class Panel extends StatelessWidget {
-  final Widget child; final EdgeInsets padding; final String? title; final Widget? trailing;
-  const Panel({super.key, required this.child, this.padding = const EdgeInsets.all(18), this.title, this.trailing});
+  final Widget child; final EdgeInsets padding; final String? title; final Widget? trailing; final bool fill;
+  /// [fill] = true when the panel has a fixed height and the child should take all of it (chat thread, lists with their own scrolling).
+  const Panel({super.key, required this.child, this.padding = const EdgeInsets.all(18), this.title, this.trailing, this.fill = false});
   @override
-  Widget build(BuildContext context) => Container(margin: const EdgeInsets.only(bottom: 14), padding: padding, decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: .6))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+  Widget build(BuildContext context) => Container(margin: const EdgeInsets.only(bottom: 14), padding: padding, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: .6))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: fill ? MainAxisSize.max : MainAxisSize.min, children: [
         if (title != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Row(children: [Expanded(child: Text(title!, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))), if (trailing != null) trailing!])),
-        child,
+        if (fill) Expanded(child: child) else child,
       ]));
 }
-
-/// Dropdown bound to a list of maps.
-class PickField<T> extends StatelessWidget {
-  final String label; final T? value; final List<DropdownMenuItem<T>> items; final ValueChanged<T?> onChanged;
-  const PickField({super.key, required this.label, required this.value, required this.items, required this.onChanged});
-  @override
-  Widget build(BuildContext context) => DropdownButtonFormField<T>(value: value, items: items, onChanged: onChanged, decoration: InputDecoration(labelText: label), isExpanded: true);
-}
-
 String sectionLabel(Map<String, dynamic> sec) => '${sec['grade']?['code'] ?? ''}-${sec['name'] ?? ''}';
 
 void toast(BuildContext context, String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating, width: 420));
