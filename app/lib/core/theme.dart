@@ -67,7 +67,7 @@ ThemeData buildTheme(Brightness b) {
       bodyMedium: body.bodyMedium?.copyWith(fontSize: 14),
       labelSmall: body.labelSmall?.copyWith(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .9),
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: scheme.surface, elevation: 0, margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
     ),
