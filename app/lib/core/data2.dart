@@ -110,7 +110,7 @@ final worksheetsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>
 final starProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final e = await ref.watch(enrolmentProvider.future);
   if (e == null) return [];
-  final data = await db.from('star_of_month').select('month,reason,photo_path,student:student_id(full_name),posted_by_staff:posted_by(display_name)').eq('section_id', e['section']['id']).order('month', ascending: false).limit(12);
+  final data = await db.from('star_of_month').select('month,reason,photo_path,student:student_id(full_name,photo_path),posted_by_staff:posted_by(display_name)').eq('section_id', e['section']['id']).order('month', ascending: false).limit(12);
   return List<Map<String, dynamic>>.from(data);
 });
 
