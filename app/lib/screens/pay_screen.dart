@@ -48,8 +48,11 @@ class _PayScreenState extends ConsumerState<PayScreen> {
     final s = ref.read(sessionProvider).value!;
     setState(() { busy = true; error = null; });
     try {
+      // everything that is ticked: overdue (always), chosen instalments, and the late fees riding on them
+      final ids = <String>{...f.overdue.map((r) => r.id), ...chosen};
+      for (final r in f.unpaid) { if (r.isLate && r.parentId != null && ids.contains(r.parentId)) ids.add(r.id); }
       final r = await http.post(Uri.parse('${AppConfig.functionsUrl}/razorpay-order'), headers: _headers(s),
-          body: jsonEncode({'student_id': s.active!.id, 'fee_ledger_ids': chosen.toList(), 'channel': kIsWeb ? 'web' : 'app'}));
+          body: jsonEncode({'student_id': s.active!.id, 'fee_ledger_ids': ids.toList(), 'channel': kIsWeb ? 'web' : 'app'}));
       final j = jsonDecode(r.body) as Map<String, dynamic>;
       if (r.statusCode >= 400) throw AuthError(j['error'] ?? 'Could not start the payment.');
       _paymentId = j['payment_id'];
