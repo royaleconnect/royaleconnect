@@ -28,7 +28,7 @@ class HomeScreen extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: () async { ref.invalidate(feesProvider); ref.invalidate(noticesProvider); ref.invalidate(unreadMessagesProvider); },
         child: CustomScrollView(slivers: [
-          SliverToBoxAdapter(child: BrandHeader(padding: const EdgeInsets.fromLTRB(20, 12, 20, 70), hairline: false, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SliverToBoxAdapter(child: BrandHeader(padding: const EdgeInsets.fromLTRB(20, 12, 20, 20), hairline: false, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               InkWell(onTap: () => context.push(s.students.length > 1 ? '/students' : '/profile'), borderRadius: BorderRadius.circular(999),
                   child: Container(padding: const EdgeInsets.fromLTRB(6, 6, 12, 6), decoration: BoxDecoration(color: Colors.white.withValues(alpha: .14), borderRadius: BorderRadius.circular(999)),
@@ -50,9 +50,12 @@ class HomeScreen extends ConsumerWidget {
             const SizedBox(height: 18),
             Text(DateFormat('EEEE, d MMMM').format(now), style: TextStyle(color: Colors.white.withValues(alpha: .85), fontSize: 13)),
             Text(greet, style: t.headlineMedium?.copyWith(color: Colors.white)),
+            const SizedBox(height: 16),
+            // morning card — sits inside the header
+            _MorningCard(fees: fees.value, transport: transport, cls: st.cls),
           ]))),
-          SliverPadding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 24), sliver: SliverList(delegate: SliverChildListDelegate([
-            Transform.translate(offset: const Offset(0, -54), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          SliverPadding(padding: const EdgeInsets.fromLTRB(20, 16, 20, 24), sliver: SliverList(delegate: SliverChildListDelegate([
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               // urgent banner(s)
               ...?notices.value?.where((n) => n.urgent && !n.read).map((n) => Padding(padding: const EdgeInsets.only(bottom: 14), child: Material(color: Brand.crimson, borderRadius: BorderRadius.circular(16),
                   child: InkWell(onTap: () => context.go('/announcements'), borderRadius: BorderRadius.circular(16), child: Padding(padding: const EdgeInsets.all(14), child: Row(children: [
@@ -60,9 +63,6 @@ class HomeScreen extends ConsumerWidget {
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Eyebrow('Urgent', color: Brand.gold2), Text(n.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))])),
                     const Icon(Icons.chevron_right_rounded, color: Colors.white),
                   ])))))),
-              // morning card
-              _MorningCard(fees: fees.value, transport: transport, cls: st.cls),
-              const SizedBox(height: 14),
               // fee card
               fees.when(
                 loading: () => const _CardShell(child: SizedBox(height: 90, child: Center(child: CircularProgressIndicator()))),
@@ -85,8 +85,8 @@ class HomeScreen extends ConsumerWidget {
               const SizedBox(height: 18),
               Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text("What's new", style: t.titleLarge?.copyWith(fontSize: 16)), TextButton(onPressed: () => context.go('/announcements'), child: const Text('See all'))]),
               ...?notices.value?.where((n) => !n.urgent).take(2).map((n) => Padding(padding: const EdgeInsets.only(bottom: 10), child: _NoticeRow(n, () => context.go('/announcements')))),
-              if (notices.value?.isEmpty ?? false) NoteBox('No announcements yet. New ones from the school appear here and you get a notification.'),
-            ])),
+              if (notices.value?.isEmpty ?? false) const NoteBox('No announcements yet. New ones from the school appear here and you get a notification.'),
+            ]),
           ]))),
         ]),
       ),
@@ -116,6 +116,8 @@ class _CardShell extends StatelessWidget {
       child: child);
 }
 
+String _hm(dynamic t) { final x = (t ?? '').toString(); return x.length >= 5 ? x.substring(0, 5) : x; }
+
 class _MorningCard extends StatelessWidget {
   final FeeSummary? fees; final Map<String, dynamic>? transport; final String cls;
   const _MorningCard({this.fees, this.transport, required this.cls});
@@ -126,11 +128,11 @@ class _MorningCard extends StatelessWidget {
     final items = <(String, String, Color)>[
       weekend ? ('No school today', 'Classes resume ${now.weekday == 6 ? 'Monday' : 'tomorrow'}', Brand.muted) : ('Regular day', 'Check the timetable for what to carry', Brand.blue),
       if (next != null) ('Fee: ${inr(next.amount)} ${next.overdue ? 'overdue' : 'due ${DateFormat('d MMM').format(DateTime.parse(next.dueOn))}'}', next.title, next.overdue ? Brand.crimsonDeep : Brand.green),
-      if (transport != null) ('Bus · ${transport!['route']?['name'] ?? ''}', '${transport!['stop']?['name'] ?? ''} · drop ${transport!['route']?['afternoon_start'] ?? ''}', Brand.blue),
+      if (transport != null) ('Bus · ${transport!['route']?['name'] ?? ''}', '${transport!['stop']?['name'] ?? ''} · drop ${_hm(transport!['route']?['afternoon_start'])}', Brand.blue),
     ];
     return Container(padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
         decoration: BoxDecoration(gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF1D1A20), Color(0xFF2C2730)]),
-            border: Border.all(color: Brand.gold.withValues(alpha: .35)), borderRadius: BorderRadius.circular(20)),
+            border: Border.all(color: Brand.gold.withValues(alpha: .55)), borderRadius: BorderRadius.circular(20)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Eyebrow('Your day · ${DateFormat('EEEE').format(now)}', color: Brand.gold), Text(cls, style: TextStyle(color: Colors.white.withValues(alpha: .7), fontSize: 11))]),
           const SizedBox(height: 10),
