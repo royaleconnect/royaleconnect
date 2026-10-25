@@ -126,12 +126,17 @@ class StaffPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
-    final header = Padding(padding: const EdgeInsets.fromLTRB(24, 22, 24, 12), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: t.headlineSmall?.copyWith(fontSize: 24)), if (subtitle != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(subtitle!, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)))])),
-      ...actions,
-    ]));
-    final content = ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1100), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [header, scroll ? Padding(padding: const EdgeInsets.fromLTRB(24, 0, 24, 32), child: body) : Expanded(child: body)]));
-    return scroll ? SingleChildScrollView(child: Align(alignment: Alignment.topLeft, child: content)) : Align(alignment: Alignment.topLeft, child: content);
+    return LayoutBuilder(builder: (_, c) {
+      final w = c.maxWidth.isFinite ? (c.maxWidth < 1100 ? c.maxWidth : 1100.0) : 1100.0;
+      final header = Padding(padding: const EdgeInsets.fromLTRB(24, 22, 24, 12), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: t.headlineSmall?.copyWith(fontSize: 24)), if (subtitle != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(subtitle!, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)))])),
+        ...actions,
+      ]));
+      if (scroll) {
+        return SingleChildScrollView(child: Align(alignment: Alignment.topLeft, child: SizedBox(width: w, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [header, Padding(padding: const EdgeInsets.fromLTRB(24, 0, 24, 32), child: body)]))));
+      }
+      return Align(alignment: Alignment.topLeft, child: SizedBox(width: w, height: c.maxHeight, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [header, Expanded(child: body)])));
+    });
   }
 }
 
