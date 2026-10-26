@@ -36,10 +36,10 @@ class _StaffLoginScreenState extends ConsumerState<StaffLoginScreen> {
         Row(children: [Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)), child: Image.asset('assets/images/monogram.png', width: 26)), const Spacer(), TextButton(onPressed: () => context.go('/login'), child: const Text('Parent / student sign in', style: TextStyle(color: Colors.white)))]),
         const SizedBox(height: 16),
         Text('Staff sign in', style: t.headlineMedium?.copyWith(color: Colors.white)),
-        Text('Teachers and office: your school email. Bus drivers and conductors: the login ID on your slip.', style: TextStyle(color: Colors.white.withValues(alpha: .9))),
+        Text('Use your school email, or the login ID given by the school.', style: TextStyle(color: Colors.white.withValues(alpha: .9))),
       ])),
       Container(decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24))), padding: const EdgeInsets.all(24), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        TextField(controller: email, keyboardType: TextInputType.emailAddress, autofillHints: const [AutofillHints.username], decoration: const InputDecoration(labelText: 'School email or bus login ID', hintText: 'name@rcis.in  ·  route7-driver')),
+        TextField(controller: email, keyboardType: TextInputType.emailAddress, autofillHints: const [AutofillHints.username], decoration: const InputDecoration(labelText: 'School email or login ID', hintText: 'name@rcis.in')),
         const SizedBox(height: 14),
         TextField(controller: pw, obscureText: !show, autofillHints: const [AutofillHints.password], onSubmitted: (_) => _go(), decoration: InputDecoration(labelText: 'Password', suffixIcon: IconButton(icon: Icon(show ? Icons.visibility_off_outlined : Icons.visibility_outlined), onPressed: () => setState(() => show = !show)))),
         const SizedBox(height: 18),
