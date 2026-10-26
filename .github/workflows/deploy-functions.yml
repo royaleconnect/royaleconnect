@@ -26,6 +26,8 @@ jobs:
           version: latest
 
       - name: Set function secrets
+        env:
+          FCM_JSON: ${{ secrets.FCM_SERVICE_ACCOUNT_JSON }}
         run: |
           set -e
           add() { if [ -n "$2" ]; then echo "$1=$2" >> .env.deploy; fi; }
@@ -34,12 +36,17 @@ jobs:
           add APP_WEB_URL              "${{ secrets.APP_WEB_URL || 'https://royaleconnect.github.io/royaleconnect' }}"
           add MSG91_AUTHKEY            "${{ secrets.MSG91_AUTHKEY }}"
           add MSG91_TEMPLATE_ID        "${{ secrets.MSG91_TEMPLATE_ID }}"
-          add FCM_SERVICE_ACCOUNT_JSON '${{ secrets.FCM_SERVICE_ACCOUNT_JSON }}'
           add RAZORPAY_KEY_ID          "${{ secrets.RAZORPAY_KEY_ID }}"
           add RAZORPAY_KEY_SECRET      "${{ secrets.RAZORPAY_KEY_SECRET }}"
           add RAZORPAY_WEBHOOK_SECRET  "${{ secrets.RAZORPAY_WEBHOOK_SECRET }}"
           supabase secrets set --env-file .env.deploy --project-ref "$PROJECT_REF"
           rm .env.deploy
+          # the Firebase key file is several lines long: squeeze it to one line and set it on its own
+          if [ -n "$FCM_JSON" ]; then
+            ONE_LINE="$(printf '%s' "$FCM_JSON" | jq -c .)" || { echo "FCM_SERVICE_ACCOUNT_JSON is not valid JSON - paste the whole file again"; exit 1; }
+            supabase secrets set "FCM_SERVICE_ACCOUNT_JSON=$ONE_LINE" --project-ref "$PROJECT_REF" >/dev/null
+            echo "Firebase key set for project $(printf '%s' "$FCM_JSON" | jq -r .project_id)"
+          fi
 
       - name: Deploy
         run: |
