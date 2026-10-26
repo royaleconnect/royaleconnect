@@ -72,8 +72,8 @@ class _BusScreenState extends ConsumerState<BusScreen> {
           const SizedBox(width: 12),
           Expanded(child: Padding(padding: const EdgeInsets.only(bottom: 18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(s['name'], style: TextStyle(fontWeight: mine ? FontWeight.w800 : FontWeight.w600, color: done ? cs.onSurfaceVariant : cs.onSurface)),
-            if (mine) const Text('Your stop', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Brand.crimsonDeep)),
-            if (current) const Text('Bus approaching', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Brand.green)),
+            if (mine) Text('Your stop', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: context.tone(Brand.crimsonDeep))),
+            if (current) Text('Bus approaching', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: context.tone(Brand.green))),
           ]))),
         ]));
       }),
@@ -197,7 +197,7 @@ class _DriverScreenState extends ConsumerState<DriverScreen> {
             const SizedBox(height: 18),
             OutlinedButton.icon(onPressed: busy ? null : () => _end(running['id']), icon: const Icon(Icons.stop_circle_rounded, color: Brand.crimson), label: const Text('End trip')),
           ],
-          if (status != null) Padding(padding: const EdgeInsets.only(top: 14), child: Text(status!, style: const TextStyle(color: Brand.crimsonDeep, fontWeight: FontWeight.w700))),
+          if (status != null) Padding(padding: const EdgeInsets.only(top: 14), child: Text(status!, style: TextStyle(color: context.tone(Brand.crimsonDeep), fontWeight: FontWeight.w700))),
           const SizedBox(height: 16),
           NoteBox('Stops on this route: ${(List<Map<String, dynamic>>.from(r['route_stop'] ?? [])..sort((a, b) => (a['seq'] as int).compareTo(b['seq'] as int))).map((x) => x['name']).join(' → ')}'),
         ]);
