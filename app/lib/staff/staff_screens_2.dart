@@ -398,7 +398,7 @@ class StaffTransportScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final routes = ref.watch(routesProvider); final trips = ref.watch(runningTripsProvider);
     final cs = Theme.of(context).colorScheme;
-    return StaffPage(title: 'Transport', subtitle: 'Routes, crew and live trips. Drivers and conductors sign in with their phone number.', body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    return StaffPage(title: 'Transport', subtitle: 'Routes, crew and live trips. Drivers and conductors sign in with the login ID and password made here.', body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Panel(title: 'Live now', child: trips.when(loading: () => const SizedBox(), error: (e, _) => _err(e), data: (list) => list.isEmpty ? Text('No trips running.', style: TextStyle(color: cs.onSurfaceVariant)) : Wrap(spacing: 10, runSpacing: 10, children: [for (final t in list) Chip(avatar: const Icon(Icons.gps_fixed_rounded, color: Brand.green, size: 16), label: Text('${t['route']?['name']} · ${t['kind']} · since ${_dmt(t['started_at'])}${t['last_fix_at'] != null ? ' · GPS ${DateFormat('h:mm:ss').format(DateTime.parse(t['last_fix_at']).toLocal())}' : ''}'), backgroundColor: Brand.greenTint, side: BorderSide.none)]))),
       routes.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => Column(children: [for (final r in rows) Panel(title: '${r['name']} · ${r['bus_reg_no']}', trailing: Pill(r['active'] == true ? 'Active' : 'Inactive', fg: r['active'] == true ? Brand.green : Brand.muted, bg: r['active'] == true ? Brand.greenTint : Brand.surface2), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Wrap(spacing: 16, runSpacing: 6, children: [
@@ -409,6 +409,14 @@ class StaffTransportScreen extends ConsumerWidget {
         ]),
         const SizedBox(height: 8),
         Text((List<Map<String, dynamic>>.from(r['route_stop'] ?? [])..sort((a, b) => (a['seq'] as int).compareTo(b['seq'] as int))).map((s) => s['name']).join('  →  '), style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+        const SizedBox(height: 10),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final role in const ['driver', 'conductor']) OutlinedButton.icon(
+            onPressed: () => crewLoginDialog(context, ref, r, role),
+            icon: const Icon(Icons.key_rounded, size: 18),
+            label: Text(r[role]?['username'] != null ? '${role == 'driver' ? 'Driver' : 'Conductor'} login: ${r[role]['username']} · new password' : 'Set up ${role} login'),
+          ),
+        ]),
       ]))])),
       const NoteBox('Adding or editing routes, stops and crew is done by the import tool for now (the sheet from the transport office). Live editing screens come with the next update.'),
     ]));
@@ -511,5 +519,42 @@ class _StaffMeScreenState extends ConsumerState<StaffMeScreen> {
       Panel(child: OutlinedButton.icon(onPressed: () async { await ref.read(sessionProvider.notifier).signOut(); if (context.mounted) context.go('/login'); },
           icon: const Icon(Icons.logout_rounded, color: Brand.crimson), label: const Text('Sign out of this device', style: TextStyle(color: Brand.crimson, fontWeight: FontWeight.w800)))),
     ]));
+  }
+}
+
+
+/// Office / transport in-charge: create (or refresh) the login for a route's driver or conductor and show the slip.
+Future<void> crewLoginDialog(BuildContext context, WidgetRef ref, Map<String, dynamic> route, String role) async {
+  final cur = route[role] as Map<String, dynamic>?;
+  final slug = '${route['name']}'.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
+  final name = TextEditingController(text: cur?['display_name'] ?? '');
+  final phone = TextEditingController(text: cur?['phone'] ?? '');
+  final login = TextEditingController(text: cur?['username'] ?? '$slug-$role');
+  final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+    title: Text('${role == 'driver' ? 'Driver' : 'Conductor'} login · ${route['name']}'),
+    content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      TextField(controller: name, decoration: const InputDecoration(labelText: 'Name')),
+      const SizedBox(height: 10),
+      TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Mobile number (parents can call)')),
+      const SizedBox(height: 10),
+      TextField(controller: login, decoration: const InputDecoration(labelText: 'Login ID', helperText: 'Letters and numbers, no spaces')),
+      const SizedBox(height: 10),
+      const Text('A new password is made each time. Any phone already signed in with this login is signed out.', style: TextStyle(fontSize: 12)),
+    ])),
+    actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Make login'))],
+  ));
+  if (ok != true || !context.mounted) return;
+  try {
+    final r = await callFunction(ref, 'password', {'action': 'crew_account', 'route_id': route['id'], 'role': role, 'name': name.text, 'phone': phone.text, 'username': login.text});
+    ref.invalidate(routesProvider);
+    if (!context.mounted) return;
+    showDialog(context: context, builder: (c) => AlertDialog(
+      title: const Text('Bus crew login slip'),
+      content: SelectableText('Royale Connect — bus ${r['role']}\n\nRoute: ${r['route']}\nName: ${name.text}\nLogin ID: ${r['username']}\nPassword: ${r['first_use_password']}\n\nOpen the Royale Connect app → "School staff or bus crew? Sign in here" → enter the login ID and password.',
+          style: const TextStyle(fontFamily: 'monospace', height: 1.6)),
+      actions: [FilledButton(onPressed: () => Navigator.pop(c), child: const Text('Done'))],
+    ));
+  } catch (e) {
+    if (context.mounted) toast(context, 'Could not make the login: $e');
   }
 }
