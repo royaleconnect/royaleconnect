@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../core/data.dart';
 import '../core/data2.dart';
+import '../core/school_docs.dart' show openReportCardPdf;
 import '../core/theme.dart';
 import '../widgets/common.dart';
 import 'family_screens.dart' show StorageImage;
@@ -252,6 +253,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(e['title'], style: TextStyle(fontWeight: e['kind'] == 'holiday' ? FontWeight.w800 : FontWeight.w700, color: e['kind'] == 'holiday' ? context.tone(Brand.crimsonDeep) : null)),
                   if (en != s) Text('${DateFormat('d MMM').format(d)} – ${DateFormat('d MMM yyyy').format(DateTime.parse(en))}', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                  if ((e['note'] ?? '').toString().trim().isNotEmpty) Text(e['note'].toString().trim(), style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                 ])),
                 if (isToday) const Pill('Today', fg: Brand.crimsonDeep, bg: Brand.crimsonTint),
               ]), padding: const EdgeInsets.fromLTRB(10, 10, 14, 10)));
@@ -281,7 +283,7 @@ class ReportsScreen extends ConsumerWidget {
           if (r['working_days'] != null) Text('Attendance ${r['days_present']}/${r['working_days']} days', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
           if (r['remarks'] != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text('"${r['remarks']}"', style: const TextStyle(fontStyle: FontStyle.italic, height: 1.45))),
           const SizedBox(height: 12),
-          PrimaryButton('Open report card (PDF)', icon: Icons.picture_as_pdf_rounded, onPressed: r['pdf_path'] == null ? null : () => openStorageFile(r['pdf_path'])),
+          PrimaryButton('Open report card (PDF)', icon: Icons.picture_as_pdf_rounded, onPressed: () => openReportCardPdf(context, r['id'], name: r['term'])),
         ]))]))),
     ]));
   }
