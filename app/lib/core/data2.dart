@@ -1,4 +1,6 @@
+import 'dart:math' as math;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../auth/session.dart';
 import 'data.dart';
 
@@ -219,7 +221,7 @@ final crewRouteProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref
   final s = ref.watch(sessionProvider).value;
   if (s == null || s.kind != 'crew') return null;
   final staffId = s.crew?['staff_id'];
-  final q = db.from('route').select('id,name,bus_reg_no,route_stop(seq,name)').eq('active', true);
+  final q = db.from('route').select('id,name,bus_reg_no,route_stop(id,seq,name,lat,lng,morning_eta,afternoon_eta)').eq('active', true);
   final r = staffId == null ? await q.limit(1).maybeSingle() : await q.or('driver_staff_id.eq.$staffId,conductor_staff_id.eq.$staffId').maybeSingle();
   return r;
 });
@@ -227,18 +229,66 @@ final crewRouteProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref
 final crewTripProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
   final r = await ref.watch(crewRouteProvider.future);
   if (r == null) return null;
-  return await db.from('trip').select('id,kind,started_at,next_stop_seq').eq('route_id', r['id']).eq('status', 'running').maybeSingle();
+  return await db.from('trip').select('id,kind,started_at,next_stop_seq,tracker,last_lat,last_lng,last_fix_at,tracker_staff:tracker_staff(display_name)').eq('route_id', r['id']).eq('status', 'running').maybeSingle();
 });
 
-/// Start a trip (kind 'morning' | 'afternoon'). The server tells the families on this route.
+/// This phone's own id (made once, kept on the phone). The trip remembers which phone sends its location.
+String? _deviceId;
+Future<String> deviceId() async {
+  if (_deviceId != null) return _deviceId!;
+  final p = await SharedPreferences.getInstance();
+  var id = p.getString('rc_device_id');
+  if (id == null) {
+    final r = math.Random.secure();
+    id = List.generate(16, (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+    await p.setString('rc_device_id', id);
+  }
+  return _deviceId = id;
+}
+
+/// Start a trip (kind 'morning' | 'afternoon') from this phone. The server tells the families on this route.
 Future<String> startTrip(String routeId, String kind, String staffId) async =>
-    (await db.rpc('start_trip', params: {'p_route': routeId, 'p_kind': kind})) as String;
+    (await db.rpc('start_trip', params: {'p_route': routeId, 'p_kind': kind, 'p_device': await deviceId()})) as String;
 
 Future<void> endTrip(String tripId) => db.rpc('end_trip', params: {'p_trip': tripId});
 
+/// This phone takes over sending the location (the other crew phone stops).
+Future<void> takeOverTrip(String tripId) async { await db.rpc('take_over_trip', params: {'p_trip': tripId, 'p_device': await deviceId()}); }
+
 /// One GPS position. The server updates the live position, keeps history every 10 s, and sends the stop alerts.
-/// Returns false when the trip is no longer running (ended from the office, or automatically).
-Future<bool> pushFix(String tripId, double lat, double lng, double? speed, double? acc) async {
-  final r = await db.rpc('bus_fix', params: {'p_trip': tripId, 'p_lat': lat, 'p_lng': lng, 'p_speed': speed, 'p_acc': acc});
-  return (r is Map ? r['running'] : true) != false;
+/// Returns {running: false} when the trip has ended, {elsewhere: true} when another phone is sending.
+Future<Map<String, dynamic>> pushFix(String tripId, double lat, double lng, double? speed, double? acc) async {
+  final r = await db.rpc('bus_fix', params: {'p_trip': tripId, 'p_lat': lat, 'p_lng': lng, 'p_speed': speed, 'p_acc': acc, 'p_device': await deviceId()});
+  return r is Map ? Map<String, dynamic>.from(r) : {'running': true};
+}
+
+/// Where the bus has been on this trip: [[lat, lng], …] every 10 s.
+Future<List<List<double>>> tripTrail(String tripId) async {
+  final r = await db.rpc('trip_trail', params: {'p_trip': tripId});
+  return [for (final p in (r as List)) [(p[0] as num).toDouble(), (p[1] as num).toDouble()]];
+}
+
+/// Straight-line distance in metres.
+double metresBetween(double lat1, double lng1, double lat2, double lng2) {
+  double rad(double d) => d * math.pi / 180;
+  final a = math.pow(math.sin(rad(lat2 - lat1) / 2), 2) + math.cos(rad(lat1)) * math.cos(rad(lat2)) * math.pow(math.sin(rad(lng2 - lng1) / 2), 2);
+  return 6371000 * 2 * math.asin(math.min(1, math.sqrt(a)));
+}
+
+/// Stops in the order the bus visits them (morning: stop order; afternoon: reverse).
+List<Map<String, dynamic>> travelOrder(List<Map<String, dynamic>> stops, bool morning) {
+  final s = List<Map<String, dynamic>>.from(stops)..sort((a, b) => (a['seq'] as int).compareTo(b['seq'] as int));
+  return morning ? s : s.reversed.toList();
+}
+
+/// Road distance and minutes from the bus to a stop, going through the stops in between.
+/// Roads are ~35% longer than a straight line; city school-bus speed ~18 km/h including stops.
+(double metres, int minutes) etaTo(double busLat, double busLng, List<Map<String, dynamic>> order, int fromIdx, int toIdx) {
+  if (fromIdx < 0 || toIdx < fromIdx || toIdx >= order.length) return (0, 0);
+  var m = metresBetween(busLat, busLng, (order[fromIdx]['lat'] as num).toDouble(), (order[fromIdx]['lng'] as num).toDouble());
+  for (var i = fromIdx; i < toIdx; i++) {
+    m += metresBetween((order[i]['lat'] as num).toDouble(), (order[i]['lng'] as num).toDouble(), (order[i + 1]['lat'] as num).toDouble(), (order[i + 1]['lng'] as num).toDouble());
+  }
+  m *= 1.35;
+  return (m, math.max(1, (m / 1000 / 18 * 60).round()));
 }
