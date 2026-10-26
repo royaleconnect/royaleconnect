@@ -38,12 +38,9 @@ class SplashScreen extends ConsumerWidget {
         padding: const EdgeInsets.fromLTRB(16, 26, 16, 22),
         decoration: BoxDecoration(border: Border.all(color: frameGold, width: 1)),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          // school logo, a touch deeper in colour; its white background is turned transparent
-          // (alpha falls to 0 as a pixel approaches white), so no box shows on the ivory page
-          ColorFiltered(
-            colorFilter: const ColorFilter.matrix([1.22, 0, 0, 0, -56, 0, 1.22, 0, 0, -56, 0, 0, 1.22, 0, -56, -1.2, -1.2, -1.2, 0, 867]),
-            child: Image.asset('assets/images/logo.png', width: w * .74),
-          ),
+          // school logo, a touch deeper in colour, white background removed (made at build time by tools/make_icon.py)
+          Image.asset('assets/images/logo_heritage.png', width: w * .74,
+              errorBuilder: (_, __, ___) => Image.asset('assets/images/logo.png', width: w * .74)),
           const SizedBox(height: 20),
           goldText('ROYALE CONNECT', GoogleFonts.cinzel(fontSize: w < 340 ? 23 : 26, fontWeight: FontWeight.w800, letterSpacing: 4, height: 1.25)),
           const SizedBox(height: 10),
@@ -221,7 +218,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
         const SizedBox(height: 16),
         TextField(controller: b, obscureText: true, decoration: const InputDecoration(labelText: 'Repeat new password')),
         const SizedBox(height: 20),
-        if (error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(error!, style: const TextStyle(color: Brand.crimsonDeep, fontWeight: FontWeight.w700))),
+        if (error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(error!, style: TextStyle(color: context.tone(Brand.crimsonDeep), fontWeight: FontWeight.w700))),
         PrimaryButton('Save and continue', busy: busy, onPressed: () async {
           if (a.text.length < 8) { setState(() => error = 'Use at least 8 characters.'); return; }
           if (a.text != b.text) { setState(() => error = "The two passwords don't match."); return; }
