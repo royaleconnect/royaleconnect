@@ -14,6 +14,17 @@ Future<void> openStorageFile(String path) async {
 /// Thin data layer over PostgREST. Every query is already filtered by RLS; the app only shapes it.
 /// The client is rebuilt whenever the session token changes, so every request carries it.
 SupabaseClient db = SupabaseClient(AppConfig.supabaseUrl, AppConfig.supabaseAnonKey);
+/// True while an admin is using "View as family": the database refuses every change, so the app does not try.
+bool viewOnlyMode = false;
+
+/// Counts this person once a day on the admin dashboard ("opened the app today").
+String? _seenToken;
+void pingAppSeen(String token) {
+  if (viewOnlyMode || _seenToken == token) return;
+  _seenToken = token;
+  db.rpc('app_seen').then((_) {}, onError: (_) {});
+}
+
 void setDbToken(String? token) {
   db = SupabaseClient(AppConfig.supabaseUrl, AppConfig.supabaseAnonKey, headers: token == null ? const {} : {'Authorization': 'Bearer $token'});
 }
@@ -81,8 +92,10 @@ final noticesProvider = FutureProvider.autoDispose<List<Notice>>((ref) async {
       (r['announcement_read'] as List).any((x) => x['student_id'] == s.id), r['attachment_path'], _files(r))];
 });
 
-Future<void> markNoticeRead(String noticeId, String studentId) =>
-    db.from('announcement_read').upsert({'announcement_id': noticeId, 'student_id': studentId});
+Future<void> markNoticeRead(String noticeId, String studentId) async {
+  if (viewOnlyMode) return;   // an admin looking does not count as the family having read it
+  try { await db.from('announcement_read').upsert({'announcement_id': noticeId, 'student_id': studentId}); } catch (_) {}
+}
 
 class DiaryEntry { final String id, kind, title, forDate, by; final String? body, subject, dueOn; final bool needsSubmission;
   DiaryEntry(this.id, this.kind, this.title, this.body, this.forDate, this.subject, this.by, this.dueOn, this.needsSubmission); }
