@@ -114,7 +114,7 @@ class _MonthlyPlanScreenState extends ConsumerState<MonthlyPlanScreen> {
           Text(r['subject']?['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
           const SizedBox(height: 6),
           Text(r['topics'], style: const TextStyle(height: 1.5)),
-          if (r['assessment'] != null) Padding(padding: const EdgeInsets.only(top: 8), child: Row(children: [const Icon(Icons.fact_check_outlined, size: 16, color: Brand.amber), const SizedBox(width: 6), Expanded(child: Text(r['assessment'], style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant, fontWeight: FontWeight.w700)))])),
+          if (r['assessment'] != null) Padding(padding: const EdgeInsets.only(top: 8), child: Row(children: [Icon(Icons.fact_check_outlined, size: 16, color: context.tone(Brand.amber)), const SizedBox(width: 6), Expanded(child: Text(r['assessment'], style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant, fontWeight: FontWeight.w700)))])),
         ]))])));
   }
 }
@@ -217,9 +217,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           IconButton(onPressed: () => setState(() => month = DateTime(month.year, month.month + 1)), icon: const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 30), tooltip: 'Next month'),
         ]),
         const SizedBox(height: 6),
-        SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [for (final e in labels.entries) Padding(padding: const EdgeInsets.only(right: 8), child: ChoiceChip(
-          label: Text(e.value), selected: filter == e.key, onSelected: (_) => setState(() => filter = e.key), showCheckmark: false, side: BorderSide.none,
-          selectedColor: Colors.white, backgroundColor: Colors.white.withValues(alpha: .14), labelStyle: TextStyle(fontWeight: FontWeight.w700, color: filter == e.key ? Brand.crimsonDeep : Colors.white)))])),
+        SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [for (final e in labels.entries) HeaderChip(e.value, selected: filter == e.key, onTap: () => setState(() => filter = e.key))])),
       ]),
       body: ev.when(loading: _loading, error: (e, _) => _empty(context, '$e'), data: (all) {
         // everything that touches this month (a break from 23 Dec to 1 Jan shows in both months), oldest first
@@ -252,7 +250,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     child: Column(children: [Text(DateFormat('d').format(d), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: c.$1)), Text(DateFormat('EEE').format(d), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: c.$1))])),
                 const SizedBox(width: 12),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(e['title'], style: TextStyle(fontWeight: e['kind'] == 'holiday' ? FontWeight.w800 : FontWeight.w700, color: e['kind'] == 'holiday' ? Brand.crimsonDeep : null)),
+                  Text(e['title'], style: TextStyle(fontWeight: e['kind'] == 'holiday' ? FontWeight.w800 : FontWeight.w700, color: e['kind'] == 'holiday' ? context.tone(Brand.crimsonDeep) : null)),
                   if (en != s) Text('${DateFormat('d MMM').format(d)} – ${DateFormat('d MMM yyyy').format(DateTime.parse(en))}', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                 ])),
                 if (isToday) const Pill('Today', fg: Brand.crimsonDeep, bg: Brand.crimsonTint),
