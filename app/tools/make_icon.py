@@ -51,6 +51,17 @@ place(Image.new('RGBA', (1024, 1024), IVORY), .82).convert('RGB').save('assets/i
 place(Image.new('RGBA', (1024, 1024), (0, 0, 0, 0)), .62).save('assets/icons/app_icon_fg.png')
 print('icons written')
 
+# Notification icon (Android status bar): a plain white R on transparent, in every screen density.
+# Android paints it in one colour, so a full-colour icon would show as a grey blob.
+sil = Image.new('RGBA', r.size, (255, 255, 255, 0)); sil.putalpha(r.split()[3].point(lambda a: 255 if a > 90 else 0))
+for folder, px_ in {'mdpi': 24, 'hdpi': 36, 'xhdpi': 48, 'xxhdpi': 72, 'xxxhdpi': 96}.items():
+    os.makedirs(f'tools/res/drawable-{folder}', exist_ok=True)
+    canvas = Image.new('RGBA', (px_, px_), (0, 0, 0, 0))
+    h = int(px_ * .84); w = int(sil.width * h / sil.height)
+    canvas.alpha_composite(sil.resize((w, h), Image.LANCZOS), ((px_ - w) // 2, (px_ - h) // 2))
+    canvas.save(f'tools/res/drawable-{folder}/ic_stat_notify.png')
+print('notification icon written')
+
 # Opening-screen logo: the school logo a touch deeper in colour, with its white background made transparent,
 # so it sits cleanly on the ivory page on every phone (no runtime colour filter needed).
 lg = Image.open('assets/images/logo.png').convert('RGB')
