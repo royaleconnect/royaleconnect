@@ -1,4 +1,4 @@
-"""Builds the app icons from the R monogram (assets/icons/app_icon_fg.png) at build time.
+"""Builds the app icons and the opening-screen logo from the R monogram (assets/icons/app_icon_fg.png) at build time.
 
 Look chosen 26 Oct 2026: ivory background, the R brighter and as large as the icon allows.
   assets/icons/app_icon.png     1024 x 1024, ivory square, R at 82% (phone icon on older Android, iPhone, web)
@@ -50,3 +50,17 @@ def place(canvas, share):
 place(Image.new('RGBA', (1024, 1024), IVORY), .82).convert('RGB').save('assets/icons/app_icon.png')
 place(Image.new('RGBA', (1024, 1024), (0, 0, 0, 0)), .62).save('assets/icons/app_icon_fg.png')
 print('icons written')
+
+# Opening-screen logo: the school logo a touch deeper in colour, with its white background made transparent,
+# so it sits cleanly on the ivory page on every phone (no runtime colour filter needed).
+lg = Image.open('assets/images/logo.png').convert('RGB')
+px = lg.load()
+out = Image.new('RGBA', lg.size)
+po = out.load()
+for y in range(lg.height):
+    for x in range(lg.width):
+        r_, g_, b_ = px[x, y]
+        a = max(0, min(255, int(867 - 1.2 * (r_ + g_ + b_))))
+        po[x, y] = (max(0, min(255, int(1.22 * r_ - 56))), max(0, min(255, int(1.22 * g_ - 56))), max(0, min(255, int(1.22 * b_ - 56))), a)
+out.save('assets/images/logo_heritage.png')
+print('opening-screen logo written')
