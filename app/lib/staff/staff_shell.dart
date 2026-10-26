@@ -21,6 +21,7 @@ const staffMenu = [
   StaffItem('/staff/leave', 'Leave requests', Icons.event_busy_rounded),
   StaffItem('/staff/exams', 'Exams & portions', Icons.quiz_rounded),
   StaffItem('/staff/marks', 'Marks entry', Icons.grading_rounded),
+  StaffItem('/staff/reports', 'Report cards', Icons.assignment_turned_in_rounded, roles: ['class_teacher', 'office', 'it_admin', 'principal', 'vice_principal']),
   StaffItem('/staff/plan', 'Monthly plan', Icons.view_agenda_rounded, roles: ['coordinator', 'office', 'it_admin', 'principal', 'vice_principal']),
   StaffItem('/staff/worksheets', 'Worksheets', Icons.description_rounded),
   StaffItem('/staff/star', 'Star of the month', Icons.star_rounded),
