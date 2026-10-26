@@ -22,12 +22,13 @@ class RoyaleConnectApp extends ConsumerWidget {
         debugShowCheckedModeBanner: false,
         theme: buildTheme(Brightness.light),
         darkTheme: buildTheme(Brightness.dark),
+        themeMode: ref.watch(themeModeProvider),
         routerConfig: ref.watch(routerProvider),
         // Staff: full-width panel. Parents on a laptop (960 px and wider): side menu + full page.
         // Everything else on a big screen (sign-in pages, small tablets) is framed at phone width, centred.
         builder: (context, child) => LayoutBuilder(builder: (_, c) {
           final sess = ref.watch(sessionProvider).value;
-          final family = sess != null && sess.kind == 'student' && !sess.mustChangePassword && sess.active != null && (sess.activeStudentId != null || sess.students.length == 1);
+          final family = sess != null && sess.kind == 'student' && !sess.mustChangePassword && sess.active != null && ref.watch(splashDoneProvider) && (sess.students.length == 1 || (sess.activeStudentId != null && ref.watch(childPickedProvider)));
           if (isStaff || c.maxWidth <= 600) return child!;
           if (family && c.maxWidth >= 960) return ParentFrame(child: child!);
           return ColoredBox(
