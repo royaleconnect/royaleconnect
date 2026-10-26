@@ -244,7 +244,7 @@ final recentPaymentsProvider = FutureProvider.autoDispose<List<Map<String, dynam
 
 // ---------------------------------------------------------------- transport (in-charge / office)
 final routesProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final data = await db.from('route').select('id,name,bus_reg_no,active,morning_start,afternoon_start,driver:driver_staff_id(display_name,phone),conductor:conductor_staff_id(display_name,phone),route_stop(id,seq,name),transport_enrolment(student_id)').order('name', ascending: true);
+  final data = await db.from('route').select('id,name,bus_reg_no,active,morning_start,afternoon_start,driver:driver_staff_id(display_name,phone,username),conductor:conductor_staff_id(display_name,phone,username),route_stop(id,seq,name),transport_enrolment(student_id)').order('name', ascending: true);
   return List<Map<String, dynamic>>.from(data);
 });
 final runningTripsProvider = StreamProvider.autoDispose<List<Map<String, dynamic>>>((ref) async* {
