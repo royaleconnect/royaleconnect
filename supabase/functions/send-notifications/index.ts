@@ -1,6 +1,6 @@
 // Woken every minute by the database (job rc-push, only when something is waiting). Sends queued notifications
 // through Firebase Cloud Messaging (HTTP v1).
-// Rules: quiet hours 21:00–06:00 IST hold everything except urgent ones until 06:00.
+// Rules: during quiet hours (school_setting, now 00:00–05:00 IST) everything except urgent waits until they end.
 //        One phone gets one copy of a whole-school notice even with two children on it.
 //        With two or more children on a phone, the child's first name goes in front of personal notifications.
 // Push tokens come from device_session.push_token (the app registers them). Dead tokens are cleared.
@@ -12,7 +12,8 @@ import { create as jwtCreate, getNumericDate } from "https://deno.land/x/djwt@v3
 const IST = "Asia/Kolkata";
 const BATCH = 1500, PARALLEL = 25;
 function istMinutes() { const p = new Intl.DateTimeFormat("en-GB", { timeZone: IST, hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date()); const h = Number(p.find(x => x.type === "hour")!.value) % 24, m = Number(p.find(x => x.type === "minute")!.value); return h * 60 + m; }
-function nextSixAmISO() { const d = new Date(); const dateIST = d.toLocaleDateString("en-CA", { timeZone: IST }); const six = new Date(`${dateIST}T06:00:00+05:30`); if (six <= d) six.setDate(six.getDate() + 1); return six.toISOString(); }
+// the moment quiet hours end (today or tomorrow, IST)
+function quietEndISO(h: number, m: number) { const d = new Date(); const dateIST = d.toLocaleDateString("en-CA", { timeZone: IST }); const end = new Date(`${dateIST}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00+05:30`); if (end <= d) end.setDate(end.getDate() + 1); return end.toISOString(); }
 // the page a notification opens (same rules as the app's push.dart)
 function routeFor(link: string | null, staff: boolean) {
   const l = (link ?? "").replace(/^\//, "");
@@ -48,10 +49,10 @@ Deno.serve(async (req) => {
   // ---- quiet hours
   const { data: qs } = await db.from("school_setting").select("key,value").in("key", ["quiet_hours_start", "quiet_hours_end"]);
   const get = (k: string, d: string) => qs?.find((x: any) => x.key === k)?.value ?? d;
-  const [qsH, qsM] = get("quiet_hours_start", "21:00").split(":").map(Number); const [qeH, qeM] = get("quiet_hours_end", "06:00").split(":").map(Number);
+  const [qsH, qsM] = get("quiet_hours_start", "00:00").split(":").map(Number); const [qeH, qeM] = get("quiet_hours_end", "05:00").split(":").map(Number);
   const now = istMinutes(), qStart = qsH * 60 + qsM, qEnd = qeH * 60 + qeM;
   const quiet = qStart > qEnd ? (now >= qStart || now < qEnd) : (now >= qStart && now < qEnd);
-  if (quiet) await db.from("notification").update({ send_after: nextSixAmISO() }).is("sent_at", null).eq("urgent", false).lte("send_after", new Date().toISOString());
+  if (quiet) await db.from("notification").update({ send_after: quietEndISO(qeH, qeM) }).is("sent_at", null).eq("urgent", false).lte("send_after", new Date().toISOString());
 
   // ---- take a batch (marked as sent in the same step, so an overlapping run can never double-send)
   const { data: batch, error } = await db.rpc("claim_notifications", { lim: BATCH, urgent_only: quiet });
