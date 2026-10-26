@@ -399,6 +399,7 @@ class StaffTransportScreen extends ConsumerWidget {
     final routes = ref.watch(routesProvider); final trips = ref.watch(runningTripsProvider);
     final cs = Theme.of(context).colorScheme;
     return StaffPage(title: 'Transport', subtitle: 'Routes, crew and live trips. Drivers and conductors sign in with the login ID and password made here.', body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const _CrewPasswordPanel(),
       Panel(title: 'Live now', child: trips.when(loading: () => const SizedBox(), error: (e, _) => _err(e), data: (list) => list.isEmpty ? Text('No trips running.', style: TextStyle(color: cs.onSurfaceVariant)) : Wrap(spacing: 10, runSpacing: 10, children: [for (final t in list) Chip(avatar: const Icon(Icons.gps_fixed_rounded, color: Brand.green, size: 16), label: Text('${t['route']?['name']} · ${t['kind']} · since ${_dmt(t['started_at'])}${t['last_fix_at'] != null ? ' · GPS ${DateFormat('h:mm:ss').format(DateTime.parse(t['last_fix_at']).toLocal())}' : ''}'), backgroundColor: Brand.greenTint, side: BorderSide.none)]))),
       routes.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => Column(children: [for (final r in rows) Panel(title: '${r['name']} · ${r['bus_reg_no']}', trailing: Pill(r['active'] == true ? 'Active' : 'Inactive', fg: r['active'] == true ? Brand.green : Brand.muted, bg: r['active'] == true ? Brand.greenTint : Brand.surface2), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Wrap(spacing: 16, runSpacing: 6, children: [
@@ -414,7 +415,7 @@ class StaffTransportScreen extends ConsumerWidget {
           for (final role in const ['driver', 'conductor']) OutlinedButton.icon(
             onPressed: () => crewLoginDialog(context, ref, r, role),
             icon: const Icon(Icons.key_rounded, size: 18),
-            label: Text(r[role]?['username'] != null ? '${role == 'driver' ? 'Driver' : 'Conductor'} login: ${r[role]['username']} · new password' : 'Set up ${role} login'),
+            label: Text(r[role]?['username'] != null ? '${role == 'driver' ? 'Driver' : 'Conductor'}: ${r[role]['display_name'] ?? ''} · login ${r[role]['username']}' : 'Set up ${role} login'),
           ),
         ]),
       ]))])),
@@ -523,38 +524,70 @@ class _StaffMeScreenState extends ConsumerState<StaffMeScreen> {
 }
 
 
-/// Office / transport in-charge: create (or refresh) the login for a route's driver or conductor and show the slip.
+/// Office / transport in-charge: make the login for a route's driver or conductor.
+/// Login ID = dr + route number (driver) or co + route number (conductor); the password is the common bus password.
 Future<void> crewLoginDialog(BuildContext context, WidgetRef ref, Map<String, dynamic> route, String role) async {
   final cur = route[role] as Map<String, dynamic>?;
-  final slug = '${route['name']}'.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
+  final no = RegExp(r'\d+').firstMatch('${route['name']}')?.group(0) ?? '';
+  final id = '${role == 'driver' ? 'dr' : 'co'}$no';
   final name = TextEditingController(text: cur?['display_name'] ?? '');
   final phone = TextEditingController(text: cur?['phone'] ?? '');
-  final login = TextEditingController(text: cur?['username'] ?? '$slug-$role');
   final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
-    title: Text('${role == 'driver' ? 'Driver' : 'Conductor'} login · ${route['name']}'),
-    content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+    title: Text('${role == 'driver' ? 'Driver' : 'Conductor'} · ${route['name']}'),
+    content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
       TextField(controller: name, decoration: const InputDecoration(labelText: 'Name')),
       const SizedBox(height: 10),
       TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Mobile number (parents can call)')),
-      const SizedBox(height: 10),
-      TextField(controller: login, decoration: const InputDecoration(labelText: 'Login ID', helperText: 'Letters and numbers, no spaces')),
-      const SizedBox(height: 10),
-      const Text('A new password is made each time. Any phone already signed in with this login is signed out.', style: TextStyle(fontSize: 12)),
+      const SizedBox(height: 14),
+      Text('Login ID: $id', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+      const Text('Password: the common bus password (set at the top of this page).', style: TextStyle(fontSize: 12)),
     ])),
-    actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Make login'))],
+    actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Save'))],
   ));
   if (ok != true || !context.mounted) return;
   try {
-    final r = await callFunction(ref, 'password', {'action': 'crew_account', 'route_id': route['id'], 'role': role, 'name': name.text, 'phone': phone.text, 'username': login.text});
+    final r = await callFunction(ref, 'password', {'action': 'crew_account', 'route_id': route['id'], 'role': role, 'name': name.text, 'phone': phone.text});
     ref.invalidate(routesProvider);
     if (!context.mounted) return;
     showDialog(context: context, builder: (c) => AlertDialog(
-      title: const Text('Bus crew login slip'),
-      content: SelectableText('Royale Connect — bus ${r['role']}\n\nRoute: ${r['route']}\nName: ${name.text}\nLogin ID: ${r['username']}\nPassword: ${r['first_use_password']}\n\nOpen the Royale Connect app → "School staff or bus crew? Sign in here" → enter the login ID and password.',
+      title: const Text('Bus login'),
+      content: SelectableText('Royale Connect — ${r['route']} ${r['role']}\n\nName: ${name.text}\nLogin ID: ${r['username']}\nPassword: ${r['password']}\n\nOpen the app → “School staff? Sign in here” → type the login ID and password.',
           style: const TextStyle(fontFamily: 'monospace', height: 1.6)),
       actions: [FilledButton(onPressed: () => Navigator.pop(c), child: const Text('Done'))],
     ));
   } catch (e) {
-    if (context.mounted) toast(context, 'Could not make the login: $e');
+    if (context.mounted) toast(context, 'Could not save: $e');
+  }
+}
+
+/// One password for every driver and conductor. Changing it here changes it for all of them at once.
+class _CrewPasswordPanel extends ConsumerStatefulWidget {
+  const _CrewPasswordPanel();
+  @override
+  ConsumerState<_CrewPasswordPanel> createState() => _CrewPasswordPanelState();
+}
+class _CrewPasswordPanelState extends ConsumerState<_CrewPasswordPanel> {
+  final pw = TextEditingController(); bool busy = false;
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Panel(title: 'Bus crew sign-in', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text('Login ID = dr + route number for the driver (dr7), co + route number for the conductor (co7). Everyone uses one common password (not case-sensitive). It starts as Bus1 — you can change it here any time.',
+          style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+      const SizedBox(height: 10),
+      PickRow(children: [
+        Expanded(child: TextField(controller: pw, decoration: const InputDecoration(labelText: 'New common bus password', isDense: true))),
+        const SizedBox(width: 10),
+        FilledButton(onPressed: busy ? null : () async {
+          setState(() => busy = true);
+          try {
+            final r = await callFunction(ref, 'password', {'action': 'crew_password', 'password': pw.text});
+            if (context.mounted) toast(context, 'Changed for ${r['updated']} drivers and conductors. Tell them the new password.');
+            pw.clear();
+          } catch (e) { if (context.mounted) toast(context, 'Could not change: $e'); }
+          if (mounted) setState(() => busy = false);
+        }, child: const Text('Change for all')),
+      ]),
+    ]));
   }
 }
