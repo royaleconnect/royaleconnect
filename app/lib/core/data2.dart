@@ -170,9 +170,12 @@ final momentsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((
   return List<Map<String, dynamic>>.from(data);
 });
 
-Future<void> toggleLike(String momentId, String studentId, bool liked) => liked
-    ? db.from('moment_like').delete().eq('moment_id', momentId).eq('student_id', studentId)
-    : db.from('moment_like').insert({'moment_id': momentId, 'student_id': studentId});
+Future<void> toggleLike(String momentId, String studentId, bool liked) async {
+  if (viewOnlyMode) return;
+  liked
+      ? await db.from('moment_like').delete().eq('moment_id', momentId).eq('student_id', studentId)
+      : await db.from('moment_like').insert({'moment_id': momentId, 'student_id': studentId});
+}
 
 final albumsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final data = await db.from('album').select('id,title,event_date,cover_path,album_photo(id,path,sort_order)').order('event_date', ascending: false);
