@@ -1,41 +1,94 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../core/config.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
 import 'session.dart';
 
-class SplashScreen extends StatelessWidget {
+/// Opening screen ("Heritage"): the school logo in a gold double frame, ROYALE CONNECT in engraved gold.
+/// While the saved sign-in is being checked it is the 1-second splash (gold ring); once we know nobody is
+/// signed in, the black panel with "Get started" rises from the bottom.
+class SplashScreen extends ConsumerWidget {
   const SplashScreen({super.key});
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Column(children: [
-        Expanded(child: Center(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 32), child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Image.asset('assets/images/logo.png', width: 280),
-          const SizedBox(height: 28),
-          Container(width: 44, height: 3, decoration: BoxDecoration(color: Brand.gold, borderRadius: BorderRadius.circular(2))),
-          const SizedBox(height: 10),
-          Text(AppConfig.appName, style: t.headlineLarge?.copyWith(fontSize: 34, color: Brand.ink), textAlign: TextAlign.center),
-          const SizedBox(height: 10),
-          Text('FOR PARENTS, STUDENTS & TEACHERS', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 2.4, color: Brand.muted)),
-        ])))),
-        Container(
-          decoration: const BoxDecoration(gradient: Brand.headerGradient, borderRadius: BorderRadius.vertical(top: Radius.circular(36))),
-          padding: const EdgeInsets.fromLTRB(28, 32, 28, 40),
-          child: SafeArea(top: false, child: Column(children: [
-            const Text('Fees, notices, class diary and report cards — all in one place for your family.',
-                textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 17, height: 1.45, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 20),
-            FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Brand.crimsonDeep), onPressed: () => context.go('/login'), child: const Text('Get started')),
-            const SizedBox(height: 14),
-            Text('${AppConfig.schoolName} · Kalyan Nagar, Bengaluru', style: TextStyle(color: Colors.white.withValues(alpha: .85), fontSize: 12)),
-          ])),
+
+  static const ivory = Color(0xFFFFFDF8), frameGold = Color(0xFFA8822F), panel = Color(0xFF14100F);
+
+  /// Deep metallic gold text: a gradient through the letters plus a soft light edge underneath, so it reads as engraved.
+  static Widget goldText(String text, TextStyle style) => Stack(alignment: Alignment.center, children: [
+        Transform.translate(offset: const Offset(0, 1.2), child: Text(text, textAlign: TextAlign.center, style: style.copyWith(color: const Color(0xE6FFF0C8)))),
+        ShaderMask(
+          blendMode: BlendMode.srcIn,
+          shaderCallback: (r) => const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter,
+              colors: [Color(0xFF5E4210), Color(0xFF8C6519), Color(0xFFB88A2C), Color(0xFF7A5714), Color(0xFF4F370C)], stops: [0, .3, .52, .72, 1]).createShader(r),
+          child: Text(text, textAlign: TextAlign.center, style: style.copyWith(color: Colors.white)),
         ),
-      ]),
+      ]);
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final checking = ref.watch(sessionProvider).isLoading || !ref.watch(splashDoneProvider);   // 4-second splash on every opening
+    final w = MediaQuery.sizeOf(context).width.clamp(280.0, 480.0);
+    final small = GoogleFonts.manrope(fontSize: 11.5, fontWeight: FontWeight.w600);
+    final frame = Container(
+      width: w * .84, padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(border: Border.all(color: frameGold, width: 1)),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16, 26, 16, 22),
+        decoration: BoxDecoration(border: Border.all(color: frameGold, width: 1)),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          // school logo, a touch deeper in colour; the white of the artwork blends into the ivory page
+          ColorFiltered(
+            colorFilter: const ColorFilter.matrix([1.22, 0, 0, 0, -56, 0, 1.22, 0, 0, -56, 0, 0, 1.22, 0, -56, 0, 0, 0, 1, 0]),
+            child: Image.asset('assets/images/logo.png', width: w * .74, color: ivory, colorBlendMode: BlendMode.multiply),
+          ),
+          const SizedBox(height: 20),
+          goldText('ROYALE CONNECT', GoogleFonts.cinzel(fontSize: w < 340 ? 23 : 26, fontWeight: FontWeight.w800, letterSpacing: 4, height: 1.25)),
+          const SizedBox(height: 10),
+          Row(children: [
+            const Expanded(child: Divider(color: frameGold, thickness: 1)),
+            Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Text('SCHOOL · HOME · TOGETHER', style: GoogleFonts.manrope(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: 2, color: const Color(0xFF7A5A1C)))),
+            const Expanded(child: Divider(color: frameGold, thickness: 1)),
+          ]),
+        ]),
+      ),
+    );
+    final footer = '${AppConfig.schoolName} · Kalyan Nagar';
+    return Scaffold(
+      backgroundColor: ivory,
+      body: Container(
+        decoration: const BoxDecoration(gradient: RadialGradient(center: Alignment(0, -.25), radius: 1.1, colors: [Color(0xFFFFFDF8), Color(0xFFF3ECE0)])),
+        child: Column(children: [
+          Expanded(child: SafeArea(bottom: false, child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+            frame,
+            if (checking) ...[const SizedBox(height: 44), const SizedBox(width: 30, height: 30, child: CircularProgressIndicator(strokeWidth: 3, color: frameGold, backgroundColor: Color(0xFFE8DCC2)))],
+          ])))),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 350),
+            transitionBuilder: (c, a) => SlideTransition(position: Tween(begin: const Offset(0, 1), end: Offset.zero).animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)), child: c),
+            child: checking
+                ? Padding(key: const ValueKey('s'), padding: const EdgeInsets.only(bottom: 30), child: SafeArea(top: false, child: Text(footer, textAlign: TextAlign.center, style: small.copyWith(color: const Color(0xFF6A5A40)))))
+                : Container(
+                    key: const ValueKey('w'), width: double.infinity,
+                    decoration: const BoxDecoration(color: panel, borderRadius: BorderRadius.vertical(top: Radius.circular(34))),
+                    padding: const EdgeInsets.fromLTRB(24, 26, 24, 26),
+                    child: SafeArea(top: false, child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      ShaderMask(blendMode: BlendMode.srcIn, shaderCallback: (r) => const LinearGradient(colors: [Color(0xFFC9A24B), Color(0xFFF0D68A), Color(0xFFC9A24B)]).createShader(r),
+                          child: Text('BUILD · LEARN · GROW', style: GoogleFonts.cinzel(fontSize: 13, fontWeight: FontWeight.w700, letterSpacing: 2.2, color: Colors.white))),
+                      const SizedBox(height: 14),
+                      Material(color: Colors.transparent, child: InkWell(
+                        onTap: () => context.go('/login'), borderRadius: BorderRadius.circular(14),
+                        child: Ink(height: 52, decoration: BoxDecoration(borderRadius: BorderRadius.circular(14), gradient: const LinearGradient(colors: [Color(0xFFE4C56F), Color(0xFFB8923A), Color(0xFF9A7426)], stops: [0, .55, 1])),
+                            child: Center(child: Text('Get started', style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w800, color: panel)))),
+                      )),
+                      const SizedBox(height: 12),
+                      Text(footer, textAlign: TextAlign.center, style: small.copyWith(color: const Color(0xFFEFE6D2).withValues(alpha: .9))),
+                    ])),
+                  ),
+          ),
+        ]),
+      ),
     );
   }
 }
