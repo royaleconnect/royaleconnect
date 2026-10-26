@@ -150,7 +150,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ],
           const SizedBox(height: 22),
           const NoteBox('Same login for the student and the parents — the same admission number and password work on every phone in the family. Brothers and sisters each have their own; add them once and switch between them from Home.'),
-          if (!widget.addSibling) Padding(padding: const EdgeInsets.only(top: 12), child: Center(child: TextButton.icon(onPressed: () => context.go('/staff-login'), icon: const Icon(Icons.badge_outlined, size: 18), label: const Text('School staff or bus crew? Sign in here')))),
+          if (!widget.addSibling) Padding(padding: const EdgeInsets.only(top: 12), child: Center(child: TextButton.icon(onPressed: () => context.go('/staff-login'), icon: const Icon(Icons.badge_outlined, size: 18), label: const Text('School staff? Sign in here')))),
         ])),
       ]),
     );
