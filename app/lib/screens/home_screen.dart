@@ -27,6 +27,53 @@ class HomeScreen extends ConsumerWidget {
     final greet = now.hour < 12 ? 'Good morning' : now.hour < 17 ? 'Good afternoon' : 'Good evening';
     final unreadNotices = notices.value?.where((n) => !n.read).length ?? 0;
 
+    // Laptop / large tablet: the side menu (parent_layout.dart) does the navigating; Home shows four cards at once.
+    if (MediaQuery.sizeOf(context).width >= 960) {
+      final diary = ref.watch(latestDiaryProvider);
+      Widget card(String title, String link, VoidCallback go, Widget child) => _CardShell(lift: false, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))), TextButton(onPressed: go, child: Text(link))]),
+        const SizedBox(height: 4), child]));
+      return Scaffold(body: RefreshIndicator(
+        onRefresh: () async { ref.invalidate(calendarProvider); ref.invalidate(feesProvider); ref.invalidate(noticesProvider); ref.invalidate(latestDiaryProvider); },
+        child: ListView(padding: const EdgeInsets.fromLTRB(34, 28, 34, 40), children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(DateFormat('EEEE, d MMMM').format(now), style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+              Text(greet, style: t.headlineMedium),
+            ])),
+            Text('${st.fullName} · ${st.cls}', style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w700)),
+          ]),
+          const SizedBox(height: 18),
+          ...?notices.value?.where((n) => n.urgent && !n.read).map((n) => Padding(padding: const EdgeInsets.only(bottom: 14), child: Material(color: Brand.crimson, borderRadius: BorderRadius.circular(16),
+              child: ListTile(onTap: () => context.push('/notice/${n.id}'), leading: const Icon(Icons.warning_amber_rounded, color: Colors.white), title: Text(n.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)), trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white))))),
+          IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Expanded(flex: 5, child: _MorningCard(fees: fees.value, transport: transport, cls: st.cls, calendar: calendar, grade: gradeCode)),
+            const SizedBox(width: 18),
+            Expanded(flex: 4, child: fees.when(loading: () => const _CardShell(child: Center(child: CircularProgressIndicator())), error: (e, _) => _CardShell(child: Text('Could not load fees.', style: TextStyle(color: cs.onSurfaceVariant))), data: (f) => _FeeCard(f))),
+          ])),
+          const SizedBox(height: 18),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: card('Latest announcements', 'See all', () => context.go('/announcements'), Column(children: [
+              for (final n in (notices.value ?? []).take(4)) Padding(padding: const EdgeInsets.only(bottom: 8), child: _NoticeRow(n, () => context.push('/notice/${n.id}'))),
+              if (notices.value?.isEmpty ?? false) Text('No announcements yet.', style: TextStyle(color: cs.onSurfaceVariant)),
+            ]))),
+            const SizedBox(width: 18),
+            Expanded(child: diary.when(loading: () => const _CardShell(child: SizedBox(height: 120, child: Center(child: CircularProgressIndicator()))), error: (e, _) => _CardShell(child: Text('$e')), data: (d) => card(
+              d.$1 == null ? 'Class diary' : 'Class diary · ${d.$1 == DateFormat('yyyy-MM-dd').format(now) ? 'today' : DateFormat('EEE d MMM').format(DateTime.parse(d.$1!))}', 'Open diary', () => context.go('/diary'),
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                if (d.$2.isEmpty) Text('Nothing posted recently.', style: TextStyle(color: cs.onSurfaceVariant)),
+                for (final e in d.$2) Padding(padding: const EdgeInsets.only(bottom: 10), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Pill(e.kind.replaceAll('_', ' '), fg: Brand.blue, bg: Brand.blueTint), const SizedBox(width: 10),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(e.title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                    Text([if (e.subject != null) e.subject!, if (e.dueOn != null) 'by ${DateFormat('EEE d MMM').format(DateTime.parse(e.dueOn!))}'].join(' · '), style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                  ])),
+                ])),
+              ])))),
+          ]),
+        ])));
+    }
+
     return Scaffold(
       body: RefreshIndicator(
         onRefresh: () async { ref.invalidate(calendarProvider); ref.invalidate(feesProvider); ref.invalidate(noticesProvider); ref.invalidate(unreadMessagesProvider); },
@@ -61,7 +108,7 @@ class HomeScreen extends ConsumerWidget {
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               // urgent banner(s)
               ...?notices.value?.where((n) => n.urgent && !n.read).map((n) => Padding(padding: const EdgeInsets.only(bottom: 14), child: Material(color: Brand.crimson, borderRadius: BorderRadius.circular(16),
-                  child: InkWell(onTap: () => context.go('/announcements'), borderRadius: BorderRadius.circular(16), child: Padding(padding: const EdgeInsets.all(14), child: Row(children: [
+                  child: InkWell(onTap: () => context.push('/notice/${n.id}'), borderRadius: BorderRadius.circular(16), child: Padding(padding: const EdgeInsets.all(14), child: Row(children: [
                     const Avatar('!', bg: Colors.white, fg: Brand.crimson, size: 40), const SizedBox(width: 12),
                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Eyebrow('Urgent', color: Brand.gold2), Text(n.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))])),
                     const Icon(Icons.chevron_right_rounded, color: Colors.white),
@@ -87,7 +134,7 @@ class HomeScreen extends ConsumerWidget {
               ]),
               const SizedBox(height: 18),
               Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text("What's new", style: t.titleLarge?.copyWith(fontSize: 16)), TextButton(onPressed: () => context.go('/announcements'), child: const Text('See all'))]),
-              ...?notices.value?.where((n) => !n.urgent).take(2).map((n) => Padding(padding: const EdgeInsets.only(bottom: 10), child: _NoticeRow(n, () => context.go('/announcements')))),
+              ...?notices.value?.where((n) => !n.urgent).take(2).map((n) => Padding(padding: const EdgeInsets.only(bottom: 10), child: _NoticeRow(n, () => context.push('/notice/${n.id}')))),
               if (notices.value?.isEmpty ?? false) const NoteBox('No announcements yet. New ones from the school appear here and you get a notification.'),
             ]),
           ]))),
