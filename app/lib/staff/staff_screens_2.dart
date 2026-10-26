@@ -398,7 +398,7 @@ class StaffTransportScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final routes = ref.watch(routesProvider); final trips = ref.watch(runningTripsProvider);
     final cs = Theme.of(context).colorScheme;
-    return StaffPage(title: 'Transport', subtitle: 'Routes, crew and live trips. Drivers and conductors sign in with the login ID and password made here.', body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    return StaffPage(title: 'Transport', subtitle: 'Routes, crew and live trips. Drivers and bus assistants sign in with the login ID and password made here.', body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       const _CrewPasswordPanel(),
       Panel(title: 'Live now', child: trips.when(loading: () => const SizedBox(), error: (e, _) => _err(e), data: (list) => list.isEmpty ? Text('No trips running.', style: TextStyle(color: cs.onSurfaceVariant)) : Wrap(spacing: 10, runSpacing: 10, children: [for (final t in list) Chip(avatar: const Icon(Icons.gps_fixed_rounded, color: Brand.green, size: 16), label: Text('${t['route']?['name']} · ${t['kind']} · since ${_dmt(t['started_at'])}${t['last_fix_at'] != null ? ' · GPS ${DateFormat('h:mm:ss').format(DateTime.parse(t['last_fix_at']).toLocal())}' : ''}'), backgroundColor: Brand.greenTint, side: BorderSide.none)]))),
       routes.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => Column(children: [for (final r in rows) Panel(title: '${r['name']} · ${r['bus_reg_no']}', trailing: Pill(r['active'] == true ? 'Active' : 'Inactive', fg: r['active'] == true ? Brand.green : Brand.muted, bg: r['active'] == true ? Brand.greenTint : Brand.surface2), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -415,7 +415,7 @@ class StaffTransportScreen extends ConsumerWidget {
           for (final role in const ['driver', 'conductor']) OutlinedButton.icon(
             onPressed: () => crewLoginDialog(context, ref, r, role),
             icon: const Icon(Icons.key_rounded, size: 18),
-            label: Text(r[role]?['username'] != null ? '${role == 'driver' ? 'Driver' : 'Conductor'}: ${r[role]['display_name'] ?? ''} · login ${r[role]['username']}' : 'Set up ${role} login'),
+            label: Text(r[role]?['username'] != null ? '${role == 'driver' ? 'Driver' : 'Bus assistant'}: ${r[role]['display_name'] ?? ''} · login ${r[role]['username']}' : 'Set up ${role == 'driver' ? 'driver' : 'bus assistant'} login'),
           ),
         ]),
       ]))])),
@@ -524,16 +524,16 @@ class _StaffMeScreenState extends ConsumerState<StaffMeScreen> {
 }
 
 
-/// Office / transport in-charge: make the login for a route's driver or conductor.
-/// Login ID = dr + route number (driver) or co + route number (conductor); the password is the common bus password.
+/// Office / transport in-charge: make the login for a route's driver or bus assistant.
+/// Login ID = dr + route number (driver) or as + route number (bus assistant); the password is the common bus password.
 Future<void> crewLoginDialog(BuildContext context, WidgetRef ref, Map<String, dynamic> route, String role) async {
   final cur = route[role] as Map<String, dynamic>?;
   final no = RegExp(r'\d+').firstMatch('${route['name']}')?.group(0) ?? '';
-  final id = '${role == 'driver' ? 'dr' : 'co'}$no';
+  final id = '${role == 'driver' ? 'dr' : 'as'}$no';
   final name = TextEditingController(text: cur?['display_name'] ?? '');
   final phone = TextEditingController(text: cur?['phone'] ?? '');
   final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
-    title: Text('${role == 'driver' ? 'Driver' : 'Conductor'} · ${route['name']}'),
+    title: Text('${role == 'driver' ? 'Driver' : 'Bus assistant'} · ${route['name']}'),
     content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
       TextField(controller: name, decoration: const InputDecoration(labelText: 'Name')),
       const SizedBox(height: 10),
@@ -551,7 +551,7 @@ Future<void> crewLoginDialog(BuildContext context, WidgetRef ref, Map<String, dy
     if (!context.mounted) return;
     showDialog(context: context, builder: (c) => AlertDialog(
       title: const Text('Bus login'),
-      content: SelectableText('Royale Connect — ${r['route']} ${r['role']}\n\nName: ${name.text}\nLogin ID: ${r['username']}\nPassword: ${r['password']}\n\nOpen the app → “School staff? Sign in here” → type the login ID and password.',
+      content: SelectableText('Royale Connect — ${r['route']} ${r['role'] == 'driver' ? 'driver' : 'bus assistant'}\n\nName: ${name.text}\nLogin ID: ${r['username']}\nPassword: ${r['password']}\n\nOpen the app → “School staff? Sign in here” → type the login ID and password.',
           style: const TextStyle(fontFamily: 'monospace', height: 1.6)),
       actions: [FilledButton(onPressed: () => Navigator.pop(c), child: const Text('Done'))],
     ));
@@ -560,7 +560,7 @@ Future<void> crewLoginDialog(BuildContext context, WidgetRef ref, Map<String, dy
   }
 }
 
-/// One password for every driver and conductor. Changing it here changes it for all of them at once.
+/// One password for every driver and bus assistant. Changing it here changes it for all of them at once.
 class _CrewPasswordPanel extends ConsumerStatefulWidget {
   const _CrewPasswordPanel();
   @override
@@ -572,7 +572,7 @@ class _CrewPasswordPanelState extends ConsumerState<_CrewPasswordPanel> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Panel(title: 'Bus crew sign-in', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text('Login ID = dr + route number for the driver (dr7), co + route number for the conductor (co7). Everyone uses one common password (not case-sensitive). It starts as Bus1 — you can change it here any time.',
+      Text('Login ID = dr + route number for the driver (dr7), as + route number for the bus assistant (as7). Everyone uses one common password (not case-sensitive). It starts as Bus1 — you can change it here any time.',
           style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
       const SizedBox(height: 10),
       PickRow(children: [
@@ -582,7 +582,7 @@ class _CrewPasswordPanelState extends ConsumerState<_CrewPasswordPanel> {
           setState(() => busy = true);
           try {
             final r = await callFunction(ref, 'password', {'action': 'crew_password', 'password': pw.text});
-            if (context.mounted) toast(context, 'Changed for ${r['updated']} drivers and conductors. Tell them the new password.');
+            if (context.mounted) toast(context, 'Changed for ${r['updated']} drivers and bus assistants. Tell them the new password.');
             pw.clear();
           } catch (e) { if (context.mounted) toast(context, 'Could not change: $e'); }
           if (mounted) setState(() => busy = false);
