@@ -55,6 +55,12 @@ class SettingsScreen extends ConsumerWidget {
           row(Icons.rate_review_rounded, 'Feedback to the school', onTap: () => context.push('/feedback')),
         ])),
         const SizedBox(height: 14),
+        Container(padding: const EdgeInsets.fromLTRB(16, 12, 16, 14), decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(18)), child: Row(children: [
+          const Icon(Icons.contrast_rounded, color: Brand.crimson), const SizedBox(width: 16),
+          const Expanded(child: Text('Appearance', style: TextStyle(fontWeight: FontWeight.w700))),
+          const ThemeChoice(),
+        ])),
+        const SizedBox(height: 14),
         Container(decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(18)), child: Column(children: [
           row(Icons.call_rounded, 'School office', sub: AppConfig.officePhone),
           const Divider(height: 1),
