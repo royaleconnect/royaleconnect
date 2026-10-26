@@ -95,6 +95,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         GoRoute(path: 'done', builder: (_, st) => ReceiptScreen(paymentId: st.uri.queryParameters['payment_id'] ?? '')),   // return URL of the web payment link
       ]),
       GoRoute(path: '/receipts', builder: (_, __) => const ReceiptsScreen()),
+      GoRoute(path: '/notice/:id', builder: (_, st) => NoticeScreen(id: st.pathParameters['id']!)),
       GoRoute(path: '/receipt/:id', builder: (_, st) => ReceiptScreen(paymentId: st.pathParameters['id']!)),
       // main shell with bottom tabs
       StatefulShellRoute.indexedStack(
