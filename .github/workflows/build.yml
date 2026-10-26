@@ -50,6 +50,12 @@ jobs:
               '  if (p.state.executed) forceSdk() else p.afterEvaluate { forceSdk() } }' | cat - android/build.gradle > /tmp/bg && mv /tmp/bg android/build.gradle
           fi
           head -5 android/build.gradle* || true
+          # Xiaomi/Redmi/POCO (MIUI, HyperOS) and some other phones repaint apps in their own "dark mode", turning our
+          # ivory screens black. Tell Android the app draws its own colours.
+          for f in android/app/src/main/res/values/styles.xml android/app/src/main/res/values-night/styles.xml; do
+            if [ -f "$f" ] && ! grep -q forceDarkAllowed "$f"; then sed -i 's#</style>#    <item name="android:forceDarkAllowed">false</item>\n    </style>#g' "$f"; fi
+          done
+          grep -c forceDarkAllowed android/app/src/main/res/values/styles.xml || true
           # app name under the phone icon
           sed -i 's/android:label="[^"]*"/android:label="Royale Connect"/' android/app/src/main/AndroidManifest.xml
           # icons: ivory background, brighter and larger R (tools/make_icon.py), then generate every size
@@ -67,9 +73,8 @@ jobs:
           sed -i 's#<title>royale_connect</title>#<title>Royale Connect</title>#; s#content="royale_connect"#content="Royale Connect"#g; s#content="A new Flutter project."#content="Royale Concorde International School — fees, diary, announcements, messages and bus, in one app."#' web/index.html
           sed -i 's#"name": "royale_connect"#"name": "Royale Connect"#; s#"short_name": "royale_connect"#"short_name": "Royale Connect"#; s#"description": "A new Flutter project."#"description": "Royale Concorde International School app"#; s#"background_color": "\#0175C2"#"background_color": "\#FFFFFF"#; s#"theme_color": "\#0175C2"#"theme_color": "\#B5121A"#' web/manifest.json
 
-      - name: Analyze (advisory — real errors are caught by the build steps below)
+      - name: Check the code (stops here on any real error, so a broken update never reaches parents)
         working-directory: app
-        continue-on-error: true
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Build web
