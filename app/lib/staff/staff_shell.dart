@@ -26,6 +26,7 @@ const staffMenu = [
   StaffItem('/staff/star', 'Star of the month', Icons.star_rounded),
   StaffItem('/staff/moments', 'Class moments', Icons.photo_library_rounded),
   StaffItem('/staff/feedback', 'Parent feedback', Icons.rate_review_rounded, officeOnly: true),
+  StaffItem('/staff/calendar', 'School calendar', Icons.calendar_month_rounded, officeOnly: true),
   StaffItem('/staff/fees', 'Fees desk', Icons.account_balance_wallet_rounded, roles: ['accounts', 'office', 'it_admin', 'principal', 'vice_principal']),
   StaffItem('/staff/transport', 'Transport', Icons.directions_bus_rounded, roles: ['transport_incharge', 'office', 'it_admin', 'principal', 'vice_principal']),
   StaffItem('/staff/students', 'Students', Icons.people_alt_rounded),
