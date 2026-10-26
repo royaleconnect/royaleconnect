@@ -101,3 +101,13 @@ export async function hmacHex(secret: string, data: string) {
   const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data));
   return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+
+/** Scheduled jobs: the database's own scheduler (pg_cron) sends an x-cron-key header; it must match the value kept in the
+ *  locked public.app_secret table (no app or browser can read it). The service key is also accepted, for manual runs. */
+export async function isScheduler(req: Request): Promise<boolean> {
+  if ((req.headers.get("authorization") ?? "") === `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`) return true;
+  const key = req.headers.get("x-cron-key");
+  if (!key) return false;
+  const { data } = await admin().from("app_secret").select("value").eq("name", "cron").maybeSingle();
+  return !!data && data.value === key;
+}
