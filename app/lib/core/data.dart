@@ -55,7 +55,16 @@ final feesProvider = FutureProvider.autoDispose<FeeSummary>((ref) async {
 });
 
 class Notice { final String id, category, title, body, by, when, audience; final bool urgent, read; final String? file;
-  Notice(this.id, this.category, this.title, this.body, this.by, this.when, this.audience, this.urgent, this.read, this.file); }
+  /// Files attached to the announcement: {path, name, mime}. Older single attachments are folded in.
+  final List<Map<String, dynamic>> attachments;
+  Notice(this.id, this.category, this.title, this.body, this.by, this.when, this.audience, this.urgent, this.read, this.file, [this.attachments = const []]);
+  bool get hasFiles => attachments.isNotEmpty;
+}
+
+List<Map<String, dynamic>> _files(Map<String, dynamic> r) => [
+  for (final a in (r['attachments'] as List?) ?? const []) Map<String, dynamic>.from(a as Map),
+  if (r['attachment_path'] != null) {'path': r['attachment_path'], 'name': (r['attachment_path'] as String).split('/').last.replaceFirst(RegExp(r'^\d+_'), ''), 'mime': (r['attachment_path'] as String).toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'},
+];
 
 final noticesProvider = FutureProvider.autoDispose<List<Notice>>((ref) async {
   final s = ref.watch(sessionProvider).value?.active;
@@ -63,13 +72,13 @@ final noticesProvider = FutureProvider.autoDispose<List<Notice>>((ref) async {
   final e = await ref.watch(enrolmentProvider.future);
   final secId = e?['section']?['id'], gradeId = e?['section']?['grade']?['id'];
   final rows = await db.from('announcement')
-      .select('id,category,title,body,attachment_path,sent_at,audience_all,audience_grade_ids,audience_section_ids,author:author_id(display_name),announcement_read(student_id)')
+      .select('id,category,title,body,attachment_path,attachments,sent_at,audience_all,audience_grade_ids,audience_section_ids,author:author_id(display_name),announcement_read(student_id)')
       .not('sent_at', 'is', null).order('sent_at', ascending: false).limit(80);
   // a family login can cover siblings in different classes, so keep only what is meant for the active child
   final data = rows.where((r) => r['audience_all'] == true || e == null || (r['audience_grade_ids'] as List).contains(gradeId) || (r['audience_section_ids'] as List).contains(secId)).take(50);
   return [for (final r in data) Notice(r['id'], r['category'], r['title'], r['body'], r['author']?['display_name'] ?? 'School office',
       r['sent_at'], r['audience_all'] == true ? 'Whole school' : (r['audience_section_ids'] as List).contains(secId) ? 'Your class' : 'Your grade', r['category'] == 'urgent',
-      (r['announcement_read'] as List).any((x) => x['student_id'] == s.id), r['attachment_path'])];
+      (r['announcement_read'] as List).any((x) => x['student_id'] == s.id), r['attachment_path'], _files(r))];
 });
 
 Future<void> markNoticeRead(String noticeId, String studentId) =>
@@ -113,4 +122,16 @@ final paymentsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>(
   if (s == null) return [];
   final data = await db.from('payment').select('id,amount,status,receipt_no,paid_at').eq('student_id', s.id).neq('status', 'created').order('created_at', ascending: false);
   return List<Map<String, dynamic>>.from(data);
+});
+
+/// The latest diary day (today or earlier) that has entries for the active child — used on the laptop Home.
+final latestDiaryProvider = FutureProvider.autoDispose<(String?, List<DiaryEntry>)>((ref) async {
+  final e = await ref.watch(enrolmentProvider.future);
+  if (e == null) return (null, <DiaryEntry>[]);
+  final data = await db.from('diary_entry')
+      .select('id,kind,title,body,for_date,due_on,needs_submission,subject:subject_id(name),author:author_id(display_name)')
+      .eq('section_id', e['section']['id']).lte('for_date', _today()).not('posted_at', 'is', null).order('for_date', ascending: false).limit(12);
+  if (data.isEmpty) return (null, <DiaryEntry>[]);
+  final day = data.first['for_date'] as String;
+  return (day, [for (final r in data.where((r) => r['for_date'] == day)) DiaryEntry(r['id'], r['kind'], r['title'], r['body'], r['for_date'], r['subject']?['name'], r['author']?['display_name'] ?? '', r['due_on'], r['needs_submission'] == true)]);
 });
