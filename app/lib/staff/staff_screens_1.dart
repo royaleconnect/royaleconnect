@@ -9,6 +9,7 @@ import '../core/theme.dart';
 import '../widgets/common.dart';
 import 'staff_data.dart';
 import 'staff_shell.dart';
+import 'staff_screens_2.dart' show pickAndUploadMany;
 
 String _d(DateTime d) => DateFormat('yyyy-MM-dd').format(d);
 String _dm(String? iso) => iso == null ? '' : DateFormat('d MMM').format(DateTime.parse(iso).toLocal());
@@ -243,19 +244,26 @@ class StaffAnnouncementsScreen extends ConsumerWidget {
           Text(a['title'], style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
           Text(a['body'], maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
           const SizedBox(height: 4),
-          Text('${a['author']?['display_name'] ?? ''} · ${a['audience_all'] == true ? 'Whole school' : '${(a['audience_grade_ids'] as List).length + (a['audience_section_ids'] as List).length} group(s)'} · ${a['sent_at'] != null ? 'Sent ${_dmt(a['sent_at'])}' : 'Scheduled ${_dmt(a['scheduled_for'])}'}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
+          Text('${a['author']?['display_name'] ?? ''} · ${a['audience_all'] == true ? 'Whole school' : '${(a['audience_grade_ids'] as List).length + (a['audience_section_ids'] as List).length} group(s)'} · ${a['sent_at'] != null ? 'Sent ${_dmt(a['sent_at'])}' : 'Scheduled ${_dmt(a['scheduled_for'])}'}${(a['attachments'] as List?)?.isNotEmpty == true ? ' · 📎 ${(a['attachments'] as List).length}' : ''}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
+          if (a['sent_at'] != null && a['audience'] != null) _SeenBar(a: a, canRemind: s.isOffice || a['author_id'] == s.staff?['id']),
         ])),
       ]))])));
   }
 
   void _compose(BuildContext context, WidgetRef ref, Session s) {
-    String cat = 'general', title = '', body = ''; bool all = s.isOffice; final grades = <String>{}, sections = <String>{}; DateTime? when; bool busy = false;
-    showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, set) => AlertDialog(title: const Text('New announcement'), content: SizedBox(width: 560, child: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+    String cat = 'general', title = '', body = ''; bool all = s.isOffice; final grades = <String>{}, sections = <String>{}; DateTime? when; bool busy = false, uploading = false; final files = <Map<String, dynamic>>[];
+    showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, set) => AlertDialog(insetPadding: EdgeInsets.symmetric(horizontal: isNarrow(context) ? 12 : 40, vertical: 24), title: const Text('New announcement'), content: SizedBox(width: 560, child: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
       Wrap(spacing: 8, children: [for (final e in cats.entries) if (e.key != 'urgent' || s.isOffice) ChoiceChip(label: Text(e.value), selected: cat == e.key, onSelected: (_) => set(() => cat = e.key))]),
       if (cat == 'urgent') const Padding(padding: EdgeInsets.only(top: 8), child: NoteBox('Urgent rings every phone immediately, even at night. For closures, safety and emergencies only.', icon: Icons.warning_amber_rounded, iconColor: Brand.crimson)),
       const SizedBox(height: 12),
       TextField(onChanged: (v) => title = v, decoration: const InputDecoration(labelText: 'Title')), const SizedBox(height: 10),
-      TextField(onChanged: (v) => body = v, minLines: 4, maxLines: 10, decoration: const InputDecoration(labelText: 'Message')), const SizedBox(height: 12),
+      TextField(onChanged: (v) => body = v, minLines: 4, maxLines: 10, decoration: const InputDecoration(labelText: 'Message')), const SizedBox(height: 10),
+      Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        for (final f in files) InputChip(avatar: Icon(f['mime'] == 'application/pdf' ? Icons.picture_as_pdf_rounded : Icons.image_rounded, size: 18, color: Brand.crimson), label: Text(f['name'], overflow: TextOverflow.ellipsis), onDeleted: () => set(() => files.remove(f))),
+        OutlinedButton.icon(onPressed: uploading || files.length >= 10 ? null : () async { set(() => uploading = true); try { final up = await pickAndUploadMany(ctx, 'announcements'); set(() => files.addAll(up)); } catch (e) { if (ctx.mounted) toast(ctx, 'Upload failed: $e'); } set(() => uploading = false); },
+          icon: uploading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.attach_file_rounded, size: 18), label: Text(uploading ? 'Uploading…' : 'Attach PDFs / photos')),
+      ]),
+      const SizedBox(height: 12),
       const Text('Audience', style: TextStyle(fontWeight: FontWeight.w800)),
       if (s.isOffice) CheckboxListTile(value: all, onChanged: (v) => set(() => all = v ?? false), title: const Text('Whole school'), contentPadding: EdgeInsets.zero, controlAffinity: ListTileControlAffinity.leading),
       if (!all) ...[
@@ -274,7 +282,7 @@ class StaffAnnouncementsScreen extends ConsumerWidget {
         if (title.trim().isEmpty || body.trim().isEmpty) { toast(ctx, 'Title and message are needed.'); return; }
         if (!all && grades.isEmpty && sections.isEmpty) { toast(ctx, 'Choose who should receive it.'); return; }
         set(() => busy = true);
-        try { await postAnnouncement(ref, category: cat, title: title.trim(), body: body.trim(), all: all, gradeIds: grades.toList(), sectionIds: sections.toList(), scheduledFor: when); ref.invalidate(staffAnnouncementsProvider); if (ctx.mounted) { Navigator.pop(ctx); toast(context, when == null ? 'Sent.' : 'Scheduled.'); } }
+        try { await postAnnouncement(ref, category: cat, title: title.trim(), body: body.trim(), all: all, gradeIds: grades.toList(), sectionIds: sections.toList(), scheduledFor: when, attachments: List.of(files)); ref.invalidate(staffAnnouncementsProvider); if (ctx.mounted) { Navigator.pop(ctx); toast(context, when == null ? 'Sent.' : 'Scheduled.'); } }
         catch (e) { set(() => busy = false); if (ctx.mounted) toast(ctx, 'Not allowed or failed: $e'); }
       }, child: Text(when == null ? 'Send' : 'Schedule')),
     ])));
@@ -303,14 +311,14 @@ class _StaffDiaryScreenState extends ConsumerState<StaffDiaryScreen> {
           Panel(padding: const EdgeInsets.all(12), child: PickRow(children: [
             Expanded(child: PickField<String>(label: 'Section', value: sectionId, items: [for (final s in list) DropdownMenuItem(value: s['id'] as String, child: Text(sectionLabel(s)))], onChanged: (v) => setState(() => sectionId = v))),
             const SizedBox(width: 12),
-            OutlinedButton.icon(style: OutlinedButton.styleFrom(minimumSize: const Size(0, 54)), onPressed: () async { final d = await showDatePicker(context: context, initialDate: day, firstDate: DateTime.now().subtract(const Duration(days: 60)), lastDate: DateTime.now().add(const Duration(days: 60))); if (d != null) setState(() => day = d); }, icon: const Icon(Icons.event_rounded, size: 18), label: Text(DateFormat('EEE, d MMM').format(day))),
+            OutlinedButton.icon(style: OutlinedButton.styleFrom(minimumSize: const Size(0, 54)), onPressed: () async { final d = await showDatePicker(context: context, initialDate: day, firstDate: DateTime.now().subtract(const Duration(days: 120)), lastDate: DateTime.now()); if (d != null) setState(() => day = d); }, icon: const Icon(Icons.event_rounded, size: 18), label: Text(DateFormat('EEE, d MMM').format(day))),
           ])),
           if (entries != null) entries.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty ? Panel(child: Text('Nothing posted for this day yet.', style: TextStyle(color: cs.onSurfaceVariant))) : Column(children: [for (final e in rows) Panel(padding: const EdgeInsets.all(14), child: CardRow(children: [
             Pill(kinds[e['kind']] ?? e['kind'], fg: Brand.blue, bg: Brand.blueTint), const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(e['title'], style: const TextStyle(fontWeight: FontWeight.w800)),
               if (e['body'] != null) Text(e['body'], style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
-              Text('${e['subject']?['name'] ?? 'General'} · ${e['author']?['display_name'] ?? ''}${e['due_on'] != null ? ' · due ${_dm(e['due_on'])}' : ''}${e['needs_submission'] == true ? ' · submission on' : ''}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
+              Text('${e['subject']?['name'] ?? 'General'} · ${e['author']?['display_name'] ?? ''}${e['due_on'] != null ? ' · for ${_dm(e['due_on'])}' : ''}${e['needs_submission'] == true ? ' · submission on' : ''}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
             ])),
             IconButton(onPressed: () async { await deleteDiary(e['id']); ref.invalidate(staffDiaryProvider((sectionId!, _d(day)))); }, icon: const Icon(Icons.delete_outline_rounded), tooltip: 'Remove'),
           ]))])),
@@ -322,21 +330,22 @@ class _StaffDiaryScreenState extends ConsumerState<StaffDiaryScreen> {
     final assigns = ref.read(myAssignmentsProvider).value ?? [];
     final mySubjects = assigns.where((a) => a['section_id'] == sectionId).map((a) => a['subject']).toList();
     String kind = 'homework', title = '', body = ''; String? subjectId = mySubjects.isNotEmpty ? mySubjects.first['id'] : null; DateTime? due; bool needs = false, busy = false;
-    showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, set) => AlertDialog(title: Text('Post to ${sectionLabel(sections.firstWhere((s) => s['id'] == sectionId))} · ${DateFormat('d MMM').format(day)}'), content: SizedBox(width: 520, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, set) => AlertDialog(insetPadding: EdgeInsets.symmetric(horizontal: isNarrow(context) ? 12 : 40, vertical: 24), title: Text('Post to ${sectionLabel(sections.firstWhere((s) => s['id'] == sectionId))} · today'), content: SizedBox(width: 520, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Wrap(spacing: 8, children: [for (final e in kinds.entries) ChoiceChip(label: Text(e.value), selected: kind == e.key, onSelected: (_) => set(() => kind = e.key))]),
       const SizedBox(height: 12),
       Consumer(builder: (_, r, __) => r.watch(subjectsProvider).when(loading: () => const SizedBox(), error: (e, _) => _err(e), data: (subs) => PickField<String?>(label: 'Subject (optional)', value: subjectId, items: [const DropdownMenuItem(value: null, child: Text('General')), for (final s in subs) DropdownMenuItem(value: s['id'] as String, child: Text(s['name']))], onChanged: (v) => set(() => subjectId = v)))),
       const SizedBox(height: 10),
       TextField(onChanged: (v) => title = v, decoration: const InputDecoration(labelText: 'Title', hintText: 'e.g. Maths — Ex 4.2 Q1–10')), const SizedBox(height: 10),
       TextField(onChanged: (v) => body = v, minLines: 2, maxLines: 6, decoration: const InputDecoration(labelText: 'Details (optional)')), const SizedBox(height: 10),
-      Row(children: [Expanded(child: OutlinedButton.icon(onPressed: () async { final d = await showDatePicker(context: ctx, initialDate: day.add(const Duration(days: 1)), firstDate: day, lastDate: day.add(const Duration(days: 60))); if (d != null) set(() => due = d); }, icon: const Icon(Icons.event_rounded, size: 18), label: Text(due == null ? 'Due date (optional)' : 'Due ${DateFormat('d MMM').format(due!)}')))]),
+      Row(children: [Expanded(child: OutlinedButton.icon(onPressed: () async { final now = DateTime.now(); final d = await showDatePicker(context: ctx, initialDate: now.add(const Duration(days: 1)), firstDate: now, lastDate: now.add(const Duration(days: 60))); if (d != null) set(() => due = d); }, icon: const Icon(Icons.event_rounded, size: 18), label: Text(due == null ? 'For / due date (optional) — e.g. test on Wednesday' : 'For ${DateFormat('EEE d MMM').format(due!)}')))]),
+      Padding(padding: const EdgeInsets.only(top: 6), child: Text('Parents see this note under today\'s diary. The date above shows on it as a tag.', style: TextStyle(fontSize: 12, color: Theme.of(ctx).colorScheme.onSurfaceVariant))),
       SwitchListTile(value: needs, onChanged: (v) => set(() => needs = v), title: const Text('Students submit a file in the app'), subtitle: const Text('Off by default. Turn on for projects or worksheets to be returned.'), contentPadding: EdgeInsets.zero),
     ]))), actions: [
       TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
       FilledButton(onPressed: busy ? null : () async {
         if (title.trim().isEmpty) { toast(ctx, 'Title is needed.'); return; }
         set(() => busy = true);
-        try { await postDiary(ref, sectionId: sectionId!, subjectId: subjectId, kind: kind, title: title.trim(), body: body.trim().isEmpty ? null : body.trim(), forDate: day, dueOn: due, needsSubmission: needs); ref.invalidate(staffDiaryProvider((sectionId!, _d(day)))); ref.invalidate(staffOverviewProvider); if (ctx.mounted) Navigator.pop(ctx); }
+        try { await postDiary(ref, sectionId: sectionId!, subjectId: subjectId, kind: kind, title: title.trim(), body: body.trim().isEmpty ? null : body.trim(), forDate: DateTime.now(), dueOn: due, needsSubmission: needs); setState(() => day = DateTime.now()); ref.invalidate(staffDiaryProvider((sectionId!, _d(DateTime.now())))); ref.invalidate(staffOverviewProvider); if (ctx.mounted) Navigator.pop(ctx); }
         catch (e) { set(() => busy = false); if (ctx.mounted) toast(ctx, 'Could not post: $e'); }
       }, child: const Text('Post')),
     ])));
@@ -363,5 +372,33 @@ class StaffLeaveScreen extends ConsumerWidget {
         FilledButton(onPressed: () async { await decideLeave(ref, l['id'], true); ref.invalidate(staffLeavesProvider); ref.invalidate(staffOverviewProvider); }, child: const Text('Approve')),
       ],
     ]))])));
+  }
+}
+
+/// "Seen for 412 of 520 students" with a progress bar and a reminder button.
+class _SeenBar extends ConsumerStatefulWidget {
+  final Map<String, dynamic> a; final bool canRemind;
+  const _SeenBar({required this.a, required this.canRemind});
+  @override
+  ConsumerState<_SeenBar> createState() => _SeenBarState();
+}
+class _SeenBarState extends ConsumerState<_SeenBar> {
+  bool busy = false;
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final total = (widget.a['audience'] ?? 0) as int, seen = (widget.a['seen'] ?? 0) as int;
+    final left = (total - seen).clamp(0, total);
+    return Padding(padding: const EdgeInsets.only(top: 10), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text.rich(TextSpan(children: [TextSpan(text: '$seen', style: const TextStyle(fontWeight: FontWeight.w800)), TextSpan(text: ' of $total students\' families have seen it')]), style: const TextStyle(fontSize: 12.5)),
+      const SizedBox(height: 6),
+      ClipRRect(borderRadius: BorderRadius.circular(9), child: LinearProgressIndicator(value: total == 0 ? 0 : seen / total, minHeight: 7, color: Brand.green, backgroundColor: cs.outline.withValues(alpha: .35))),
+      if (widget.canRemind && left > 0) Padding(padding: const EdgeInsets.only(top: 8), child: FilledButton.tonalIcon(onPressed: busy ? null : () async {
+        setState(() => busy = true);
+        try { final n = await remindAnnouncement(widget.a['id']); if (context.mounted) toast(context, 'Reminder queued for $n families. It reaches phones once notifications are switched on.'); }
+        catch (e) { if (context.mounted) toast(context, 'Could not send reminder: $e'); }
+        if (mounted) setState(() => busy = false);
+      }, icon: const Icon(Icons.notifications_active_outlined, size: 18), label: Text('Remind the $left who haven\'t'))),
+    ]));
   }
 }
