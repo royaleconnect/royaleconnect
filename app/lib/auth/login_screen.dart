@@ -99,9 +99,8 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
-  int tab = 0; // 0 = admission number, 1 = mobile OTP
-  final adm = TextEditingController(), pw = TextEditingController(), phone = TextEditingController(), otp = TextEditingController();
-  bool busy = false, otpSent = false, showPw = false;
+  final adm = TextEditingController(), pw = TextEditingController();
+  bool busy = false, showPw = false;
   String? error;
 
   Future<void> _run(Future<void> Function() f) async {
@@ -129,14 +128,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               style: TextStyle(color: Colors.white.withValues(alpha: .92), fontSize: 15, height: 1.4)),
         ])),
         Expanded(child: ListView(padding: const EdgeInsets.fromLTRB(20, 24, 20, 32), children: [
-          if (!widget.addSibling) ...[
-            Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(14)),
-                child: Row(children: [for (final (i, l) in ['Admission number', 'Mobile OTP'].indexed) Expanded(child: GestureDetector(onTap: () => setState(() { tab = i; error = null; }),
-                    child: Container(height: 42, alignment: Alignment.center, decoration: BoxDecoration(color: tab == i ? cs.surface : Colors.transparent, borderRadius: BorderRadius.circular(11)),
-                        child: Text(l, style: TextStyle(fontWeight: FontWeight.w700, color: tab == i ? cs.onSurface : cs.onSurfaceVariant)))))])),
-            const SizedBox(height: 22),
-          ],
-          if (tab == 0 || widget.addSibling) ...[
+          ...[
             TextField(controller: adm, textCapitalization: TextCapitalization.characters, autofillHints: const [AutofillHints.username],
                 decoration: const InputDecoration(labelText: 'Admission number', hintText: 'e.g. LK/10/2014')),
             const SizedBox(height: 6),
@@ -153,36 +145,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 })),
             if (!widget.addSibling) ...[
               const SizedBox(height: 12),
-              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                TextButton(onPressed: () => setState(() => tab = 1), child: const Text('Forgot password? Use OTP')),
-                Text('Office: ${AppConfig.officePhone}', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-              ]),
+              Text('Forgot the password? The class teacher or the school office will give you a new password slip.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
             ],
-          ] else ...[
-            TextField(controller: phone, keyboardType: TextInputType.phone, autofillHints: const [AutofillHints.telephoneNumber],
-                decoration: const InputDecoration(labelText: 'Registered mobile number', prefixText: '+91  ', hintText: '10-digit number')),
-            const SizedBox(height: 6),
-            Text("Either parent's number on the school record works. All children on that number are added at once.", style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-            if (otpSent) ...[
-              const SizedBox(height: 16),
-              TextField(controller: otp, keyboardType: TextInputType.number, maxLength: 6, autofillHints: const [AutofillHints.oneTimeCode],
-                  style: const TextStyle(letterSpacing: 6, fontSize: 20, fontWeight: FontWeight.w700),
-                  decoration: const InputDecoration(labelText: '6-digit OTP sent by SMS', counterText: '')),
-            ],
-            const SizedBox(height: 20),
-            if (error != null) _err(error!),
-            PrimaryButton(otpSent ? 'Verify & sign in' : 'Send OTP', busy: busy,
-                onPressed: () => _run(() async {
-                  final n = ref.read(sessionProvider.notifier);
-                  if (!otpSent) { await n.requestOtp(phone.text); setState(() => otpSent = true); return; }
-                  await n.loginWithOtp(phone.text, otp.text);
-                  if (mounted) context.go('/');
-                })),
-            if (otpSent) TextButton(onPressed: busy ? null : () => _run(() => ref.read(sessionProvider.notifier).requestOtp(phone.text)), child: const Text('Resend code')),
           ],
           const SizedBox(height: 22),
           const NoteBox('Same login for the student and the parents — the same admission number and password work on every phone in the family. Brothers and sisters each have their own; add them once and switch between them from Home.'),
-          if (!widget.addSibling) Padding(padding: const EdgeInsets.only(top: 12), child: Center(child: TextButton.icon(onPressed: () => context.go('/staff-login'), icon: const Icon(Icons.badge_outlined, size: 18), label: const Text('School staff? Sign in here')))),
+          if (!widget.addSibling) Padding(padding: const EdgeInsets.only(top: 12), child: Center(child: TextButton.icon(onPressed: () => context.go('/staff-login'), icon: const Icon(Icons.badge_outlined, size: 18), label: const Text('School staff or bus crew? Sign in here')))),
         ])),
       ]),
     );
