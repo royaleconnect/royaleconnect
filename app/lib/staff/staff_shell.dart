@@ -134,7 +134,7 @@ class _MeTile extends StatelessWidget {
   }
 }
 
-String roleLabel(String r) => const {'teacher': 'Teacher', 'class_teacher': 'Class teacher', 'coordinator': 'Coordinator', 'vice_principal': 'Vice Principal', 'principal': 'Principal', 'accounts': 'Accounts', 'office': 'Office', 'it_admin': 'IT admin', 'transport_incharge': 'Transport', 'driver': 'Driver', 'conductor': 'Conductor'}[r] ?? r;
+String roleLabel(String r) => const {'teacher': 'Teacher', 'class_teacher': 'Class teacher', 'coordinator': 'Coordinator', 'vice_principal': 'Vice Principal', 'principal': 'Principal', 'accounts': 'Accounts', 'office': 'Office', 'it_admin': 'IT admin', 'transport_incharge': 'Transport', 'driver': 'Driver', 'conductor': 'Bus assistant'}[r] ?? r;
 
 /// Page frame used by every staff screen: title row + optional action button, then content; max width on desktop.
 class StaffPage extends StatelessWidget {
