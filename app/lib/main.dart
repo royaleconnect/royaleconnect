@@ -2,20 +2,37 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'auth/session.dart';
 import 'core/config.dart';
+import 'core/push.dart';
 import 'core/theme.dart';
 import 'parent_layout.dart';
 import 'router.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // notifications + crash reports; the app still opens if this is slow or unavailable
+  await initFirebase().timeout(const Duration(seconds: 8), onTimeout: () {});
   // Login is handled by our own server functions; the database client lives in core/data.dart and carries the session token.
   runApp(const ProviderScope(child: RoyaleConnectApp()));
 }
 
-class RoyaleConnectApp extends ConsumerWidget {
+class RoyaleConnectApp extends ConsumerStatefulWidget {
   const RoyaleConnectApp({super.key});
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<RoyaleConnectApp> createState() => _RoyaleConnectAppState();
+}
+
+class _RoyaleConnectAppState extends ConsumerState<RoyaleConnectApp> {
+  @override
+  void initState() {
+    super.initState();
+    Push.start(ref);
+    WidgetsBinding.instance.addPostFrameCallback((_) => Push.sync(ref.read(sessionProvider).value));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // register this phone for notifications whenever someone signs in (or a sibling is added)
+    ref.listen(sessionProvider, (_, next) => Push.sync(next.value));
     final isStaff = ref.watch(sessionProvider).value?.isStaff ?? false;
     return MaterialApp.router(
         title: AppConfig.appName,
@@ -24,6 +41,7 @@ class RoyaleConnectApp extends ConsumerWidget {
         darkTheme: buildTheme(Brightness.dark),
         themeMode: ref.watch(themeModeProvider),
         routerConfig: ref.watch(routerProvider),
+        scaffoldMessengerKey: appMessengerKey,
         // Staff: full-width panel. Parents on a laptop (960 px and wider): side menu + full page.
         // Everything else on a big screen (sign-in pages, small tablets) is framed at phone width, centred.
         builder: (context, child) => AnimatedBuilder(animation: ref.watch(routerProvider).routerDelegate, builder: (context, _) => LayoutBuilder(builder: (_, c) {
