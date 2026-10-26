@@ -1,6 +1,6 @@
 // POST /functions/v1/login-staff   { email, password, device_label? }
 //   email = school email (staff)  → { token, staff:{id, name, email, roles, division}, must_change_password }
-//   email = bus login ID, no "@" (driver / conductor, e.g. "route7-driver") → { token, kind:"crew", crew:{staff_id, name, role, route, bus} }
+//   email = bus login ID, no "@" (driver dr7 / bus assistant as7) → { token, kind:"crew", crew:{staff_id, name, role, route, bus} }
 // Staff tokens carry staff_id + roles; RLS uses them (my_section_ids(), is_office(), has_role()).
 import { admin, json, preflight, verifyPassword, mintToken, audit } from "../_shared/lib.ts";
 
@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
       const { data: route } = await db.from("route").select("name, bus_reg_no").or(`driver_staff_id.eq.${s.id},conductor_staff_id.eq.${s.id}`).eq("active", true).maybeSingle();
       const token = await mintToken({ sub: s.id, kind: "crew", staff_id: s.id, roles: s.roles, sid: sess?.id });
       await audit(db, { actor_staff_id: s.id, action: "login.crew", entity: "app_session", entity_id: sess?.id });
-      return json({ token, kind: "crew", crew: { staff_id: s.id, name: s.display_name || s.full_name, role: s.roles.includes("driver") ? "Driver" : "Conductor", route: route?.name, bus: route?.bus_reg_no } });
+      return json({ token, kind: "crew", crew: { staff_id: s.id, name: s.display_name || s.full_name, role: s.roles.includes("driver") ? "Driver" : "Bus assistant", route: route?.name, bus: route?.bus_reg_no } });
     }
     const token = await mintToken({ sub: s.id, kind: "staff", staff_id: s.id, roles: s.roles, sid: sess?.id }, 24 * 30);
     await audit(db, { actor_staff_id: s.id, action: "login.staff", entity: "app_session", entity_id: sess?.id });
