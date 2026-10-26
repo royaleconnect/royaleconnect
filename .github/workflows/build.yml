@@ -75,6 +75,17 @@ jobs:
           sed -i 's#<title>royale_connect</title>#<title>Royale Connect</title>#; s#content="royale_connect"#content="Royale Connect"#g; s#content="A new Flutter project."#content="Royale Concorde International School — fees, diary, announcements, messages and bus, in one app."#' web/index.html
           sed -i 's#"name": "royale_connect"#"name": "Royale Connect"#; s#"short_name": "royale_connect"#"short_name": "Royale Connect"#; s#"description": "A new Flutter project."#"description": "Royale Concorde International School app"#; s#"background_color": "\#0175C2"#"background_color": "\#FFFFFF"#; s#"theme_color": "\#0175C2"#"theme_color": "\#B5121A"#' web/manifest.json
 
+      - name: Fonts for the PDF receipts and report cards (Noto Sans / Noto Serif, with the ₹ sign)
+        working-directory: app
+        run: |
+          mkdir -p assets/fonts
+          F=/tmp/rcfonts; mkdir -p $F
+          ( cd $F && npm init -y >/dev/null && npm i --silent --no-audit --no-fund @expo-google-fonts/noto-sans@0.4.2 @expo-google-fonts/noto-serif@0.4.2 ) || echo "font download failed - PDFs will use a plain font"
+          cp $F/node_modules/@expo-google-fonts/noto-sans/400Regular/NotoSans_400Regular.ttf assets/fonts/NotoSans-Regular.ttf || true
+          cp $F/node_modules/@expo-google-fonts/noto-sans/700Bold/NotoSans_700Bold.ttf assets/fonts/NotoSans-Bold.ttf || true
+          cp $F/node_modules/@expo-google-fonts/noto-serif/700Bold/NotoSerif_700Bold.ttf assets/fonts/NotoSerif-Bold.ttf || true
+          ls -la assets/fonts; [ -n "$(ls assets/fonts)" ] || touch assets/fonts/.keep
+
       - name: Connect Firebase (phone notifications + crash reports)
         working-directory: app
         env:
