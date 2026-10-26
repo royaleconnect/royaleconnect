@@ -4,7 +4,8 @@
 //  { action:'signout_all', student_id }                                (bearer: staff token as above, or the student's own token)
 //  { action:'crew_account', route_id, role:'driver'|'conductor', name, phone?, username }   (bearer: transport in-charge / office / IT / principal)
 //      creates or refreshes the bus crew login for that route and returns a new password for the slip
-import { admin, json, preflight, hashPassword, verifyPassword, firstUsePassword, audit } from "../_shared/lib.ts";
+//  { action:'view_as', student_id }   (bearer: IT admin / principal / vice principal) → a 2-hour READ-ONLY family token (the database refuses every change)
+import { admin, json, preflight, hashPassword, verifyPassword, firstUsePassword, audit, mintToken } from "../_shared/lib.ts";
 import { verify } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
 
 async function claims(req: Request) {
@@ -20,6 +21,7 @@ Deno.serve(async (req) => {
   try {
     const c = await claims(req);
     if (!c) return json({ error: "Please sign in again." }, 401);
+    if (c.view_only) return json({ error: "This is a read-only view." }, 403);
     const body = await req.json();
     const db = admin();
     const minLen = Number((await db.from("school_setting").select("value").eq("key", "password_min_length").maybeSingle()).data?.value ?? 8);
@@ -46,6 +48,18 @@ Deno.serve(async (req) => {
       await db.from("app_session").update({ revoked_at: new Date().toISOString() }).eq("staff_id", body.staff_id).is("revoked_at", null);
       await audit(db, { actor_staff_id: c.staff_id, action: "password.reset.staff", entity: "staff", entity_id: body.staff_id });
       return json({ ok: true, first_use_password: temp });
+    }
+
+    if (body.action === "view_as") {
+      if (!(c.roles ?? []).some((r: string) => ["it_admin", "principal", "vice_principal"].includes(r))) return json({ error: "Not allowed." }, 403);
+      const { data: x } = await db.from("student")
+        .select("id, admission_no, full_name, enrolment!inner(section:section_id(name, grade:grade_id(code,name)), academic_year!inner(is_current))")
+        .eq("id", body.student_id).eq("enrolment.academic_year.is_current", true).maybeSingle();
+      if (!x) return json({ error: "Student not found in this year's classes." }, 404);
+      const e = (x as any).enrolment?.[0];
+      const token = await mintToken({ sub: x.id, kind: "student", student_ids: [x.id], view_only: true, viewer: c.staff_id }, 2);
+      await audit(db, { actor_staff_id: c.staff_id, action: "view_as.family", entity: "student", entity_id: x.id });
+      return json({ token, students: [{ id: x.id, admission_no: x.admission_no, full_name: x.full_name, grade: e?.section?.grade?.name, grade_code: e?.section?.grade?.code, section: e?.section?.name }] });
     }
 
     if (body.action === "crew_account") {
