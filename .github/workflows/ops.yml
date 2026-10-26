@@ -1,0 +1,60 @@
+# Keeps an eye on the live system — runs on GitHub's computers, nothing to install.
+#   • every 30 minutes: is the website up, does the database answer?  (a failed run = GitHub emails the account owner)
+#   • every night 03:00 IST: full database backup, encrypted with BACKUP_PASSPHRASE, kept 30 days under Actions → Ops → the run → Artifacts
+# Needs two repository secrets (Settings → Secrets and variables → Actions → New repository secret):
+#   SUPABASE_DB_URL     – Supabase → Connect → "Session pooler" connection string, with the database password filled in
+#   BACKUP_PASSPHRASE   – any long phrase you choose; needed to open a backup. Keep it written down with the school.
+# Restoring a backup: download the .gpg file, then  gpg -d rcis-backup-DATE.sql.gpg | gunzip > backup.sql  and load it with psql (IT guide).
+name: Ops
+on:
+  schedule:
+    - cron: "*/30 * * * *"     # health check
+    - cron: "30 21 * * *"      # 21:30 UTC = 03:00 IST backup
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    if: github.event.schedule != '30 21 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Website answers
+        run: curl -fsS -o /dev/null --retry 3 --retry-delay 20 https://royaleconnect.github.io/royaleconnect/
+      - name: Database answers
+        run: |
+          curl -fsS --retry 3 --retry-delay 20 "https://upgvxhsxmdihmfmzknlq.supabase.co/rest/v1/academic_year?select=label&limit=1" \
+            -H "apikey: sb_publishable_8mtHFfZ9Fk3p1YdG6gwydw_IXlULRxR" > /dev/null
+      - name: Sign-in service answers
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "https://upgvxhsxmdihmfmzknlq.supabase.co/functions/v1/login-student" \
+            -H "apikey: sb_publishable_8mtHFfZ9Fk3p1YdG6gwydw_IXlULRxR" -H "content-type: application/json" -d '{"admission_no":"","password":""}')
+          echo "login-student answered $code"
+          [ "$code" -lt 500 ]
+
+  backup:
+    if: github.event.schedule == '30 21 * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the secrets are set
+        env: { DB: "${{ secrets.SUPABASE_DB_URL }}", PASS: "${{ secrets.BACKUP_PASSPHRASE }}" }
+        run: |
+          if [ -z "$DB" ] || [ -z "$PASS" ]; then echo "::warning::Backup skipped: add SUPABASE_DB_URL and BACKUP_PASSPHRASE secrets"; echo "skip=1" >> $GITHUB_ENV; fi
+      - name: Dump and encrypt
+        if: env.skip != '1'
+        env: { DB: "${{ secrets.SUPABASE_DB_URL }}", PASS: "${{ secrets.BACKUP_PASSPHRASE }}" }
+        run: |
+          set -o pipefail
+          name="rcis-backup-$(date -u +%Y-%m-%d).sql.gpg"
+          docker run --rm postgres:17 pg_dump "$DB" --no-owner --no-privileges --schema=public --schema=storage \
+            | gzip -9 | gpg --batch --yes --pinentry-mode loopback --passphrase "$PASS" --symmetric --cipher-algo AES256 -o "$name"
+          ls -lh "$name"
+          [ $(stat -c %s "$name") -gt 2000 ]   # an empty dump means something went wrong
+          echo "file=$name" >> $GITHUB_ENV
+      - uses: actions/upload-artifact@v4
+        if: env.skip != '1'
+        with:
+          name: ${{ env.file }}
+          path: ${{ env.file }}
+          retention-days: 30
