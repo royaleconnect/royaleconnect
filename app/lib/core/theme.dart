@@ -131,3 +131,20 @@ class ThemeChoice extends ConsumerWidget {
     );
   }
 }
+
+
+/// Deep brand colours (crimson, amber, green…) are made for light backgrounds. On the dark theme the same colour
+/// would be hard to read, so text and icons on page backgrounds use `context.tone(Brand.x)`, which returns a
+/// brighter shade in dark mode and the original in light mode. (Pills keep their own light tint and need nothing.)
+extension BrandTone on BuildContext {
+  Color tone(Color c) {
+    if (Theme.of(this).brightness != Brightness.dark) return c;
+    if (c == Brand.crimsonDeep) return const Color(0xFFFF8A8A);
+    if (c == Brand.crimson) return const Color(0xFFFF6B6B);
+    if (c == Brand.amber) return const Color(0xFFF2B84B);
+    if (c == Brand.green) return const Color(0xFF5FD08F);
+    if (c == Brand.blue) return const Color(0xFF7CC0F0);
+    if (c == Brand.violet) return const Color(0xFFB79CF0);
+    return c;
+  }
+}
