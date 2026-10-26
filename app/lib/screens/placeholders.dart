@@ -37,7 +37,7 @@ class SettingsScreen extends ConsumerWidget {
     final s = ref.watch(sessionProvider).value;
     final cs = Theme.of(context).colorScheme;
     Widget row(IconData i, String l, {String? sub, VoidCallback? onTap, Color? color}) => ListTile(
-        leading: Icon(i, color: color ?? Brand.crimsonDeep), title: Text(l, style: TextStyle(fontWeight: FontWeight.w700, color: color)), subtitle: sub == null ? null : Text(sub),
+        leading: Icon(i, color: color ?? context.tone(Brand.crimsonDeep)), title: Text(l, style: TextStyle(fontWeight: FontWeight.w700, color: color)), subtitle: sub == null ? null : Text(sub),
         trailing: onTap == null ? null : const Icon(Icons.chevron_right_rounded), onTap: onTap);
     return Scaffold(body: Column(children: [
       BrandHeader(padding: const EdgeInsets.fromLTRB(8, 4, 20, 16), child: Row(children: [
