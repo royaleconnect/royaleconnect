@@ -97,9 +97,13 @@ class SessionController extends AsyncNotifier<Session?> {
     await _save(Session(token: j['token'], kind: 'student', students: students, activeStudentId: linkToExisting ? state.value?.activeStudentId ?? newId : newId, mustChangePassword: j['must_change_password'] == true));
   }
 
-  /// Staff: school email + password.
+  /// Staff: school email + password. Bus crew: their login ID (no "@") + password → a crew session (Start / End trip only).
   Future<void> loginStaff(String email, String password) async {
     final j = await _call('login-staff', {'email': email, 'password': password, 'device_label': 'app'});
+    if (j['kind'] == 'crew') {
+      await _save(Session(token: j['token'], kind: 'crew', crew: Map<String, dynamic>.from(j['crew'])));
+      return;
+    }
     await _save(Session(token: j['token'], kind: 'staff', staff: Map<String, dynamic>.from(j['staff']), mustChangePassword: j['must_change_password'] == true));
   }
 
