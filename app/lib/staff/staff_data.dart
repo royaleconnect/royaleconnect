@@ -114,15 +114,25 @@ Future<void> markDone(String conversationId, bool done) => db.from('conversation
 
 // ---------------------------------------------------------------- announcements
 final staffAnnouncementsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final data = await db.from('announcement').select('id,category,title,body,sent_at,scheduled_for,audience_all,audience_grade_ids,audience_section_ids,author:author_id(display_name),created_at').order('created_at', ascending: false).limit(100);
-  return List<Map<String, dynamic>>.from(data);
+  final data = await db.from('announcement').select('id,category,title,body,attachments,sent_at,scheduled_for,audience_all,audience_grade_ids,audience_section_ids,author_id,author:author_id(display_name),created_at').order('created_at', ascending: false).limit(100);
+  final rows = [for (final r in data) Map<String, dynamic>.from(r)];
+  // "Seen by X of Y": how many of the students in the audience have opened it
+  try {
+    final stats = await db.rpc('announcement_stats', params: {'ids': [for (final r in rows) r['id']]});
+    final byId = {for (final x in stats as List) x['id']: x};
+    for (final r in rows) { final x = byId[r['id']]; if (x != null) { r['audience'] = x['audience']; r['seen'] = x['seen']; } }
+  } catch (_) {}
+  return rows;
 });
 
-Future<void> postAnnouncement(WidgetRef ref, {required String category, required String title, required String body, required bool all, List<String> gradeIds = const [], List<String> sectionIds = const [], DateTime? scheduledFor}) async {
+/// Queue a reminder notification for everyone in the audience who has not opened it yet. Returns how many.
+Future<int> remindAnnouncement(String id) async => (await db.rpc('remind_announcement', params: {'aid': id})) as int;
+
+Future<void> postAnnouncement(WidgetRef ref, {required String category, required String title, required String body, required bool all, List<String> gradeIds = const [], List<String> sectionIds = const [], DateTime? scheduledFor, List<Map<String, dynamic>> attachments = const []}) async {
   final year = await ref.read(yearProvider.future);
   await db.from('announcement').insert({
     'academic_year_id': year['id'], 'category': category, 'title': title, 'body': body, 'author_id': myId(ref),
-    'audience_all': all, 'audience_grade_ids': gradeIds, 'audience_section_ids': sectionIds,
+    'audience_all': all, 'audience_grade_ids': gradeIds, 'audience_section_ids': sectionIds, 'attachments': attachments,
     'scheduled_for': scheduledFor?.toUtc().toIso8601String(), 'sent_at': scheduledFor == null ? nowIso() : null,
   });
 }
