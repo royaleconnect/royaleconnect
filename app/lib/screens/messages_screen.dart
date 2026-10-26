@@ -43,7 +43,7 @@ class MessagesScreen extends ConsumerWidget {
             if (context.mounted) context.push('/chat/$id', extra: k.name);
           })])),
         const SizedBox(height: 18),
-        const NoteBox('Messages reach teachers between 6 am and 9 pm. Anything sent later is delivered quietly the next morning. Only you and the teacher can see this chat.'),
+        const NoteBox('Teachers are notified straight away, except between 12 am and 5 am — those wait until morning. Only you and the teacher can see this chat.'),
       ]))),
     ]));
   }
