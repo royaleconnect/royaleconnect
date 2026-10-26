@@ -87,3 +87,20 @@ String inr(num n) {
   if (rest.isNotEmpty) parts.insert(0, rest);
   return '₹${parts.join(',')},$last3';
 }
+
+
+/// Filter chip for the red page headers (All · Holidays · Exams …). Draws its own colours, so it reads the same in
+/// light and dark mode: selected = white pill with crimson text, others = translucent white with white text.
+class HeaderChip extends StatelessWidget {
+  final String label; final bool selected; final VoidCallback onTap;
+  const HeaderChip(this.label, {super.key, required this.selected, required this.onTap});
+  @override
+  Widget build(BuildContext context) => Padding(padding: const EdgeInsets.only(right: 8), child: Material(
+        color: selected ? Colors.white : Colors.white.withValues(alpha: .16), borderRadius: BorderRadius.circular(12),
+        child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(12), child: Container(
+          constraints: const BoxConstraints(minHeight: 40), padding: const EdgeInsets.symmetric(horizontal: 16), alignment: Alignment.center,
+          decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.white.withValues(alpha: selected ? 0 : .28))),
+          child: Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: selected ? Brand.crimsonDeep : Colors.white)),
+        )),
+      ));
+}
