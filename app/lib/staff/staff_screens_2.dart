@@ -22,6 +22,23 @@ Widget _loading() => const Center(child: Padding(padding: EdgeInsets.all(40), ch
 Widget _err(Object e) => Padding(padding: const EdgeInsets.all(24), child: Text('$e', style: const TextStyle(color: Brand.crimsonDeep)));
 String _cls(Map<String, dynamic>? student) { final en = (student?['enrolment'] as List?) ?? []; if (en.isEmpty) return ''; final s = en.first['section']; return '${s?['grade']?['code'] ?? ''}-${s?['name'] ?? ''}'; }
 
+/// Pick several PDFs / photos and upload them under [folder]; returns {path, name, mime} for each.
+Future<List<Map<String, dynamic>>> pickAndUploadMany(BuildContext context, String folder, {int maxMb = 10}) async {
+  final r = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'webp'], withData: true, allowMultiple: true);
+  if (r == null) return [];
+  final out = <Map<String, dynamic>>[];
+  for (final f in r.files) {
+    if (f.bytes == null) continue;
+    if (f.bytes!.length > maxMb * 1024 * 1024) { if (context.mounted) toast(context, '${f.name} is over $maxMb MB and was skipped.'); continue; }
+    final ext = (f.extension ?? '').toLowerCase();
+    final mime = ext == 'pdf' ? 'application/pdf' : 'image/${ext == 'jpg' ? 'jpeg' : ext}';
+    final path = '$folder/${DateTime.now().millisecondsSinceEpoch}_${f.name}';
+    await db.storage.from('files').uploadBinary(path, Uint8List.fromList(f.bytes!), fileOptions: FileOptions(contentType: mime));
+    out.add({'path': path, 'name': f.name, 'mime': mime});
+  }
+  return out;
+}
+
 /// Upload a picked file to the private bucket under [folder]; returns the stored path.
 Future<String?> pickAndUpload(BuildContext context, String folder, {List<String> ext = const ['pdf'], int maxMb = 10}) async {
   final r = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ext, withData: true);
