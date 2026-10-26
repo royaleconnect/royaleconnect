@@ -3,7 +3,7 @@
 // 2. Queue fee reminders per the school's schedule (3 days before, due day, 3/6/10 days after).
 // Idempotent: safe to run twice in a day.
 // deno-lint-ignore-file no-explicit-any
-import { admin, json } from "../_shared/lib.ts";
+import { admin, isScheduler, json } from "../_shared/lib.ts";
 import { computeFees, reminderDue } from "../_shared/fee_engine.ts";
 
 const IST = "Asia/Kolkata";
@@ -11,7 +11,7 @@ const todayIST = () => new Date().toLocaleDateString("en-CA", { timeZone: IST })
 
 Deno.serve(async (req) => {
   // protect: only the scheduler (service key) may call
-  if ((req.headers.get("authorization") ?? "") !== `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`) return json({ error: "forbidden" }, 403);
+  if (!(await isScheduler(req))) return json({ error: "forbidden" }, 403);
   const db = admin();
   const today = todayIST();
 
