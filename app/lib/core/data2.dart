@@ -136,14 +136,14 @@ bool isWorkingSaturday(DateTime d, String? grade) =>
 String saturdayOrdinal(DateTime d) => const ['1st', '2nd', '3rd', '4th', '5th'][(d.day - 1) ~/ 7];
 
 final calendarProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final data = await db.from('calendar_event').select('title,starts_on,ends_on,kind,grades,academic_year!inner(is_current)').eq('academic_year.is_current', true).order('starts_on', ascending: true);
+  final data = await db.from('calendar_event').select('title,starts_on,ends_on,kind,grades,note,academic_year!inner(is_current)').eq('academic_year.is_current', true).order('starts_on', ascending: true);
   return List<Map<String, dynamic>>.from(data);
 });
 
 final reportCardsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final s = ref.watch(sessionProvider).value?.active;
   if (s == null) return [];
-  final data = await db.from('report_card').select('id,term,working_days,days_present,remarks,pdf_path,published_at,academic_year:academic_year_id(label)').eq('student_id', s.id).eq('status', 'published').order('published_at', ascending: false);
+  final data = await db.from('report_card').select('id,term,working_days,days_present,remarks,published_at,academic_year:academic_year_id(label)').eq('student_id', s.id).eq('status', 'published').order('published_at', ascending: false);
   return List<Map<String, dynamic>>.from(data);
 });
 
