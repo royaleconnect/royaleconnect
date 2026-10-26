@@ -148,7 +148,7 @@ class _StaffMessagesScreenState extends ConsumerState<StaffMessagesScreen> {
       });
       final newBtn = FilledButton.icon(onPressed: () => _newMessage(context, wide), icon: const Icon(Icons.add_comment_rounded), label: const Text('New message'));
       if (!wide) return StaffPage(title: 'Messages', subtitle: 'Private chats with parents and students', scroll: true, actions: [newBtn], body: Panel(padding: EdgeInsets.zero, child: list));
-      return StaffPage(title: 'Messages', subtitle: 'Private chats with parents and students. Delivered to the family between 6 am and 9 pm.', scroll: false, actions: [newBtn], body: Padding(padding: const EdgeInsets.fromLTRB(24, 0, 24, 24), child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      return StaffPage(title: 'Messages', subtitle: 'Private chats with parents and students. Families are notified straight away, except between 12 am and 5 am.', scroll: false, actions: [newBtn], body: Padding(padding: const EdgeInsets.fromLTRB(24, 0, 24, 24), child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         SizedBox(width: 360, child: Panel(padding: EdgeInsets.zero, fill: true, child: SingleChildScrollView(child: list))),
         const SizedBox(width: 14),
         Expanded(child: Panel(padding: EdgeInsets.zero, fill: true, child: open == null ? Center(child: Text('Pick a conversation', style: TextStyle(color: cs.onSurfaceVariant))) : _Thread(conversationId: open!, meta: (inbox.value ?? []).firstWhere((r) => r['id'] == open, orElse: () => {})))),
