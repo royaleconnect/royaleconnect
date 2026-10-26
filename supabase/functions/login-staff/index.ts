@@ -18,7 +18,9 @@ Deno.serve(async (req) => {
     const isCrew = (s.roles ?? []).some((r: string) => r === "driver" || r === "conductor");
     if (crewLogin && !isCrew) return bad();
     if (s.locked_until && new Date(s.locked_until) > new Date()) return json({ error: "Too many attempts. Try again in 15 minutes." }, 423);
-    if (!s.password_hash || !(await verifyPassword(password, s.password_hash))) {
+    // bus crew passwords are not case-sensitive (Bus1 = bus1 = BUS1)
+    const okPw = !!s.password_hash && ((await verifyPassword(password, s.password_hash)) || (isCrew && await verifyPassword(String(password).toLowerCase(), s.password_hash)));
+    if (!okPw) {
       const failed = (s.failed_logins ?? 0) + 1;
       await db.from("staff").update({ failed_logins: failed, locked_until: failed >= 5 ? new Date(Date.now() + 15 * 60_000).toISOString() : null }).eq("id", s.id);
       return bad();
