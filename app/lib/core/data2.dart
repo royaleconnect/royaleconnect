@@ -196,8 +196,10 @@ final liveTripProvider = StreamProvider.autoDispose<Map<String, dynamic>?>((ref)
   final t = await ref.watch(transportProvider.future);
   if (t == null) { yield null; return; }
   while (true) {
-    yield await db.from('trip').select('id,kind,started_at,status,last_lat,last_lng,last_fix_at,next_stop_seq').eq('route_id', t['route']['id']).eq('status', 'running').maybeSingle();
-    await Future.delayed(const Duration(seconds: 10));
+    try {
+      yield await db.from('trip').select('id,kind,started_at,status,last_lat,last_lng,last_fix_at,next_stop_seq').eq('route_id', t['route']['id']).eq('status', 'running').maybeSingle();
+    } catch (_) {/* a dropped network moment: keep the last position on screen and try again */}
+    await Future.delayed(const Duration(seconds: 3));   // the bus phone sends every second; parents refresh every 3 s and the marker glides between
   }
 });
 
@@ -225,13 +227,15 @@ final crewTripProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref)
   return await db.from('trip').select('id,kind,started_at,next_stop_seq').eq('route_id', r['id']).eq('status', 'running').maybeSingle();
 });
 
+/// Start a trip (kind 'morning' | 'afternoon'). The server tells the families on this route.
 Future<String> startTrip(String routeId, String kind, String staffId) async =>
-    (await db.from('trip').insert({'route_id': routeId, 'kind': kind, 'started_by': staffId}).select('id').single())['id'];
+    (await db.rpc('start_trip', params: {'p_route': routeId, 'p_kind': kind})) as String;
 
-Future<void> endTrip(String tripId) => db.from('trip').update({'status': 'ended', 'ended_at': DateTime.now().toUtc().toIso8601String()}).eq('id', tripId);
+Future<void> endTrip(String tripId) => db.rpc('end_trip', params: {'p_trip': tripId});
 
-Future<void> pushFix(String tripId, double lat, double lng, double? speed, double? acc) async {
-  final now = DateTime.now().toUtc().toIso8601String();
-  await db.from('trip_fix').insert({'trip_id': tripId, 'lat': lat, 'lng': lng, 'speed_kmh': speed, 'accuracy_m': acc});
-  await db.from('trip').update({'last_lat': lat, 'last_lng': lng, 'last_fix_at': now}).eq('id', tripId);
+/// One GPS position. The server updates the live position, keeps history every 10 s, and sends the stop alerts.
+/// Returns false when the trip is no longer running (ended from the office, or automatically).
+Future<bool> pushFix(String tripId, double lat, double lng, double? speed, double? acc) async {
+  final r = await db.rpc('bus_fix', params: {'p_trip': tripId, 'p_lat': lat, 'p_lng': lng, 'p_speed': speed, 'p_acc': acc});
+  return (r is Map ? r['running'] : true) != false;
 }
