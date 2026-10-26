@@ -14,9 +14,11 @@ import 'screens/messages_screen.dart';
 import 'screens/pay_screen.dart';
 import 'screens/placeholders.dart';
 import 'screens/students_screen.dart';
+import 'screens/verify_screen.dart';
 import 'shell.dart';
 import 'staff/staff_screens_1.dart';
 import 'staff/staff_screens_2.dart';
+import 'staff/staff_calendar.dart';
 import 'staff/staff_shell.dart';
 
 /// Makes go_router re-run `redirect` whenever the session changes.
@@ -42,6 +44,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (loc != '/splash' && loc != '/') pending ??= state.uri.toString();
         return '/splash';
       }
+      // the public "scan to verify" page (QR on receipts and report cards) opens for anyone, signed in or not
+      if (pending != null && pending!.startsWith('/verify') && loc == '/splash') { final p = pending; pending = null; return p; }
+      if (loc == '/verify') return null;
       if (pending != null && loc == '/splash' && s.value != null && s.value!.kind == 'student' && (s.value!.students.length < 2 || ref.read(childPickedProvider))) { final p = pending; pending = null; return p; }
       final open = loc == '/splash' || loc.startsWith('/login') || loc == '/staff-login';
       final session = s.value;
@@ -59,6 +64,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     },
     routes: [
       GoRoute(path: '/splash', builder: (_, __) => const SplashScreen()),
+      GoRoute(path: '/verify', builder: (_, st) => VerifyScreen(kind: st.uri.queryParameters.containsKey('p') ? 'p' : 'c', id: st.uri.queryParameters['p'] ?? st.uri.queryParameters['c'] ?? '')),
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen(), routes: [
         GoRoute(path: 'add', builder: (_, __) => const LoginScreen(addSibling: true)),
       ]),
@@ -79,6 +85,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         GoRoute(path: '/staff/moments', builder: (_, __) => const StaffMomentsScreen()),
         GoRoute(path: '/staff/feedback', builder: (_, __) => const StaffFeedbackScreen()),
         GoRoute(path: '/staff/fees', builder: (_, __) => const StaffFeesScreen()),
+        GoRoute(path: '/staff/calendar', builder: (_, __) => const StaffCalendarScreen()),
         GoRoute(path: '/staff/transport', builder: (_, __) => const StaffTransportScreen()),
         GoRoute(path: '/staff/students', builder: (_, __) => const StaffStudentsScreen()),
         GoRoute(path: '/staff/users', builder: (_, __) => const StaffUsersScreen()),
