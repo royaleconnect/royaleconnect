@@ -7,6 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import '../core/config.dart';
 import '../core/data.dart' show setDbToken;
+import '../core/push.dart' show Push;
 
 /// A student as returned by the login functions.
 class StudentRef {
@@ -129,6 +130,7 @@ class SessionController extends AsyncNotifier<Session?> {
   Future<void> selectStudent(String id) async => _save(state.value!.copyWith(activeStudentId: id));
 
   Future<void> signOut() async {
+    await Push.forget();   // this phone stops receiving the signed-out family's notifications
     await _clear();
     setDbToken(null);
     state = const AsyncData(null);
