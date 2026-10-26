@@ -50,7 +50,7 @@ class SettingsScreen extends ConsumerWidget {
           const Divider(height: 1),
           row(Icons.password_rounded, 'Change password', sub: 'For the active student', onTap: () => context.push('/set-password')),
           const Divider(height: 1),
-          row(Icons.notifications_active_rounded, 'Notifications', sub: 'Quiet hours 9 pm – 6 am · urgent alerts always come through'),
+          row(Icons.notifications_active_rounded, 'Notifications', sub: 'Quiet hours 12 am – 5 am · urgent alerts always come through'),
           const Divider(height: 1),
           row(Icons.rate_review_rounded, 'Feedback to the school', onTap: () => context.push('/feedback')),
         ])),
