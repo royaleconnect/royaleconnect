@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import '../core/config.dart';
-import '../core/data.dart' show setDbToken;
+import '../core/data.dart' show setDbToken, viewOnlyMode;
 import '../core/push.dart' show Push;
 
 /// A student as returned by the login functions.
@@ -31,7 +31,8 @@ class Session {
   final bool mustChangePassword;
   final Map<String, dynamic>? crew;
   final Map<String, dynamic>? staff;   // {id, name, email, roles, division} for kind == 'staff'
-  const Session({required this.token, required this.kind, this.students = const [], this.activeStudentId, this.mustChangePassword = false, this.crew, this.staff});
+  final bool viewOnly;                  // an admin using "View as family" (never saved on the phone)
+  const Session({required this.token, required this.kind, this.students = const [], this.activeStudentId, this.mustChangePassword = false, this.crew, this.staff, this.viewOnly = false});
 
   bool get isStaff => kind == 'staff';
   List<String> get roles => List<String>.from(staff?['roles'] ?? const []);
@@ -41,7 +42,7 @@ class Session {
   StudentRef? get active => students.isEmpty ? null : students.firstWhere((s) => s.id == activeStudentId, orElse: () => students.first);
   Session copyWith({String? activeStudentId, List<StudentRef>? students, bool? mustChangePassword, String? token}) => Session(
       token: token ?? this.token, kind: kind, students: students ?? this.students,
-      activeStudentId: activeStudentId ?? this.activeStudentId, mustChangePassword: mustChangePassword ?? this.mustChangePassword, crew: crew, staff: staff);
+      activeStudentId: activeStudentId ?? this.activeStudentId, mustChangePassword: mustChangePassword ?? this.mustChangePassword, crew: crew, staff: staff, viewOnly: viewOnly);
 
   Map<String, dynamic> toJson() => {'token': token, 'kind': kind, 'students': students.map((s) => s.toJson()).toList(), 'active': activeStudentId, 'mcp': mustChangePassword, 'crew': crew, 'staff': staff};
   factory Session.fromJson(Map<String, dynamic> j) => Session(
@@ -84,6 +85,7 @@ class SessionController extends AsyncNotifier<Session?> {
 
   Future<void> _save(Session s) async {
     _applyToken(s.token);
+    if (s.viewOnly) { state = AsyncData(s); return; }   // a view-as session is never written to the phone
     await _write(jsonEncode(s.toJson()));
     state = AsyncData(s);
   }
@@ -133,7 +135,30 @@ class SessionController extends AsyncNotifier<Session?> {
 
   Future<void> selectStudent(String id) async => _save(state.value!.copyWith(activeStudentId: id));
 
+  // ---- "View as family" (IT admin / principal / vice principal): read-only, 2 hours, the admin's own sign-in waits underneath
+  Session? _adminBack;
+
+  Future<void> viewAsFamily(String studentId) async {
+    final admin = state.value;
+    if (admin == null || !admin.isStaff) throw AuthError('Only staff can do this.');
+    final j = await _call('password', {'action': 'view_as', 'student_id': studentId}, bearer: admin.token);
+    final students = (j['students'] as List).map((e) => StudentRef.fromJson(Map<String, dynamic>.from(e))).toList();
+    _adminBack = admin;
+    viewOnlyMode = true;
+    await _save(Session(token: j['token'], kind: 'student', students: students, activeStudentId: students.first.id, viewOnly: true));
+  }
+
+  Future<void> exitViewAs() async {
+    final back = _adminBack;
+    _adminBack = null;
+    viewOnlyMode = false;
+    if (back == null) { await signOut(); return; }
+    _applyToken(back.token);
+    state = AsyncData(back);
+  }
+
   Future<void> signOut() async {
+    if (state.value?.viewOnly == true) { await exitViewAs(); return; }   // "Sign out" while viewing just goes back to the admin panel
     await Push.forget();   // this phone stops receiving the signed-out family's notifications
     await _clear();
     setDbToken(null);
