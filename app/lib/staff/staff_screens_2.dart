@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show FileOptions;
 import '../auth/session.dart';
 import '../core/data.dart';
+import '../core/school_docs.dart' show openReceiptPdf;
 import '../core/theme.dart';
 import '../screens/family_screens.dart' show StorageImage, callNumber;
 import '../widgets/common.dart';
@@ -385,7 +386,7 @@ class _StaffFeesScreenState extends ConsumerState<StaffFeesScreen> {
         })),
       ],
       if (tab == 1) Consumer(builder: (_, r, __) => r.watch(overdueReportProvider).when(loading: _loading, error: (e, _) => _err(e), data: (rows) => Panel(title: '${rows.length} overdue items · ${inr(rows.fold<num>(0, (a, x) => a + (x['amount'] as num)))}', padding: const EdgeInsets.all(12), child: Column(children: [for (final x in rows) ListTile(dense: true, title: Text('${x['student']?['full_name'] ?? ''} · ${_cls(x['student'])}'), subtitle: Text('${x['title']} · due ${_dmy(x['due_on'])}'), trailing: Text(inr(x['amount']), style: const TextStyle(fontWeight: FontWeight.w800, color: Brand.crimsonDeep)))])))),
-      if (tab == 2) Consumer(builder: (_, r, __) => r.watch(recentPaymentsProvider).when(loading: _loading, error: (e, _) => _err(e), data: (rows) => Panel(padding: const EdgeInsets.all(12), child: rows.isEmpty ? Text('No online payments yet.', style: TextStyle(color: cs.onSurfaceVariant)) : Column(children: [for (final p in rows) ListTile(dense: true, leading: const Icon(Icons.receipt_long_rounded, color: Brand.green), title: Text('${p['receipt_no']} · ${p['student']?['full_name'] ?? ''}'), subtitle: Text('${p['mode']} · ${_dmt(p['paid_at'])}'), trailing: Text(inr(p['amount']), style: const TextStyle(fontWeight: FontWeight.w800)))])))),
+      if (tab == 2) Consumer(builder: (_, r, __) => r.watch(recentPaymentsProvider).when(loading: _loading, error: (e, _) => _err(e), data: (rows) => Panel(padding: const EdgeInsets.all(12), child: rows.isEmpty ? Text('No online payments yet.', style: TextStyle(color: cs.onSurfaceVariant)) : Column(children: [for (final p in rows) ListTile(dense: true, onTap: () => openReceiptPdf(context, p['id'], receiptNo: p['receipt_no']), leading: const Icon(Icons.receipt_long_rounded, color: Brand.green), title: Text('${p['receipt_no']} · ${p['student']?['full_name'] ?? ''}'), subtitle: Text('${p['mode']} · ${_dmt(p['paid_at'])} · tap for PDF'), trailing: Text(inr(p['amount']), style: const TextStyle(fontWeight: FontWeight.w800)))])))),
     ]));
   }
 }
