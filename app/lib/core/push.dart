@@ -89,7 +89,7 @@ class Push {
 
   /// Register this phone for whoever is signed in. Safe to call often; only does work when the sign-in changes.
   static Future<void> sync(Session? s) async {
-    if (!firebaseReady || s == null || s.kind == 'crew' || s.mustChangePassword || s.viewOnly) return;
+    if (!firebaseReady || s == null || s.mustChangePassword || s.viewOnly) return;   // bus crew too: "trip still running" reminders
     if (_registeredFor == s.token) return;
     _registeredFor = s.token;
     try {
@@ -161,6 +161,7 @@ class Push {
       }
       final route = routeFor(data['deep_link']?.toString(), staff: s.isStaff);
       final router = ref.read(routerProvider);
+      if (s.kind == 'crew') { router.go('/driver'); return; }
       if (s.isStaff || _tabs.contains(route)) {
         router.go(route);
       } else {
