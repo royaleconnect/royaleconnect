@@ -92,15 +92,20 @@ class StaffOverviewScreen extends ConsumerWidget {
     Widget stat(String n, String l, IconData i, Color c, String path) => Expanded(child: Material(color: cs.surface, borderRadius: BorderRadius.circular(18), child: InkWell(onTap: () => context.go(path), borderRadius: BorderRadius.circular(18), child: Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: cs.outline.withValues(alpha: .6))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Icon(i, color: c), const SizedBox(height: 10), Text(n, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800)), Text(l, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant, fontWeight: FontWeight.w700))])))));
     return StaffPage(title: '${hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'}, ${s.staff?['name'] ?? ''}', subtitle: DateFormat('EEEE, d MMMM yyyy').format(DateTime.now()), body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      ov.when(loading: _loading, error: (e, _) => _err(e), data: (m) => Row(children: [
-        stat('${m['unread']}', 'Unread messages', Icons.chat_bubble_rounded, Brand.blue, '/staff/messages'), const SizedBox(width: 12),
-        stat('${m['leaves']}', 'Leave requests waiting', Icons.event_busy_rounded, Brand.amber, '/staff/leave'), const SizedBox(width: 12),
-        stat('${m['diary_today']}', "Diary entries today", Icons.menu_book_rounded, Brand.green, '/staff/diary'),
-        if (s.isOffice) ...[const SizedBox(width: 12), stat('${m['feedback']}', 'New feedback', Icons.rate_review_rounded, Brand.violet, '/staff/feedback')],
-      ])),
+      ov.when(loading: _loading, error: (e, _) => _err(e), data: (m) {
+        final tiles = [
+          stat('${m['unread']}', 'Unread messages', Icons.chat_bubble_rounded, Brand.blue, '/staff/messages'),
+          stat('${m['leaves']}', 'Leave requests waiting', Icons.event_busy_rounded, Brand.amber, '/staff/leave'),
+          stat('${m['diary_today']}', 'Diary entries today', Icons.menu_book_rounded, Brand.green, '/staff/diary'),
+          if (s.isOffice) stat('${m['feedback']}', 'New feedback', Icons.rate_review_rounded, Brand.violet, '/staff/feedback'),
+        ];
+        Widget line(List<Widget> ts) => IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (final (i, t) in ts.indexed) ...[if (i > 0) const SizedBox(width: 12), t]]));
+        if (isNarrow(context) && tiles.length == 4) return Column(children: [line(tiles.sublist(0, 2)), const SizedBox(height: 12), line(tiles.sublist(2))]);
+        return line(tiles);
+      }),
       const SizedBox(height: 18),
       Panel(title: 'Your sections', child: secs.when(loading: _loading, error: (e, _) => _err(e), data: (list) => list.isEmpty ? Text('No sections assigned yet. The office sets class teachers and subject teachers under Students.', style: TextStyle(color: cs.onSurfaceVariant)) :
-        Wrap(spacing: 8, runSpacing: 8, children: [for (final sec in list) Chip(avatar: Icon(sec['class_teacher_id'] == s.staff?['id'] ? Icons.star_rounded : Icons.class_rounded, size: 16, color: Brand.crimsonDeep), label: Text(sectionLabel(sec) + (sec['class_teacher_id'] == s.staff?['id'] ? ' · class teacher' : '')), backgroundColor: Brand.crimsonTint, side: BorderSide.none)]))),
+        Wrap(spacing: 8, runSpacing: 8, children: [for (final sec in list) Chip(avatar: Icon(sec['class_teacher_id'] == s.staff?['id'] ? Icons.star_rounded : Icons.class_rounded, size: 16, color: Brand.crimsonDeep), label: Text(sectionLabel(sec) + (sec['class_teacher_id'] == s.staff?['id'] ? ' · class teacher' : ''), style: const TextStyle(color: Brand.crimsonDeep, fontWeight: FontWeight.w800)), backgroundColor: Brand.crimsonTint, side: BorderSide.none)]))),
       Panel(title: 'Quick actions', child: Wrap(spacing: 10, runSpacing: 10, children: [
         for (final (l, i, p) in [('Post diary', Icons.menu_book_rounded, '/staff/diary'), ('Send announcement', Icons.campaign_rounded, '/staff/announcements'), ('Approve leave', Icons.event_busy_rounded, '/staff/leave'), ('Share class moment', Icons.photo_camera_rounded, '/staff/moments'), ('Enter marks', Icons.grading_rounded, '/staff/marks')])
           OutlinedButton.icon(style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)), onPressed: () => context.go(p), icon: Icon(i, size: 18), label: Text(l)),
@@ -131,7 +136,7 @@ class _StaffMessagesScreenState extends ConsumerState<StaffMessagesScreen> {
           Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 8), child: SegmentedButton<String>(segments: const [ButtonSegment(value: 'open', label: Text('Open')), ButtonSegment(value: 'done', label: Text('Done')), ButtonSegment(value: 'all', label: Text('All'))], selected: {filter}, onSelectionChanged: (v) => setState(() => filter = v.first))),
           if (shown.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Text('Nothing here.', style: TextStyle(color: cs.onSurfaceVariant))),
           for (final r in shown) ListTile(
-            selected: open == r['id'], selectedTileColor: Brand.crimsonTint,
+            selected: open == r['id'], selectedTileColor: Brand.crimson.withValues(alpha: .14), selectedColor: cs.onSurface,
             leading: Avatar((r['student']?['full_name'] ?? '?').toString().split(' ').take(2).map((w) => w[0]).join(), size: 40),
             title: Text(r['student']?['full_name'] ?? '', style: TextStyle(fontWeight: (r['staff_unread'] ?? 0) > 0 ? FontWeight.w800 : FontWeight.w600)),
             subtitle: Text('${_cls(r['student'])} · ${r['last_message_at'] == null ? 'no messages' : _dmt(r['last_message_at'])}'),
@@ -153,7 +158,7 @@ class _StaffMessagesScreenState extends ConsumerState<StaffMessagesScreen> {
   /// Pick a student from the sections this teacher works with and open (or resume) the chat with that family.
   void _newMessage(BuildContext context, bool wide) {
     String q = '';
-    showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, set) => AlertDialog(title: const Text('Message a family'), content: SizedBox(width: 480, height: 520, child: Column(children: [
+    showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, set) => AlertDialog(title: const Text('Message a family'), content: SizedBox(width: 480, height: MediaQuery.sizeOf(context).height < 760 ? MediaQuery.sizeOf(context).height * .6 : 520, child: Column(children: [
       TextField(autofocus: true, onChanged: (v) => set(() => q = v.toLowerCase()), decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: 'Search by name or admission number')),
       const SizedBox(height: 8),
       Expanded(child: Consumer(builder: (_, r, __) => r.watch(myStudentsProvider).when(loading: _loading, error: (e, _) => _err(e), data: (rows) {
@@ -232,7 +237,7 @@ class StaffAnnouncementsScreen extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     return StaffPage(title: 'Announcements', subtitle: s.isOffice ? 'Whole school, grades or sections. Urgent bypasses quiet hours — use only when necessary.' : 'To your own sections. School-wide notices go through the office.',
       actions: [FilledButton.icon(onPressed: () => _compose(context, ref, s), icon: const Icon(Icons.add_rounded), label: const Text('New announcement'))],
-      body: list.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty ? Panel(child: Text('Nothing sent yet.', style: TextStyle(color: cs.onSurfaceVariant))) : Column(children: [for (final a in rows) Panel(padding: const EdgeInsets.all(14), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      body: list.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty ? Panel(child: Text('Nothing sent yet.', style: TextStyle(color: cs.onSurfaceVariant))) : Column(children: [for (final a in rows) Panel(padding: const EdgeInsets.all(14), child: CardRow(children: [
         Pill(cats[a['category']] ?? a['category'], fg: a['category'] == 'urgent' ? Colors.white : Brand.crimsonDeep, bg: a['category'] == 'urgent' ? Brand.crimson : Brand.crimsonTint), const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(a['title'], style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
@@ -295,12 +300,12 @@ class _StaffDiaryScreenState extends ConsumerState<StaffDiaryScreen> {
       return StaffPage(title: 'Class diary', subtitle: 'Homework, things to bring, tests. Parents see it the moment you post.',
         actions: [if (sectionId != null) FilledButton.icon(onPressed: () => _compose(context, list), icon: const Icon(Icons.add_rounded), label: const Text('Post entry'))],
         body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Panel(padding: const EdgeInsets.all(12), child: Row(children: [
+          Panel(padding: const EdgeInsets.all(12), child: PickRow(children: [
             Expanded(child: PickField<String>(label: 'Section', value: sectionId, items: [for (final s in list) DropdownMenuItem(value: s['id'] as String, child: Text(sectionLabel(s)))], onChanged: (v) => setState(() => sectionId = v))),
             const SizedBox(width: 12),
             OutlinedButton.icon(style: OutlinedButton.styleFrom(minimumSize: const Size(0, 54)), onPressed: () async { final d = await showDatePicker(context: context, initialDate: day, firstDate: DateTime.now().subtract(const Duration(days: 60)), lastDate: DateTime.now().add(const Duration(days: 60))); if (d != null) setState(() => day = d); }, icon: const Icon(Icons.event_rounded, size: 18), label: Text(DateFormat('EEE, d MMM').format(day))),
           ])),
-          if (entries != null) entries.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty ? Panel(child: Text('Nothing posted for this day yet.', style: TextStyle(color: cs.onSurfaceVariant))) : Column(children: [for (final e in rows) Panel(padding: const EdgeInsets.all(14), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (entries != null) entries.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty ? Panel(child: Text('Nothing posted for this day yet.', style: TextStyle(color: cs.onSurfaceVariant))) : Column(children: [for (final e in rows) Panel(padding: const EdgeInsets.all(14), child: CardRow(children: [
             Pill(kinds[e['kind']] ?? e['kind'], fg: Brand.blue, bg: Brand.blueTint), const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(e['title'], style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -346,7 +351,7 @@ class StaffLeaveScreen extends ConsumerWidget {
     final list = ref.watch(staffLeavesProvider);
     final cs = Theme.of(context).colorScheme;
     const col = {'pending': (Brand.amber, Brand.amberTint), 'approved': (Brand.green, Brand.greenTint), 'declined': (Brand.crimsonDeep, Brand.crimsonTint)};
-    return StaffPage(title: 'Leave requests', subtitle: 'Class teachers see their own section; the office sees all.', body: list.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty ? Panel(child: Text('No requests.', style: TextStyle(color: cs.onSurfaceVariant))) : Column(children: [for (final l in rows) Panel(padding: const EdgeInsets.all(14), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return StaffPage(title: 'Leave requests', subtitle: 'Class teachers see their own section; the office sees all.', body: list.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty ? Panel(child: Text('No requests.', style: TextStyle(color: cs.onSurfaceVariant))) : Column(children: [for (final l in rows) Panel(padding: const EdgeInsets.all(14), child: CardRow(children: [
       Pill(l['status'], fg: col[l['status']]!.$1, bg: col[l['status']]!.$2), const SizedBox(width: 12),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('${l['student']?['full_name'] ?? ''} · ${_cls(l['student'])}', style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -354,7 +359,7 @@ class StaffLeaveScreen extends ConsumerWidget {
         Text('Requested ${_dmt(l['created_at'])}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
       ])),
       if (l['status'] == 'pending') ...[
-        TextButton(onPressed: () async { await decideLeave(ref, l['id'], false); ref.invalidate(staffLeavesProvider); ref.invalidate(staffOverviewProvider); }, child: const Text('Decline', style: TextStyle(color: Brand.crimsonDeep))),
+        TextButton(onPressed: () async { await decideLeave(ref, l['id'], false); ref.invalidate(staffLeavesProvider); ref.invalidate(staffOverviewProvider); }, child: const Text('Decline', style: TextStyle(color: Brand.crimson, fontWeight: FontWeight.w800))),
         FilledButton(onPressed: () async { await decideLeave(ref, l['id'], true); ref.invalidate(staffLeavesProvider); ref.invalidate(staffOverviewProvider); }, child: const Text('Approve')),
       ],
     ]))])));
