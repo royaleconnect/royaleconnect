@@ -38,10 +38,11 @@ class SplashScreen extends ConsumerWidget {
         padding: const EdgeInsets.fromLTRB(16, 26, 16, 22),
         decoration: BoxDecoration(border: Border.all(color: frameGold, width: 1)),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          // school logo, a touch deeper in colour; the white of the artwork blends into the ivory page
+          // school logo, a touch deeper in colour; its white background is turned transparent
+          // (alpha falls to 0 as a pixel approaches white), so no box shows on the ivory page
           ColorFiltered(
-            colorFilter: const ColorFilter.matrix([1.22, 0, 0, 0, -56, 0, 1.22, 0, 0, -56, 0, 0, 1.22, 0, -56, 0, 0, 0, 1, 0]),
-            child: Image.asset('assets/images/logo.png', width: w * .74, color: ivory, colorBlendMode: BlendMode.multiply),
+            colorFilter: const ColorFilter.matrix([1.22, 0, 0, 0, -56, 0, 1.22, 0, 0, -56, 0, 0, 1.22, 0, -56, -1.2, -1.2, -1.2, 0, 867]),
+            child: Image.asset('assets/images/logo.png', width: w * .74),
           ),
           const SizedBox(height: 20),
           goldText('ROYALE CONNECT', GoogleFonts.cinzel(fontSize: w < 340 ? 23 : 26, fontWeight: FontWeight.w800, letterSpacing: 4, height: 1.25)),
@@ -64,7 +65,7 @@ class SplashScreen extends ConsumerWidget {
             frame,
             if (checking) ...[const SizedBox(height: 44), const SizedBox(width: 30, height: 30, child: CircularProgressIndicator(strokeWidth: 3, color: frameGold, backgroundColor: Color(0xFFE8DCC2)))],
           ])))),
-          AnimatedSwitcher(
+          Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 560), child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 350),
             transitionBuilder: (c, a) => SlideTransition(position: Tween(begin: const Offset(0, 1), end: Offset.zero).animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)), child: c),
             child: checking
@@ -86,7 +87,7 @@ class SplashScreen extends ConsumerWidget {
                       Text(footer, textAlign: TextAlign.center, style: small.copyWith(color: const Color(0xFFEFE6D2).withValues(alpha: .9))),
                     ])),
                   ),
-          ),
+          ))),
         ]),
       ),
     );
