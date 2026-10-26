@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -135,3 +136,19 @@ class SessionController extends AsyncNotifier<Session?> {
 }
 
 final sessionProvider = AsyncNotifierProvider<SessionController, Session?>(SessionController.new);
+
+
+/// The opening splash stays for 4 seconds every time the app starts.
+class SplashDone extends Notifier<bool> {
+  @override
+  bool build() { Timer(const Duration(seconds: 4), () => state = true); return false; }
+}
+final splashDoneProvider = NotifierProvider<SplashDone, bool>(SplashDone.new);
+
+/// With two or more children on the phone, the family picks one each time the app opens.
+class ChildPicked extends Notifier<bool> {
+  @override
+  bool build() => false;
+  void done() => state = true;
+}
+final childPickedProvider = NotifierProvider<ChildPicked, bool>(ChildPicked.new);
