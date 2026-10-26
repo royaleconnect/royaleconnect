@@ -24,7 +24,8 @@ class AppShell extends ConsumerWidget {
     final selected = visible.indexOf(shell.currentIndex).clamp(0, visible.length - 1);
     return Scaffold(
       body: shell,
-      bottomNavigationBar: NavigationBar(
+      // On a laptop the side menu (parent_layout.dart) replaces the bottom tabs.
+      bottomNavigationBar: MediaQuery.sizeOf(context).width >= 960 ? null : NavigationBar(
         selectedIndex: selected,
         onDestinationSelected: (i) => shell.goBranch(visible[i], initialLocation: visible[i] == shell.currentIndex),
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
