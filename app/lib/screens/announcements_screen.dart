@@ -26,10 +26,7 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
       BrandHeader(padding: const EdgeInsets.fromLTRB(20, 8, 20, 14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Padding(padding: EdgeInsets.symmetric(vertical: 10), child: Text('Announcements', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800))),
         SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
-          for (final e in cats.entries) Padding(padding: const EdgeInsets.only(right: 8), child: ChoiceChip(
-            label: Text(e.value), selected: filter == e.key, onSelected: (_) => setState(() => filter = e.key),
-            selectedColor: Colors.white, backgroundColor: Colors.white.withValues(alpha: .14), side: BorderSide.none, showCheckmark: false,
-            labelStyle: TextStyle(fontWeight: FontWeight.w700, color: filter == e.key ? Brand.crimsonDeep : Colors.white))),
+          for (final e in cats.entries) HeaderChip(e.value, selected: filter == e.key, onTap: () => setState(() => filter = e.key)),
         ])),
       ])),
       Expanded(child: notices.when(
