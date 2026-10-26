@@ -35,23 +35,23 @@ class _StaffLoginScreenState extends ConsumerState<StaffLoginScreen> {
         Row(children: [Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)), child: Image.asset('assets/images/monogram.png', width: 26)), const Spacer(), TextButton(onPressed: () => context.go('/login'), child: const Text('Parent / student sign in', style: TextStyle(color: Colors.white)))]),
         const SizedBox(height: 16),
         Text('Staff sign in', style: t.headlineMedium?.copyWith(color: Colors.white)),
-        Text('Use your school email. Teachers, office, accounts and transport.', style: TextStyle(color: Colors.white.withValues(alpha: .9))),
+        Text('Teachers and office: your school email. Bus drivers and conductors: the login ID on your slip.', style: TextStyle(color: Colors.white.withValues(alpha: .9))),
       ])),
       Container(decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24))), padding: const EdgeInsets.all(24), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        TextField(controller: email, keyboardType: TextInputType.emailAddress, autofillHints: const [AutofillHints.username], decoration: const InputDecoration(labelText: 'School email', hintText: 'name@rcis.in')),
+        TextField(controller: email, keyboardType: TextInputType.emailAddress, autofillHints: const [AutofillHints.username], decoration: const InputDecoration(labelText: 'School email or bus login ID', hintText: 'name@rcis.in  ·  route7-driver')),
         const SizedBox(height: 14),
         TextField(controller: pw, obscureText: !show, autofillHints: const [AutofillHints.password], onSubmitted: (_) => _go(), decoration: InputDecoration(labelText: 'Password', suffixIcon: IconButton(icon: Icon(show ? Icons.visibility_off_outlined : Icons.visibility_outlined), onPressed: () => setState(() => show = !show)))),
         const SizedBox(height: 18),
         if (error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(error!, style: const TextStyle(color: Brand.crimsonDeep, fontWeight: FontWeight.w700))),
         PrimaryButton('Sign in', busy: busy, onPressed: _go),
         const SizedBox(height: 10),
-        Text('Forgotten your password? The IT admin can issue a one-time password.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        Text('Forgotten your password? The IT admin (staff) or the transport office (bus crew) can issue a new one.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
       ])),
     ]))))));
   }
   Future<void> _go() async {
     setState(() { busy = true; error = null; });
-    try { await ref.read(sessionProvider.notifier).loginStaff(email.text, pw.text); if (mounted) context.go('/staff'); }
+    try { await ref.read(sessionProvider.notifier).loginStaff(email.text, pw.text); if (mounted) context.go(ref.read(sessionProvider).value?.kind == 'crew' ? '/driver' : '/staff'); }
     on AuthError catch (e) { setState(() => error = e.message); } catch (e) { setState(() => error = 'Could not complete sign-in: $e'); }
     if (mounted) setState(() => busy = false);
   }
