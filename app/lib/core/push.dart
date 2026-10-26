@@ -89,7 +89,7 @@ class Push {
 
   /// Register this phone for whoever is signed in. Safe to call often; only does work when the sign-in changes.
   static Future<void> sync(Session? s) async {
-    if (!firebaseReady || s == null || s.kind == 'crew' || s.mustChangePassword) return;
+    if (!firebaseReady || s == null || s.kind == 'crew' || s.mustChangePassword || s.viewOnly) return;
     if (_registeredFor == s.token) return;
     _registeredFor = s.token;
     try {
