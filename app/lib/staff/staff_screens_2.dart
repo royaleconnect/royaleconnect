@@ -495,6 +495,7 @@ class _StaffMeScreenState extends ConsumerState<StaffMeScreen> {
     final s = ref.watch(sessionProvider).value!;
     return StaffPage(title: 'My settings', body: Column(children: [
       Panel(title: 'Signed in as', child: Text('${s.staff?['name']} · ${s.staff?['email']}\n${s.roles.map(roleLabel).join(', ')}')),
+      Panel(title: 'Appearance', trailing: const ThemeChoice(), child: Text('Dark is easier on the eyes in the evening; Light suits bright rooms.', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant))),
       Panel(title: 'Change password', child: Column(children: [
         TextField(controller: cur, obscureText: true, decoration: const InputDecoration(labelText: 'Current password')), const SizedBox(height: 10),
         TextField(controller: a, obscureText: true, decoration: const InputDecoration(labelText: 'New password (8+)')), const SizedBox(height: 10),
