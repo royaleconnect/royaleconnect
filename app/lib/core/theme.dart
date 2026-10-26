@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Brand tokens — mirrors the approved prototype exactly.
 class Brand {
@@ -97,4 +99,35 @@ ThemeData buildTheme(Brightness b) {
     ),
     dividerColor: scheme.outline,
   );
+}
+
+
+/// Light / dark appearance, chosen in Settings and remembered on the device. Dark is the default.
+class ThemeModeController extends Notifier<ThemeMode> {
+  static const _key = 'rc_theme';
+  @override
+  ThemeMode build() {
+    SharedPreferences.getInstance().then((p) { final v = p.getString(_key); if (v == 'light') state = ThemeMode.light; });
+    return ThemeMode.dark;
+  }
+  Future<void> set(ThemeMode m) async { state = m; (await SharedPreferences.getInstance()).setString(_key, m == ThemeMode.light ? 'light' : 'dark'); }
+}
+final themeModeProvider = NotifierProvider<ThemeModeController, ThemeMode>(ThemeModeController.new);
+
+/// "Appearance: Dark | Light" — used in the parents' Settings and the staff "My settings".
+class ThemeChoice extends ConsumerWidget {
+  const ThemeChoice({super.key});
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(themeModeProvider);
+    return SegmentedButton<ThemeMode>(
+      segments: const [
+        ButtonSegment(value: ThemeMode.dark, icon: Icon(Icons.dark_mode_rounded, size: 18), label: Text('Dark')),
+        ButtonSegment(value: ThemeMode.light, icon: Icon(Icons.light_mode_rounded, size: 18), label: Text('Light')),
+      ],
+      selected: {mode == ThemeMode.light ? ThemeMode.light : ThemeMode.dark},
+      showSelectedIcon: false,
+      onSelectionChanged: (v) => ref.read(themeModeProvider.notifier).set(v.first),
+    );
+  }
 }
