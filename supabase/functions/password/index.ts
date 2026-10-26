@@ -2,8 +2,9 @@
 //  { action:'change', student_id, new_password, current_password? }   (bearer: student token; current_password not needed right after OTP login or first sign-in)
 //  { action:'reset',  student_id, via:'print'|'sms' }                  (bearer: staff token with office/it_admin/class_teacher role)
 //  { action:'signout_all', student_id }                                (bearer: staff token as above, or the student's own token)
-//  { action:'crew_account', route_id, role:'driver'|'conductor', name, phone?, username }   (bearer: transport in-charge / office / IT / principal)
-//      creates or refreshes the bus crew login for that route and returns a new password for the slip
+//  { action:'crew_account', route_id, role:'driver'|'conductor', name, phone? }   (bearer: transport in-charge / office / IT / principal)
+//      creates or refreshes the bus crew login for that route: login ID dr<route no.> / co<route no.>, the common bus password
+//  { action:'crew_password', password }   (same people) → one common password for every driver and conductor (not case-sensitive)
 //  { action:'view_as', student_id }   (bearer: IT admin / principal / vice principal) → a 2-hour READ-ONLY family token (the database refuses every change)
 import { admin, json, preflight, hashPassword, verifyPassword, firstUsePassword, audit, mintToken } from "../_shared/lib.ts";
 import { verify } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
@@ -62,15 +63,33 @@ Deno.serve(async (req) => {
       return json({ token, students: [{ id: x.id, admission_no: x.admission_no, full_name: x.full_name, grade: e?.section?.grade?.name, grade_code: e?.section?.grade?.code, section: e?.section?.name }] });
     }
 
+    const canCrew = (c.roles ?? []).some((r: string) => ["transport_incharge", "office", "it_admin", "principal", "vice_principal"].includes(r));
+    // the common bus password lives in app_secret (no app can read that table); default "Bus1"
+    const crewPassword = async () => (await db.from("app_secret").select("value").eq("name", "crew_password").maybeSingle()).data?.value ?? "Bus1";
+
+    if (body.action === "crew_password") {
+      if (!canCrew) return json({ error: "Not allowed." }, 403);
+      const pw = String(body.password ?? "").trim();
+      if (pw.length < 4 || /\s/.test(pw)) return json({ error: "Use at least 4 letters or numbers, no spaces." }, 400);
+      await db.from("app_secret").upsert({ name: "crew_password", value: pw });
+      const hash = await hashPassword(pw.toLowerCase());
+      const { data: crew } = await db.from("staff").select("id").overlaps("roles", ["driver", "conductor"]);
+      const ids = (crew ?? []).map((x: any) => x.id);
+      if (ids.length) await db.from("staff").update({ password_hash: hash, failed_logins: 0, locked_until: null }).in("id", ids);
+      await audit(db, { actor_staff_id: c.staff_id, action: "crew.password", detail: { accounts: ids.length } });
+      return json({ ok: true, updated: ids.length });
+    }
+
     if (body.action === "crew_account") {
-      if (!(c.roles ?? []).some((r: string) => ["transport_incharge", "office", "it_admin", "principal", "vice_principal"].includes(r))) return json({ error: "Not allowed." }, 403);
+      if (!canCrew) return json({ error: "Not allowed." }, 403);
       const role = body.role === "conductor" ? "conductor" : "driver";
-      const username = String(body.username ?? "").trim().toLowerCase();
-      if (!/^[a-z0-9][a-z0-9._-]{2,29}$/.test(username)) return json({ error: "Login ID: 3–30 letters or numbers (dots, dashes allowed), no spaces." }, 400);
       const name = String(body.name ?? "").trim();
       if (!name) return json({ error: "Enter the driver's / conductor's name." }, 400);
       const { data: route } = await db.from("route").select("id, name, driver_staff_id, conductor_staff_id").eq("id", body.route_id).maybeSingle();
       if (!route) return json({ error: "Route not found." }, 404);
+      // login ID from the route number: Route 7 → dr7 (driver) / co7 (conductor)
+      const no = (String(route.name).match(/\d+/)?.[0]) ?? String(route.name).toLowerCase().replace(/[^a-z0-9]/g, "");
+      const username = `${role === "driver" ? "dr" : "co"}${no}`;
       const col = role === "driver" ? "driver_staff_id" : "conductor_staff_id";
       let staffId: string | null = (route as any)[col] ?? null;
       if (staffId) {
@@ -79,14 +98,16 @@ Deno.serve(async (req) => {
         if (!cur || (cur.roles ?? []).some((r: string) => r !== "driver" && r !== "conductor")) staffId = null;
       }
       const { data: clash } = await db.from("staff").select("id").eq("username", username).maybeSingle();
-      if (clash && clash.id !== staffId) return json({ error: "That login ID is already used. Choose another." }, 409);
-      const temp = firstUsePassword();
-      const fields = { username, full_name: name, display_name: name, phone: String(body.phone ?? "").trim() || null, roles: [role], password_hash: await hashPassword(temp),
+      if (clash && clash.id !== staffId) {
+        // the ID belongs to an old account of this route position: free it
+        await db.from("staff").update({ username: null, active: false }).eq("id", clash.id);
+      }
+      const pw = await crewPassword();
+      const fields = { username, full_name: name, display_name: name, phone: String(body.phone ?? "").trim() || null, roles: [role], password_hash: await hashPassword(pw.toLowerCase()),
                        must_change_password: false, failed_logins: 0, locked_until: null, active: true };
       if (staffId) {
         const { error } = await db.from("staff").update(fields).eq("id", staffId);
         if (error) throw error;
-        await db.from("app_session").update({ revoked_at: new Date().toISOString() }).eq("staff_id", staffId).is("revoked_at", null);   // old phone signed out
       } else {
         const { data: ins, error } = await db.from("staff").insert({ ...fields, email: `${username}@bus.rcis.in` }).select("id").single();
         if (error) throw error;
@@ -94,7 +115,7 @@ Deno.serve(async (req) => {
         await db.from("route").update({ [col]: staffId }).eq("id", route.id);
       }
       await audit(db, { actor_staff_id: c.staff_id, action: "crew.account", entity: "staff", entity_id: staffId!, detail: { route: route.name, role, username } });
-      return json({ ok: true, username, first_use_password: temp, route: route.name, role });
+      return json({ ok: true, username, password: pw, route: route.name, role });
     }
 
     if (body.action === "change") {
