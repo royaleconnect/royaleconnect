@@ -114,15 +114,27 @@ class _StaffMarksScreenState extends ConsumerState<StaffMarksScreen> {
     final rows = (examId != null && subjectId != null && sectionId != null) ? ref.watch(marksProvider((examId!, subjectId!, sectionId!))) : null;
     return StaffPage(title: 'Marks entry', subtitle: 'Marks are private to staff. Parents see them only on the published report card.', body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Panel(padding: const EdgeInsets.all(12), child: Wrap(spacing: 10, runSpacing: 10, children: [
-        SizedBox(width: 300, child: PickField<String>(label: 'Exam', value: examId, items: [for (final e in exams.value ?? []) DropdownMenuItem(value: e['id'] as String, child: Text('${e['grade']?['code']} · ${e['name']}'))], onChanged: (v) => setState(() { examId = v; sectionId = null; subjectId = null; edits.clear(); }))),
-        SizedBox(width: 180, child: PickField<String>(label: 'Section', value: sectionId, items: [for (final x in sectionsForGrade) DropdownMenuItem(value: x['id'] as String, child: Text(sectionLabel(x)))], onChanged: (v) => setState(() { sectionId = v; subjectId = null; edits.clear(); }))),
-        SizedBox(width: 220, child: PickField<String>(label: 'Subject', value: subjectId, items: [for (final x in subjectsFor) DropdownMenuItem(value: x['id'] as String, child: Text(x['name']))], onChanged: (v) => setState(() { subjectId = v; edits.clear(); }))),
+        SizedBox(width: isNarrow(context) ? double.infinity : 300, child: PickField<String>(label: 'Exam', value: examId, items: [for (final e in exams.value ?? []) DropdownMenuItem(value: e['id'] as String, child: Text('${e['grade']?['code']} · ${e['name']}'))], onChanged: (v) => setState(() { examId = v; sectionId = null; subjectId = null; edits.clear(); }))),
+        SizedBox(width: isNarrow(context) ? double.infinity : 180, child: PickField<String>(label: 'Section', value: sectionId, items: [for (final x in sectionsForGrade) DropdownMenuItem(value: x['id'] as String, child: Text(sectionLabel(x)))], onChanged: (v) => setState(() { sectionId = v; subjectId = null; edits.clear(); }))),
+        SizedBox(width: isNarrow(context) ? double.infinity : 220, child: PickField<String>(label: 'Subject', value: subjectId, items: [for (final x in subjectsFor) DropdownMenuItem(value: x['id'] as String, child: Text(x['name']))], onChanged: (v) => setState(() { subjectId = v; edits.clear(); }))),
       ])),
       if (rows != null) rows.when(loading: _loading, error: (e, _) => _err(e), data: (list) => Panel(padding: EdgeInsets.zero, title: null, child: Column(children: [
-        Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 4), child: Row(children: [const SizedBox(width: 40, child: Text('Roll', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))), const Expanded(child: Text('Student', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))), const SizedBox(width: 90, child: Text('Internal', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))), const SizedBox(width: 90, child: Text('External', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))), const SizedBox(width: 70, child: Text('Absent', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)))])),
+        if (!isNarrow(context)) Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 4), child: Row(children: [const SizedBox(width: 40, child: Text('Roll', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))), const Expanded(child: Text('Student', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))), const SizedBox(width: 90, child: Text('Internal', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))), const SizedBox(width: 90, child: Text('External', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))), const SizedBox(width: 70, child: Text('Absent', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)))])),
         const Divider(height: 1),
         for (final r in list) Builder(builder: (_) {
           final st = r['student']; final id = st['id'] as String; final m = edits[id] ?? {'internal': r['mark']?['internal'], 'external': r['mark']?['external'], 'absent': r['mark']?['absent'] ?? false};
+          if (isNarrow(context)) {
+            InputDecoration box(String l) => InputDecoration(labelText: l, isDense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12));
+            return Container(padding: const EdgeInsets.fromLTRB(14, 12, 10, 12), decoration: BoxDecoration(border: Border(bottom: BorderSide(color: cs.outline.withValues(alpha: .5)))), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Text('${r['roll_no'] ?? ''}.  ${st['full_name']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              const SizedBox(height: 8),
+              Row(children: [
+                Expanded(child: TextFormField(initialValue: m['internal']?.toString() ?? '', keyboardType: TextInputType.number, enabled: m['absent'] != true, onChanged: (v) => setState(() => edits[id] = {...m, 'internal': num.tryParse(v)}), decoration: box('Internal'))), const SizedBox(width: 10),
+                Expanded(child: TextFormField(initialValue: m['external']?.toString() ?? '', keyboardType: TextInputType.number, enabled: m['absent'] != true, onChanged: (v) => setState(() => edits[id] = {...m, 'external': num.tryParse(v)}), decoration: box('External'))), const SizedBox(width: 4),
+                Column(mainAxisSize: MainAxisSize.min, children: [Checkbox(value: m['absent'] == true, onChanged: (v) => setState(() => edits[id] = {...m, 'absent': v ?? false})), Text('Absent', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant))]),
+              ]),
+            ]));
+          }
           return Padding(padding: const EdgeInsets.fromLTRB(16, 4, 16, 4), child: Row(children: [
             SizedBox(width: 40, child: Text('${r['roll_no'] ?? ''}')), Expanded(child: Text(st['full_name'], style: const TextStyle(fontWeight: FontWeight.w600))),
             SizedBox(width: 80, child: TextFormField(initialValue: m['internal']?.toString() ?? '', keyboardType: TextInputType.number, enabled: m['absent'] != true, onChanged: (v) => setState(() => edits[id] = {...m, 'internal': num.tryParse(v)}), decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10)))), const SizedBox(width: 10),
@@ -156,14 +168,14 @@ class _StaffPlanScreenState extends ConsumerState<StaffPlanScreen> {
     final plan = gradeId == null ? null : ref.watch(staffPlanProvider((gradeId!, iso)));
     final cs = Theme.of(context).colorScheme;
     return StaffPage(title: 'Monthly plan', subtitle: 'What each subject covers this month. Parents see it under Monthly plan.', body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Panel(padding: const EdgeInsets.all(12), child: Row(children: [
+      Panel(padding: const EdgeInsets.all(12), child: PickRow(children: [
         Expanded(child: PickField<String>(label: 'Grade', value: gradeId, items: [for (final g in grades.value ?? []) DropdownMenuItem(value: g['id'] as String, child: Text(g['name']))], onChanged: (v) => setState(() => gradeId = v))),
         const SizedBox(width: 12),
         IconButton(onPressed: () => setState(() => month = DateTime(month.year, month.month - 1)), icon: const Icon(Icons.chevron_left_rounded)), Text(DateFormat('MMMM yyyy').format(month), style: const TextStyle(fontWeight: FontWeight.w800)), IconButton(onPressed: () => setState(() => month = DateTime(month.year, month.month + 1)), icon: const Icon(Icons.chevron_right_rounded)),
       ])),
       if (plan != null) plan.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => Column(children: [for (final sub in subjects.value ?? []) Builder(builder: (_) {
         final r = rows.where((x) => x['subject']?['id'] == sub['id']).firstOrNull;
-        return Panel(padding: const EdgeInsets.all(14), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        return Panel(padding: const EdgeInsets.all(14), child: CardRow(children: [
           SizedBox(width: 160, child: Text(sub['name'], style: const TextStyle(fontWeight: FontWeight.w800))),
           Expanded(child: r == null ? Text('Not set', style: TextStyle(color: cs.onSurfaceVariant)) : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(r['topics']), if (r['assessment'] != null) Text('Assessment: ${r['assessment']}', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant))])),
           TextButton(onPressed: () => _edit(context, sub, r), child: Text(r == null ? 'Add' : 'Edit')),
@@ -239,7 +251,7 @@ class _StaffStarScreenState extends ConsumerState<StaffStarScreen> {
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(DateFormat('MMM yyyy').format(DateTime.parse(r['month'])), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Brand.amber)), Text(r['student']?['full_name'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700))])),
       ]))]))),
       Panel(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Row(children: [
+      PickRow(children: [
         Expanded(child: PickField<String>(label: 'Section', value: sectionId, items: [for (final s in secs.value ?? []) DropdownMenuItem(value: s['id'] as String, child: Text(sectionLabel(s)))], onChanged: (v) => setState(() { sectionId = v; studentId = null; }))),
         const SizedBox(width: 12),
         IconButton(onPressed: () => setState(() => month = DateTime(month.year, month.month - 1)), icon: const Icon(Icons.chevron_left_rounded)), Text(DateFormat('MMMM yyyy').format(month), style: const TextStyle(fontWeight: FontWeight.w800)), IconButton(onPressed: () => setState(() => month = DateTime(month.year, month.month + 1)), icon: const Icon(Icons.chevron_right_rounded)),
@@ -343,7 +355,7 @@ class _StaffFeesScreenState extends ConsumerState<StaffFeesScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return StaffPage(title: 'Fees desk', subtitle: 'Every online payment lands here with its receipt number. Fee heads and plans are loaded from the accounts sheet.', body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      SegmentedButton<int>(segments: const [ButtonSegment(value: 0, label: Text('Student ledger')), ButtonSegment(value: 1, label: Text('Overdue')), ButtonSegment(value: 2, label: Text('Recent payments'))], selected: {tab}, onSelectionChanged: (v) => setState(() => tab = v.first)),
+      SegmentedButton<int>(showSelectedIcon: !isNarrow(context), segments: [ButtonSegment(value: 0, label: Text(isNarrow(context) ? 'Ledger' : 'Student ledger')), const ButtonSegment(value: 1, label: Text('Overdue')), ButtonSegment(value: 2, label: Text(isNarrow(context) ? 'Payments' : 'Recent payments'))], selected: {tab}, onSelectionChanged: (v) => setState(() => tab = v.first)),
       const SizedBox(height: 14),
       if (tab == 0) ...[
         Panel(padding: const EdgeInsets.all(12), child: TextField(onChanged: (v) => setState(() { q = v; studentId = null; }), decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: 'Search by name or admission number'))),
@@ -400,7 +412,7 @@ class _StaffStudentsScreenState extends ConsumerState<StaffStudentsScreen> {
     final cs = Theme.of(context).colorScheme;
     final canReset = s.isOffice || (secs.value ?? []).any((x) => x['id'] == sectionId && x['class_teacher_id'] == s.staff?['id']);
     return StaffPage(title: 'Students', subtitle: 'Section lists, family phones, password slips and sign-out-all.', body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Panel(padding: const EdgeInsets.all(12), child: Row(children: [
+      Panel(padding: const EdgeInsets.all(12), child: PickRow(children: [
         Expanded(child: PickField<String>(label: 'Section', value: sectionId, items: [for (final x in secs.value ?? []) DropdownMenuItem(value: x['id'] as String, child: Text(sectionLabel(x)))], onChanged: (v) => setState(() => sectionId = v))),
         if (s.isOffice) ...[const SizedBox(width: 12), Expanded(child: TextField(onChanged: (v) => setState(() => q = v), decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: 'Search any student')))],
       ])),
@@ -449,7 +461,7 @@ class StaffUsersScreen extends ConsumerWidget {
         try { final r = await callFunction(ref, 'password', {'action': 'reset_staff', 'staff_id': st['id']}); if (!context.mounted) return;
           showDialog(context: context, builder: (ctx) => AlertDialog(title: const Text('One-time password'), content: SelectableText('${st['full_name']}\n${st['email']}\n\nPassword: ${r['first_use_password']}\n\nThey must change it at first sign-in.', style: const TextStyle(fontFamily: 'monospace', height: 1.6)), actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done'))]));
         } catch (e) { if (context.mounted) toast(context, 'Failed: $e'); }
-      }, child: const Text('Reset password')),
+      }, child: Text(isNarrow(context) ? 'Reset' : 'Reset password')),
     )]))));
   }
 }
@@ -477,6 +489,8 @@ class _StaffMeScreenState extends ConsumerState<StaffMeScreen> {
           if (mounted) setState(() => busy = false);
         }),
       ])),
+      Panel(child: OutlinedButton.icon(onPressed: () async { await ref.read(sessionProvider.notifier).signOut(); if (context.mounted) context.go('/login'); },
+          icon: const Icon(Icons.logout_rounded, color: Brand.crimson), label: const Text('Sign out of this device', style: TextStyle(color: Brand.crimson, fontWeight: FontWeight.w800)))),
     ]));
   }
 }
