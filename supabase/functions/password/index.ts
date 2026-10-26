@@ -2,9 +2,9 @@
 //  { action:'change', student_id, new_password, current_password? }   (bearer: student token; current_password not needed right after OTP login or first sign-in)
 //  { action:'reset',  student_id, via:'print'|'sms' }                  (bearer: staff token with office/it_admin/class_teacher role)
 //  { action:'signout_all', student_id }                                (bearer: staff token as above, or the student's own token)
-//  { action:'crew_account', route_id, role:'driver'|'conductor', name, phone? }   (bearer: transport in-charge / office / IT / principal)
-//      creates or refreshes the bus crew login for that route: login ID dr<route no.> / co<route no.>, the common bus password
-//  { action:'crew_password', password }   (same people) → one common password for every driver and conductor (not case-sensitive)
+//  { action:'crew_account', route_id, role:'driver'|'conductor' (= bus assistant), name, phone? }   (bearer: transport in-charge / office / IT / principal)
+//      creates or refreshes the bus crew login for that route: login ID dr<route no.> / as<route no.>, the common bus password
+//  { action:'crew_password', password }   (same people) → one common password for every driver and bus assistant (not case-sensitive)
 //  { action:'view_as', student_id }   (bearer: IT admin / principal / vice principal) → a 2-hour READ-ONLY family token (the database refuses every change)
 import { admin, json, preflight, hashPassword, verifyPassword, firstUsePassword, audit, mintToken } from "../_shared/lib.ts";
 import { verify } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
@@ -84,12 +84,12 @@ Deno.serve(async (req) => {
       if (!canCrew) return json({ error: "Not allowed." }, 403);
       const role = body.role === "conductor" ? "conductor" : "driver";
       const name = String(body.name ?? "").trim();
-      if (!name) return json({ error: "Enter the driver's / conductor's name." }, 400);
+      if (!name) return json({ error: "Enter the driver's / bus assistant's name." }, 400);
       const { data: route } = await db.from("route").select("id, name, driver_staff_id, conductor_staff_id").eq("id", body.route_id).maybeSingle();
       if (!route) return json({ error: "Route not found." }, 404);
-      // login ID from the route number: Route 7 → dr7 (driver) / co7 (conductor)
+      // login ID from the route number: Route 7 → dr7 (driver) / as7 (bus assistant)
       const no = (String(route.name).match(/\d+/)?.[0]) ?? String(route.name).toLowerCase().replace(/[^a-z0-9]/g, "");
-      const username = `${role === "driver" ? "dr" : "co"}${no}`;
+      const username = `${role === "driver" ? "dr" : "as"}${no}`;
       const col = role === "driver" ? "driver_staff_id" : "conductor_staff_id";
       let staffId: string | null = (route as any)[col] ?? null;
       if (staffId) {
