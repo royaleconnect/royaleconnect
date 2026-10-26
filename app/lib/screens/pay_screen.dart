@@ -106,7 +106,7 @@ class _PayScreenState extends ConsumerState<PayScreen> {
           return Column(children: [
             Expanded(child: ListView(padding: const EdgeInsets.all(20), children: [
               if (f.overdue.isNotEmpty) ...[
-                const Eyebrow('Overdue · included', color: Brand.crimsonDeep), const SizedBox(height: 8),
+                Eyebrow('Overdue · included', color: context.tone(Brand.crimsonDeep)), const SizedBox(height: 8),
                 for (final r in f.overdue) _row(r, true, null, cs),
                 const SizedBox(height: 16),
               ],
@@ -122,7 +122,7 @@ class _PayScreenState extends ConsumerState<PayScreen> {
               padding: EdgeInsets.fromLTRB(20, 14, 20, 14 + MediaQuery.of(context).padding.bottom),
               decoration: BoxDecoration(color: cs.surface, border: Border(top: BorderSide(color: cs.outline))),
               child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                if (error != null) Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(error!, style: const TextStyle(color: Brand.crimsonDeep, fontWeight: FontWeight.w700, fontSize: 13))),
+                if (error != null) Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(error!, style: TextStyle(color: context.tone(Brand.crimsonDeep), fontWeight: FontWeight.w700, fontSize: 13))),
                 Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                   Text('${rows.length} item${rows.length == 1 ? '' : 's'}', style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w700)),
                   Text(inr(total), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
