@@ -21,19 +21,28 @@ import 'staff/staff_shell.dart';
 
 /// Makes go_router re-run `redirect` whenever the session changes.
 class _SessionListenable extends ChangeNotifier {
-  _SessionListenable(Ref ref) { ref.listen(sessionProvider, (_, __) => notifyListeners()); }
+  _SessionListenable(Ref ref) {
+    ref.listen(sessionProvider, (_, __) => notifyListeners());
+    ref.listen(splashDoneProvider, (_, __) => notifyListeners());
+    ref.listen(childPickedProvider, (_, __) => notifyListeners());
+  }
 }
 
 final routerProvider = Provider<GoRouter>((ref) {
   final refresh = _SessionListenable(ref);
   ref.onDispose(refresh.dispose);
+  String? pending;   // a link the app was opened with (e.g. the payment return page), kept through the splash
   return GoRouter(
     initialLocation: '/splash',
     refreshListenable: refresh,
     redirect: (context, state) {
       final s = ref.read(sessionProvider);
-      if (s.isLoading) return '/splash';
       final loc = state.matchedLocation;
+      if (s.isLoading || !ref.read(splashDoneProvider)) {
+        if (loc != '/splash' && loc != '/') pending ??= state.uri.toString();
+        return '/splash';
+      }
+      if (pending != null && loc == '/splash' && s.value != null && s.value!.kind == 'student' && (s.value!.students.length < 2 || ref.read(childPickedProvider))) { final p = pending; pending = null; return p; }
       final open = loc == '/splash' || loc.startsWith('/login') || loc == '/staff-login';
       final session = s.value;
       if (session == null) return open ? null : (loc.startsWith('/staff') ? '/staff-login' : '/login');   // not signed in
@@ -44,7 +53,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
       if (loc.startsWith('/staff')) return '/';                               // a family login never sees the panel
       if (session.mustChangePassword) return loc == '/set-password' ? null : '/set-password';
-      if (session.activeStudentId == null && session.students.length > 1) return loc == '/students' || loc == '/login/add' ? null : '/students';
+      if (session.students.length > 1 && (!ref.read(childPickedProvider) || session.activeStudentId == null)) return loc == '/students' || loc == '/login/add' ? null : '/students';
       if (open) return '/';                                           // signed in, leave the public pages
       return null;
     },
