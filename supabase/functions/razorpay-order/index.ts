@@ -10,6 +10,7 @@ Deno.serve(async (req) => {
   try {
     const c = await verifyToken(req);
     if (!c) return json({ error: "Please sign in again." }, 401);
+    if (c.view_only) return json({ error: "This is a read-only view — nothing can be paid from here." }, 403);
     if (!Deno.env.get("RAZORPAY_KEY_ID") || !Deno.env.get("RAZORPAY_KEY_SECRET")) {
       return json({ error: "Online payment is not switched on yet. Please pay at the school office." }, 503);
     }
