@@ -60,6 +60,11 @@ jobs:
           grep -c forceDarkAllowed android/app/src/main/res/values/styles.xml || true
           # app name under the phone icon
           sed -i 's/android:label="[^"]*"/android:label="Royale Connect"/' android/app/src/main/AndroidManifest.xml
+          # bus tracking: precise location, kept running with the screen off (a notification shows while a trip runs)
+          for p in INTERNET ACCESS_FINE_LOCATION ACCESS_COARSE_LOCATION FOREGROUND_SERVICE FOREGROUND_SERVICE_LOCATION WAKE_LOCK; do
+            grep -q "android.permission.$p\"" android/app/src/main/AndroidManifest.xml || sed -i "s#<application#<uses-permission android:name=\"android.permission.$p\"/>\n    <application#" android/app/src/main/AndroidManifest.xml
+          done
+          grep -c "uses-permission" android/app/src/main/AndroidManifest.xml
           # icons: ivory background, brighter and larger R (tools/make_icon.py), then generate every size
           python3 -c "import PIL" 2>/dev/null || python3 -m pip install --quiet --break-system-packages pillow || sudo apt-get install -y -qq python3-pil
           python3 tools/make_icon.py || echo "icon step skipped - keeping the old icons"
