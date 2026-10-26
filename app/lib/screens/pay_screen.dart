@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../auth/session.dart';
 import '../core/config.dart';
 import '../core/data.dart';
+import '../core/school_docs.dart' show openReceiptPdf;
 import '../core/theme.dart';
 import '../widgets/common.dart';
 
@@ -188,7 +189,7 @@ class ReceiptScreen extends ConsumerWidget {
               Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Reference', style: TextStyle(color: cs.onSurfaceVariant)), Text(m['gateway_payment_id'] ?? '—', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12))]),
             ])),
             const SizedBox(height: 14),
-            if (ok) OutlinedButton.icon(onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PDF receipts arrive with the next update.'))), icon: const Icon(Icons.download_rounded), label: const Text('Download PDF receipt')),
+            if (ok) OutlinedButton.icon(onPressed: () => openReceiptPdf(context, m['id'], receiptNo: m['receipt_no']), icon: const Icon(Icons.picture_as_pdf_rounded), label: const Text('Receipt PDF — download, share or print')),
             const SizedBox(height: 10),
             PrimaryButton('Back to fees', onPressed: () => context.go('/fees')),
           ]);
@@ -219,7 +220,7 @@ class ReceiptsScreen extends ConsumerWidget {
             title: Text(m['receipt_no'] ?? 'Pending', style: const TextStyle(fontWeight: FontWeight.w800)),
             subtitle: Text(m['paid_at'] == null ? m['status'] : DateFormat('d MMM yyyy').format(DateTime.parse(m['paid_at']).toLocal())),
             trailing: Text(inr(m['amount'] as num), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-            onTap: () => context.push('/receipt/${m['id']}'),
+            onTap: () { if (m['status'] == 'success') { openReceiptPdf(context, m['id'], receiptNo: m['receipt_no']); } else { context.push('/receipt/${m['id']}'); } },
           ));
         }))),
     ]));
