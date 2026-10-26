@@ -19,6 +19,7 @@ import 'shell.dart';
 import 'staff/staff_screens_1.dart';
 import 'staff/staff_screens_2.dart';
 import 'staff/staff_calendar.dart';
+import 'staff/staff_reports.dart';
 import 'staff/staff_shell.dart';
 
 /// Makes go_router re-run `redirect` whenever the session changes.
@@ -86,6 +87,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         GoRoute(path: '/staff/feedback', builder: (_, __) => const StaffFeedbackScreen()),
         GoRoute(path: '/staff/fees', builder: (_, __) => const StaffFeesScreen()),
         GoRoute(path: '/staff/calendar', builder: (_, __) => const StaffCalendarScreen()),
+        GoRoute(path: '/staff/reports', builder: (_, __) => const StaffReportsScreen()),
         GoRoute(path: '/staff/transport', builder: (_, __) => const StaffTransportScreen()),
         GoRoute(path: '/staff/students', builder: (_, __) => const StaffStudentsScreen()),
         GoRoute(path: '/staff/users', builder: (_, __) => const StaffUsersScreen()),
