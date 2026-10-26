@@ -261,7 +261,7 @@ class _FeeCard extends StatelessWidget {
       const SizedBox(height: 14), Divider(height: 1, color: cs.outline), const SizedBox(height: 12),
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
         Expanded(child: Text(od.isNotEmpty && next != null ? 'Next: ${next.title.split(' — ').first} · ${inr(next.amount)} due ${DateFormat('d MMM').format(DateTime.parse(next.dueOn))}' : 'Balance for the year ${inr(f.balance)}', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant))),
-        Text('${f.pct}% of year paid', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Brand.green)),
+        Text('${f.pct}% of year paid', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: context.tone(Brand.green))),
       ]),
     ])));
   }
@@ -292,7 +292,7 @@ class _NoticeRow extends StatelessWidget {
     return Material(color: cs.surface, borderRadius: BorderRadius.circular(16), child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(16), child: Padding(padding: const EdgeInsets.all(14), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Container(width: 8, height: 8, margin: const EdgeInsets.only(top: 6), decoration: BoxDecoration(color: n.read ? Colors.transparent : Brand.crimson, shape: BoxShape.circle)), const SizedBox(width: 12),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Eyebrow('${n.category.replaceAll('_', ' ')} · ${n.audience}', color: Brand.crimsonDeep),
+        Eyebrow('${n.category.replaceAll('_', ' ')} · ${n.audience}', color: context.tone(Brand.crimsonDeep)),
         Text(n.title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
         Text('${n.by} · ${DateFormat('d MMM, h:mm a').format(DateTime.parse(n.when).toLocal())}', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
       ])),
