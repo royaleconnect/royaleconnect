@@ -3,7 +3,7 @@
 // Push tokens come from device_session.push_token (one row per phone). Dead tokens are cleared.
 // Env: FCM_PROJECT_ID, FCM_SERVICE_ACCOUNT_JSON (Firebase service account; stored as a Supabase secret, never in the app)
 // deno-lint-ignore-file no-explicit-any
-import { admin, json } from "../_shared/lib.ts";
+import { admin, isScheduler, json } from "../_shared/lib.ts";
 import { create as jwtCreate, getNumericDate } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
 
 const IST = "Asia/Kolkata";
@@ -24,7 +24,7 @@ async function fcmAccessToken() {
 }
 
 Deno.serve(async (req) => {
-  if ((req.headers.get("authorization") ?? "") !== `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`) return json({ error: "forbidden" }, 403);
+  if (!(await isScheduler(req))) return json({ error: "forbidden" }, 403);
   const db = admin();
   const { data: qs } = await db.from("school_setting").select("key,value").in("key", ["quiet_hours_start", "quiet_hours_end"]);
   const get = (k: string, d: string) => qs?.find((x: any) => x.key === k)?.value ?? d;
