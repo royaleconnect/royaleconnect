@@ -10,6 +10,7 @@ import '../widgets/common.dart';
 import 'staff_data.dart';
 import 'staff_shell.dart';
 import 'staff_screens_2.dart' show pickAndUploadMany;
+import 'admin_dashboard.dart';
 
 String _d(DateTime d) => DateFormat('yyyy-MM-dd').format(d);
 String _dm(String? iso) => iso == null ? '' : DateFormat('d MMM').format(DateTime.parse(iso).toLocal());
@@ -86,6 +87,7 @@ class StaffOverviewScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(sessionProvider).value!;
+    if (isSchoolAdmin(s)) return const AdminDashboard();   // IT admin / principal / vice principal: whole-school dashboard
     final ov = ref.watch(staffOverviewProvider);
     final secs = ref.watch(mySectionsProvider);
     final cs = Theme.of(context).colorScheme;
