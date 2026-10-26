@@ -78,22 +78,30 @@ class StaffShell extends ConsumerWidget {
       return Scaffold(
         appBar: AppBar(backgroundColor: Brand.crimsonDeep, foregroundColor: Colors.white, elevation: 0,
           title: Text(menu.firstWhere((m) => loc == m.path || (m.path != '/staff' && loc.startsWith(m.path)), orElse: () => menu.first).label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
-          actions: [IconButton(onPressed: () => _more(context, menu, loc, badge), icon: const Icon(Icons.menu_rounded))]),
+          actions: [IconButton(onPressed: () => _more(context, ref, s, menu, loc, badge), icon: const Icon(Icons.menu_rounded), tooltip: 'Menu')]),
         body: content,
         bottomNavigationBar: NavigationBar(
           selectedIndex: quick.indexWhere((m) => loc == m.path || (m.path != '/staff' && loc.startsWith(m.path))).clamp(0, quick.length - 1),
           onDestinationSelected: (i) => context.go(quick[i].path),
-          destinations: [for (final m in quick) NavigationDestination(icon: badge(m.path) > 0 ? Badge(label: Text('${badge(m.path)}'), child: Icon(m.icon)) : Icon(m.icon), label: m.label.split(' ').first)],
+          destinations: [for (final m in quick) NavigationDestination(icon: badge(m.path) > 0 ? Badge(label: Text('${badge(m.path)}'), child: Icon(m.icon)) : Icon(m.icon), label: const {'Announcements': 'Notices', 'Class diary': 'Diary', 'Leave requests': 'Leave', 'Exams & portions': 'Exams', 'Marks entry': 'Marks'}[m.label] ?? m.label.split(' ').first)],
         ),
       );
     });
   }
 
-  void _more(BuildContext context, List<StaffItem> menu, String loc, int Function(String) badge) => showModalBottomSheet(context: context, showDragHandle: true, builder: (_) => ListView(padding: const EdgeInsets.fromLTRB(12, 0, 12, 24), shrinkWrap: true, children: [
-    for (final m in menu) ListTile(leading: Icon(m.icon, color: Brand.crimsonDeep), title: Text(m.label, style: const TextStyle(fontWeight: FontWeight.w700)),
-      trailing: badge(m.path) > 0 ? CircleAvatar(radius: 11, backgroundColor: Brand.crimson, child: Text('${badge(m.path)}', style: const TextStyle(color: Colors.white, fontSize: 11))) : null,
-      selected: loc == m.path, onTap: () { Navigator.pop(context); context.go(m.path); }),
-  ]));
+  void _more(BuildContext context, WidgetRef ref, Session s, List<StaffItem> menu, String loc, int Function(String) badge) => showModalBottomSheet(context: context, showDragHandle: true, isScrollControlled: true, builder: (sheet) => ConstrainedBox(
+    constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .85),
+    child: ListView(padding: const EdgeInsets.fromLTRB(12, 0, 12, 24), shrinkWrap: true, children: [
+      for (final m in menu) ListTile(leading: Icon(m.icon, color: Brand.crimson), title: Text(m.label, style: const TextStyle(fontWeight: FontWeight.w700)),
+        trailing: badge(m.path) > 0 ? CircleAvatar(radius: 11, backgroundColor: Brand.crimson, child: Text('${badge(m.path)}', style: const TextStyle(color: Colors.white, fontSize: 11))) : null,
+        selected: loc == m.path, onTap: () { Navigator.pop(sheet); context.go(m.path); }),
+      const Divider(height: 24),
+      ListTile(leading: Avatar((s.staff?['name'] ?? '').toString().trim().split(RegExp(r'\s+')).take(2).map((w) => w.isEmpty ? '' : w[0]).join().toUpperCase(), size: 36),
+        title: Text('${s.staff?['name'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text(s.roles.map(roleLabel).join(' · '))),
+      ListTile(leading: const Icon(Icons.settings_outlined), title: const Text('My settings & password', style: TextStyle(fontWeight: FontWeight.w700)), onTap: () { Navigator.pop(sheet); context.push('/staff/me'); }),
+      ListTile(leading: const Icon(Icons.logout_rounded, color: Brand.crimson), title: const Text('Sign out', style: TextStyle(fontWeight: FontWeight.w800, color: Brand.crimson)),
+        onTap: () async { Navigator.pop(sheet); await ref.read(sessionProvider.notifier).signOut(); if (context.mounted) context.go('/login'); }),
+    ])));
 }
 
 class _NavTile extends StatelessWidget {
@@ -137,14 +145,16 @@ class StaffPage extends StatelessWidget {
     return LayoutBuilder(builder: (_, c) {
       final full = c.maxWidth.isFinite ? c.maxWidth : MediaQuery.sizeOf(context).width;
       final w = full < 1100 ? full : 1100.0;
-      final header = Padding(padding: const EdgeInsets.fromLTRB(24, 22, 24, 12), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: t.headlineSmall?.copyWith(fontSize: 24)),
-          if (subtitle != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(subtitle!, style: TextStyle(color: cs.onSurfaceVariant))),
-        ])),
-        for (final a in actions) Padding(padding: const EdgeInsets.only(left: 8), child: a),
-      ]));
-      final column = Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [header, Padding(padding: const EdgeInsets.fromLTRB(24, 0, 24, 32), child: body)]);
+      final narrow = full < 700;
+      final pad = narrow ? 16.0 : 24.0;
+      final titles = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(title, style: t.headlineSmall?.copyWith(fontSize: narrow ? 21 : 24)),
+        if (subtitle != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(subtitle!, style: TextStyle(color: cs.onSurfaceVariant, fontSize: narrow ? 13 : 14))),
+      ]);
+      final header = Padding(padding: EdgeInsets.fromLTRB(pad, narrow ? 16 : 22, pad, 12), child: narrow
+          ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [titles, for (final a in actions) Padding(padding: const EdgeInsets.only(top: 12), child: a)])
+          : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: titles), for (final a in actions) Padding(padding: const EdgeInsets.only(left: 8), child: a)]));
+      final column = Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [header, Padding(padding: EdgeInsets.fromLTRB(pad, 0, pad, 32), child: body)]);
       if (scroll) {
         return SingleChildScrollView(child: Align(alignment: Alignment.topLeft, child: SizedBox(width: w, child: column)));
       }
@@ -162,7 +172,9 @@ class Panel extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(margin: const EdgeInsets.only(bottom: 14), padding: padding, clipBehavior: Clip.antiAlias, decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: .6))),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: fill ? MainAxisSize.max : MainAxisSize.min, children: [
-        if (title != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Row(children: [Expanded(child: Text(title!, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))), if (trailing != null) trailing!])),
+        if (title != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: isNarrow(context) && trailing != null
+            ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title!, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)), const SizedBox(height: 6), trailing!])
+            : Row(children: [Expanded(child: Text(title!, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))), if (trailing != null) trailing!])),
         if (fill) Expanded(child: child) else child,
       ]));
 }
@@ -175,6 +187,48 @@ class PickField<T> extends StatelessWidget {
   Widget build(BuildContext context) => DropdownButtonFormField<T>(value: value, items: items, onChanged: onChanged, decoration: InputDecoration(labelText: label), isExpanded: true);
 }
 
+/// Phones and small tablets: stack things vertically instead of squeezing them into one row.
+bool isNarrow(BuildContext context) => MediaQuery.sizeOf(context).width < 700;
+
+bool _isSpacer(Widget w) => w is SizedBox && w.child == null;
+
+/// A card row: [lead] (pill/icon), the Expanded body, then actions.
+/// Wide: one row. Narrow: lead on top, body full width, actions underneath on the right.
+class CardRow extends StatelessWidget {
+  final List<Widget> children;
+  const CardRow({super.key, required this.children});
+  @override
+  Widget build(BuildContext context) {
+    if (!isNarrow(context)) return Row(crossAxisAlignment: CrossAxisAlignment.start, children: children);
+    final i = children.indexWhere((w) => w is Expanded);
+    final lead = children.take(i < 0 ? 0 : i).where((w) => !_isSpacer(w)).toList();
+    final body = i < 0 ? null : (children[i] as Expanded).child;
+    final actions = children.skip(i + 1).where((w) => !_isSpacer(w)).toList();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+      if (lead.isNotEmpty) Align(alignment: Alignment.centerLeft, child: Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: lead)),
+      if (lead.isNotEmpty && body != null) const SizedBox(height: 8),
+      if (body != null) body,
+      if (actions.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Wrap(alignment: WrapAlignment.end, spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: actions)),
+    ]);
+  }
+}
+
+/// A filter bar (pickers, date buttons, month arrows). Wide: one row. Narrow: each field full width, small controls on one line.
+class PickRow extends StatelessWidget {
+  final List<Widget> children;
+  const PickRow({super.key, required this.children});
+  @override
+  Widget build(BuildContext context) {
+    if (!isNarrow(context)) return Row(children: children);
+    final fields = [for (final w in children) if (w is Expanded) w.child];
+    final small = [for (final w in children) if (w is! Expanded && !_isSpacer(w)) w];
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+      for (final (i, f) in fields.indexed) Padding(padding: EdgeInsets.only(top: i == 0 ? 0 : 10), child: f),
+      if (small.isNotEmpty) Padding(padding: EdgeInsets.only(top: fields.isEmpty ? 0 : 8), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: small)),
+    ]);
+  }
+}
+
 String sectionLabel(Map<String, dynamic> sec) => '${sec['grade']?['code'] ?? ''}-${sec['name'] ?? ''}';
 
-void toast(BuildContext context, String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating, width: 420));
+void toast(BuildContext context, String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating, width: isNarrow(context) ? null : 420));
