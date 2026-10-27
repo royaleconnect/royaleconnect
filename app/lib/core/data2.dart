@@ -284,7 +284,7 @@ List<Map<String, dynamic>> travelOrder(List<Map<String, dynamic>> stops, bool mo
 /// Road distance and minutes from the bus to a stop, going through the stops in between.
 /// Roads are ~35% longer than a straight line; city school-bus speed ~18 km/h including stops.
 (double metres, int minutes) etaTo(double busLat, double busLng, List<Map<String, dynamic>> order, int fromIdx, int toIdx) {
-  if (fromIdx < 0 || toIdx < fromIdx || toIdx >= order.length) return (0, 0);
+  if (fromIdx < 0 || toIdx < fromIdx || toIdx >= order.length) return (0.0, 0);
   var m = metresBetween(busLat, busLng, (order[fromIdx]['lat'] as num).toDouble(), (order[fromIdx]['lng'] as num).toDouble());
   for (var i = fromIdx; i < toIdx; i++) {
     m += metresBetween((order[i]['lat'] as num).toDouble(), (order[i]['lng'] as num).toDouble(), (order[i + 1]['lat'] as num).toDouble(), (order[i + 1]['lng'] as num).toDouble());
