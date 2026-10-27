@@ -31,6 +31,7 @@ const staffMenu = [
   StaffItem('/staff/fees', 'Fees desk', Icons.account_balance_wallet_rounded, roles: ['accounts', 'office', 'it_admin', 'principal', 'vice_principal']),
   StaffItem('/staff/transport', 'Transport', Icons.directions_bus_rounded, roles: ['transport_incharge', 'office', 'it_admin', 'principal', 'vice_principal']),
   StaffItem('/staff/students', 'Students', Icons.people_alt_rounded),
+  StaffItem('/staff/setup', 'School setup', Icons.tune_rounded, roles: ['office', 'accounts', 'transport_incharge', 'it_admin', 'principal', 'vice_principal']),
   StaffItem('/staff/users', 'Staff & settings', Icons.admin_panel_settings_rounded, roles: ['it_admin', 'principal']),
 ];
 
