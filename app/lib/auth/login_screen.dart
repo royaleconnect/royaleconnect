@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../core/config.dart';
 import '../core/theme.dart';
+import '../widgets/auth_layout.dart';
 import '../widgets/common.dart';
 import 'session.dart';
 
@@ -112,48 +113,46 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final t = Theme.of(context).textTheme;
-    return Scaffold(
-      body: Column(children: [
-        BrandHeader(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)), child: Image.asset('assets/images/monogram.png', width: 28)),
-            const Spacer(),
-            if (widget.addSibling) IconButton(onPressed: () => context.pop(), icon: const Icon(Icons.close_rounded, color: Colors.white)),
-          ]),
-          const SizedBox(height: 18),
-          Text(widget.addSibling ? 'Add a sibling' : 'Welcome back', style: t.headlineMedium?.copyWith(color: Colors.white, fontSize: 30)),
-          const SizedBox(height: 6),
-          Text(widget.addSibling ? "Enter your other child's admission number and password once." : 'Sign in once on this phone. You stay signed in until you choose to sign out.',
-              style: TextStyle(color: Colors.white.withValues(alpha: .92), fontSize: 15, height: 1.4)),
-        ])),
-        Expanded(child: ListView(padding: const EdgeInsets.fromLTRB(20, 24, 20, 32), children: [
-          ...[
-            TextField(controller: adm, textCapitalization: TextCapitalization.characters, autofillHints: const [AutofillHints.username],
-                decoration: const InputDecoration(labelText: 'Admission number', hintText: 'e.g. LK/10/2014')),
-            const SizedBox(height: 6),
-            Text('As on the ID card. One per student; add brothers or sisters after signing in.', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-            const SizedBox(height: 16),
-            TextField(controller: pw, obscureText: !showPw, autofillHints: const [AutofillHints.password],
-                decoration: InputDecoration(labelText: 'Password', suffixIcon: IconButton(icon: Icon(showPw ? Icons.visibility_off_outlined : Icons.visibility_outlined), onPressed: () => setState(() => showPw = !showPw)))),
-            const SizedBox(height: 20),
-            if (error != null) _err(error!),
-            PrimaryButton(widget.addSibling ? 'Add to this phone' : 'Sign in', busy: busy,
-                onPressed: () => _run(() async {
-                  await ref.read(sessionProvider.notifier).loginWithPassword(adm.text, pw.text, linkToExisting: widget.addSibling);
-                  if (mounted) context.go(widget.addSibling ? '/students' : '/');
-                })),
-            if (!widget.addSibling) ...[
-              const SizedBox(height: 12),
-              Text('Forgot the password? The class teacher or the school office will give you a new password slip.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-            ],
-          ],
-          const SizedBox(height: 22),
-          const NoteBox('Same login for the student and the parents — the same admission number and password work on every phone in the family. Brothers and sisters each have their own; add them once and switch between them from Home.'),
-          if (!widget.addSibling) Padding(padding: const EdgeInsets.only(top: 12), child: Center(child: TextButton.icon(onPressed: () => context.go('/staff-login'), icon: const Icon(Icons.badge_outlined, size: 18), label: const Text('School staff? Sign in here')))),
-        ])),
-      ]),
+    return AuthLayout(
+      title: widget.addSibling ? 'Add a sibling' : 'Welcome back',
+      subtitle: widget.addSibling ? "Enter your other child's admission number and password once." : 'Sign in once and stay signed in until you choose to sign out.',
+      topAction: widget.addSibling ? IconButton(onPressed: () => context.pop(), icon: const Icon(Icons.close_rounded, color: Colors.white), tooltip: 'Close') : null,
+      formTitle: widget.addSibling ? 'Brother or sister' : 'Parent & student sign-in',
+      formSubtitle: 'Use the admission number and password from the school.',
+      children: [
+        TextField(controller: adm, textCapitalization: TextCapitalization.characters, autofillHints: const [AutofillHints.username],
+            decoration: const InputDecoration(labelText: 'Admission number', hintText: 'e.g. LK/10/2014')),
+        const SizedBox(height: 6),
+        Text('As on the ID card. One per student; add brothers or sisters after signing in.', style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant)),
+        const SizedBox(height: 16),
+        TextField(controller: pw, obscureText: !showPw, autofillHints: const [AutofillHints.password], onSubmitted: (_) => _signIn(),
+            decoration: InputDecoration(labelText: 'Password', suffixIcon: IconButton(icon: Icon(showPw ? Icons.visibility_off_outlined : Icons.visibility_outlined), onPressed: () => setState(() => showPw = !showPw)))),
+        const SizedBox(height: 20),
+        if (error != null) _err(error!),
+        PrimaryButton(widget.addSibling ? 'Add to this phone' : 'Sign in', busy: busy, onPressed: _signIn),
+        if (!widget.addSibling) ...[
+          const SizedBox(height: 12),
+          Text('Forgot the password? The class teacher or the school office will give you a new password slip.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+          // big and easy to spot for teachers
+          Padding(padding: const EdgeInsets.only(top: 14), child: Center(child: TextButton.icon(
+            onPressed: () => context.go('/staff-login'),
+            style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14), minimumSize: const Size(0, 52)),
+            icon: const Icon(Icons.badge_outlined, size: 26),
+            label: const Text('School staff? Sign in here', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          ))),
+        ],
+        const SizedBox(height: 16),
+        const NoteBox('Same login for the student and the parents — the same admission number and password work on every phone in the family. Brothers and sisters each have their own; add them once and switch between them from Home.'),
+      ],
     );
+  }
+
+  void _signIn() {
+    if (busy) return;
+    _run(() async {
+      await ref.read(sessionProvider.notifier).loginWithPassword(adm.text, pw.text, linkToExisting: widget.addSibling);
+      if (mounted) context.go(widget.addSibling ? '/students' : '/');
+    });
   }
 
   Widget _err(String m) => Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -172,16 +171,12 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
   bool busy = false; String? error;
   @override
   Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    return Scaffold(body: Column(children: [
-      BrandHeader(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Eyebrow('First sign-in', color: Colors.white),
-        const SizedBox(height: 6),
-        Text('Set your own password', style: t.headlineMedium?.copyWith(color: Colors.white)),
-        const SizedBox(height: 6),
-        Text('The password sent by the school was for first use only. Choose one only your family knows.', style: TextStyle(color: Colors.white.withValues(alpha: .92), height: 1.4)),
-      ])),
-      Expanded(child: ListView(padding: const EdgeInsets.fromLTRB(20, 24, 20, 32), children: [
+    return AuthLayout(
+      eyebrow: 'First sign-in',
+      title: 'Set your own password',
+      subtitle: 'The password sent by the school was for first use only. Choose one only your family knows.',
+      formTitle: 'New password',
+      children: [
         TextField(controller: a, obscureText: true, decoration: const InputDecoration(labelText: 'New password', hintText: 'At least 8 characters')),
         const SizedBox(height: 16),
         TextField(controller: b, obscureText: true, decoration: const InputDecoration(labelText: 'Repeat new password')),
@@ -195,7 +190,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
           on AuthError catch (e) { setState(() => error = e.message); } catch (e) { setState(() => error = 'Could not complete: $e'); }
           if (mounted) setState(() => busy = false);
         }),
-      ])),
-    ]));
+      ],
+    );
   }
 }
