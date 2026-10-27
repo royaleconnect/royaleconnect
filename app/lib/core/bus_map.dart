@@ -109,7 +109,7 @@ class _BusMapState extends State<BusMap> with SingleTickerProviderStateMixin {
             tileBuilder: dark ? darkModeTileBuilder : null,
           ),
           PolylineLayer(polylines: [
-            if (ahead.length > 1) Polyline(points: ahead, color: const Color(0xFF6E6E6E), strokeWidth: 4, pattern: const StrokePattern.dashed(segments: [14, 10])),
+            if (ahead.length > 1) Polyline(points: ahead, color: const Color(0xFF6E6E6E), strokeWidth: 4, pattern: StrokePattern.dashed(segments: const [14, 10])),
             if (trail.length > 1) Polyline(points: trail, color: Brand.crimson, strokeWidth: 6, borderColor: Colors.white, borderStrokeWidth: 1.5),
           ]),
           MarkerLayer(markers: [
