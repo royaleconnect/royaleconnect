@@ -16,7 +16,7 @@ class ParentFrame extends ConsumerWidget {
   static const _groups = <(String, List<(String, String, IconData)>)>[
     ('DAILY', [('/', 'Home', Icons.home_rounded), ('/diary', 'Class diary', Icons.menu_book_rounded), ('/announcements', 'Announcements', Icons.campaign_rounded), ('/messages', 'Messages', Icons.chat_bubble_rounded)]),
     ('STUDIES', [('/calendar', 'Calendar', Icons.calendar_month_rounded), ('/timetable', 'Timetable', Icons.grid_view_rounded), ('/exams', 'Exams & portions', Icons.fact_check_rounded), ('/plan', 'Monthly plan', Icons.format_list_bulleted_rounded), ('/worksheets', 'Worksheets', Icons.task_rounded), ('/reports', 'Report cards', Icons.school_rounded)]),
-    ('SCHOOL', [('/fees', 'Fees & receipts', Icons.account_balance_wallet_rounded), ('/bus', 'Bus', Icons.directions_bus_rounded), ('/gallery', 'Moments & albums', Icons.photo_library_rounded), ('/star', 'Star of the month', Icons.star_rounded), ('/leave', 'Leave', Icons.event_available_rounded), ('/feedback', 'Feedback', Icons.rate_review_rounded)]),
+    ('SCHOOL', [('/fees', 'Fees & receipts', Icons.account_balance_wallet_rounded), ('/bus', 'Bus', Icons.directions_bus_rounded), ('/gallery', 'Moments & albums', Icons.photo_library_rounded), ('/star', 'Star of the month', Icons.star_rounded), ('/leave', 'Leave', Icons.event_available_rounded), ('/feedback', 'Feedback', Icons.rate_review_rounded), ('/help', 'Help', Icons.help_outline_rounded)]),
   ];
 
   @override
