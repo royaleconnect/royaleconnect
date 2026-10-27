@@ -404,7 +404,7 @@ class StaffTransportScreen extends ConsumerWidget {
       routes.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => Column(children: [for (final r in rows) Panel(title: '${r['name']} · ${r['bus_reg_no']}', trailing: Pill(r['active'] == true ? 'Active' : 'Inactive', fg: r['active'] == true ? Brand.green : Brand.muted, bg: r['active'] == true ? Brand.greenTint : Brand.surface2), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Wrap(spacing: 16, runSpacing: 6, children: [
           Text('Driver: ${r['driver']?['display_name'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w700)), if (r['driver']?['phone'] != null) InkWell(onTap: () => callNumber(r['driver']['phone']), child: Text(r['driver']['phone'], style: const TextStyle(color: Brand.blue))),
-          Text('Conductor: ${r['conductor']?['display_name'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w700)), if (r['conductor']?['phone'] != null) InkWell(onTap: () => callNumber(r['conductor']['phone']), child: Text(r['conductor']['phone'], style: const TextStyle(color: Brand.blue))),
+          Text('Bus assistant: ${r['conductor']?['display_name'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w700)), if (r['conductor']?['phone'] != null) InkWell(onTap: () => callNumber(r['conductor']['phone']), child: Text(r['conductor']['phone'], style: const TextStyle(color: Brand.blue))),
           Text('${(r['transport_enrolment'] as List).length} students', style: TextStyle(color: cs.onSurfaceVariant)),
           Text('Morning ${(r['morning_start'] ?? '').toString().padRight(5).substring(0, 5)} · Afternoon ${(r['afternoon_start'] ?? '').toString().padRight(5).substring(0, 5)}', style: TextStyle(color: cs.onSurfaceVariant)),
         ]),
@@ -419,7 +419,7 @@ class StaffTransportScreen extends ConsumerWidget {
           ),
         ]),
       ]))])),
-      const NoteBox('Adding or editing routes, stops and crew is done by the import tool for now (the sheet from the transport office). Live editing screens come with the next update.'),
+      const NoteBox('To add a route, place stops on the map or put students on a bus, open School setup → Bus routes.'),
     ]));
   }
 }
