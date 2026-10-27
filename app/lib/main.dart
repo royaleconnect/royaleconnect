@@ -56,7 +56,7 @@ class _RoyaleConnectAppState extends ConsumerState<RoyaleConnectApp> {
           final sess = ref.watch(sessionProvider).value;
           final loc = ref.read(routerProvider).routerDelegate.currentConfiguration.uri.path;
           final family = sess != null && sess.kind == 'student' && !sess.mustChangePassword && sess.active != null && ref.watch(splashDoneProvider) && (sess.students.length == 1 || (sess.activeStudentId != null && ref.watch(childPickedProvider)));
-          if (isStaff || c.maxWidth <= 600 || loc == '/splash') return child!;      // the opening screen fills any screen
+          if (isStaff || c.maxWidth <= 600 || loc == '/splash' || _authPages.contains(loc)) return child!;      // opening screen and sign-in pages fill any screen
           if (family && c.maxWidth >= 960) return ParentFrame(child: child!);
           final dark = Theme.of(context).brightness == Brightness.dark;
           return DecoratedBox(
@@ -67,6 +67,9 @@ class _RoyaleConnectAppState extends ConsumerState<RoyaleConnectApp> {
       );
   }
 }
+
+/// Sign-in pages draw their own full-screen layout on tablets and laptops (widgets/auth_layout.dart).
+const _authPages = {'/login', '/login/add', '/staff-login', '/set-password', '/staff/set-password'};
 
 /// While an admin uses "View as family", a gold bar on top says so, with the way back.
 class _ViewAsBanner extends ConsumerWidget {
