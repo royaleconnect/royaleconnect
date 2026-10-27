@@ -5,6 +5,7 @@ import '../auth/session.dart';
 import '../core/config.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
+import '../screens/help_screen.dart' show HelpFab;
 import 'staff_data.dart';
 
 /// One menu entry: route, label, icon, and which roles see it (empty = everyone).
@@ -33,6 +34,7 @@ const staffMenu = [
   StaffItem('/staff/students', 'Students', Icons.people_alt_rounded),
   StaffItem('/staff/setup', 'School setup', Icons.tune_rounded, roles: ['office', 'accounts', 'transport_incharge', 'it_admin', 'principal', 'vice_principal']),
   StaffItem('/staff/users', 'Staff & settings', Icons.admin_panel_settings_rounded, roles: ['it_admin', 'principal']),
+  StaffItem('/staff/help', 'Help', Icons.help_outline_rounded),
 ];
 
 List<StaffItem> visibleMenu(Session s) => staffMenu.where((m) => (m.roles.isEmpty || m.roles.any(s.hasRole)) && (!m.officeOnly || s.isOffice)).toList();
@@ -58,6 +60,8 @@ class StaffShell extends ConsumerWidget {
     );
     final content = Theme(data: panelTheme, child: child);
 
+    // Help: bottom right of the Overview page
+    final help = loc == '/staff' ? HelpFab(onTap: () => context.go('/staff/help')) : null;
     return LayoutBuilder(builder: (_, c) {
       final wide = c.maxWidth >= 960;
       if (wide) {
@@ -74,7 +78,7 @@ class StaffShell extends ConsumerWidget {
             _MeTile(s, onSignOut: () async { await ref.read(sessionProvider.notifier).signOut(); if (context.mounted) context.go('/login'); }),
           ]))),
           Expanded(child: ColoredBox(color: cs.surfaceContainerHighest.withValues(alpha: .35), child: content)),
-        ]));
+        ]), floatingActionButton: help);
       }
       // phone / tablet
       final quick = menu.take(4).toList();
@@ -83,6 +87,7 @@ class StaffShell extends ConsumerWidget {
           title: Text(menu.firstWhere((m) => loc == m.path || (m.path != '/staff' && loc.startsWith(m.path)), orElse: () => menu.first).label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
           actions: [IconButton(onPressed: () => _more(context, ref, s, menu, loc, badge), icon: const Icon(Icons.menu_rounded), tooltip: 'Menu')]),
         body: content,
+        floatingActionButton: help,
         bottomNavigationBar: NavigationBar(
           selectedIndex: quick.indexWhere((m) => loc == m.path || (m.path != '/staff' && loc.startsWith(m.path))).clamp(0, quick.length - 1),
           onDestinationSelected: (i) => context.go(quick[i].path),
