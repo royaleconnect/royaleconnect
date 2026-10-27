@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'core/data.dart';
+import 'screens/help_screen.dart' show HelpFab;
 
 /// Bottom navigation. The Bus tab appears only for students with a transport enrolment.
 class AppShell extends ConsumerWidget {
@@ -24,6 +25,8 @@ class AppShell extends ConsumerWidget {
     final selected = visible.indexOf(shell.currentIndex).clamp(0, visible.length - 1);
     return Scaffold(
       body: shell,
+      // Help: bottom right of Home, on phones and on the website
+      floatingActionButton: shell.currentIndex == 0 ? HelpFab(onTap: () => context.push('/help')) : null,
       // On a laptop the side menu (parent_layout.dart) replaces the bottom tabs.
       bottomNavigationBar: MediaQuery.sizeOf(context).width >= 960 ? null : NavigationBar(
         selectedIndex: selected,
