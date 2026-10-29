@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
 
     const db = admin();
     const { data: year } = await db.from("academic_year").select("id,label").eq("is_current", true).single();
-    const { data: ledger } = await db.from("fee_ledger").select("*").eq("student_id", student_id).eq("academic_year_id", year.id);
+    const { data: ledger } = await db.from("fee_ledger").select("*").eq("student_id", student_id).or(`academic_year_id.eq.${year.id},status.eq.pending`);   // this year + anything still unpaid (e.g. next year's fees from 1 March)
     const { data: rule } = await db.from("late_fee_rule").select("*").eq("academic_year_id", year.id).maybeSingle();
     const fees = computeFees(ledger ?? [], rule ?? {}, new Date());
     const sel = buildSelection(fees, fee_ledger_ids);           // adds overdue items + riding late fees; no partial amounts

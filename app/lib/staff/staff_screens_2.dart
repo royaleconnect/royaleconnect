@@ -393,12 +393,13 @@ class _StaffFeesScreenState extends ConsumerState<StaffFeesScreen> {
 
 // ---------------------------------------------------------------- transport
 class StaffTransportScreen extends ConsumerWidget {
-  const StaffTransportScreen({super.key});
+  final bool bodyOnly;
+  const StaffTransportScreen({super.key, this.bodyOnly = false});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final routes = ref.watch(routesProvider); final trips = ref.watch(runningTripsProvider);
     final cs = Theme.of(context).colorScheme;
-    return StaffPage(title: 'Transport', subtitle: 'Routes, crew and live trips. Drivers and bus assistants sign in with the login ID and password made here.', body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    final body = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       const _CrewPasswordPanel(),
       Panel(title: 'Live now', child: trips.when(loading: () => const SizedBox(), error: (e, _) => _err(e), data: (list) => list.isEmpty ? Text('No trips running.', style: TextStyle(color: cs.onSurfaceVariant)) : Wrap(spacing: 10, runSpacing: 10, children: [for (final t in list) Chip(avatar: const Icon(Icons.gps_fixed_rounded, color: Brand.green, size: 16), label: Text('${t['route']?['name']} · ${t['kind']} · since ${_dmt(t['started_at'])}${t['last_fix_at'] != null ? ' · GPS ${DateFormat('h:mm:ss').format(DateTime.parse(t['last_fix_at']).toLocal())}' : ''}'), backgroundColor: Brand.greenTint, side: BorderSide.none)]))),
       routes.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => Column(children: [for (final r in rows) Panel(title: '${r['name']} · ${r['bus_reg_no']}', trailing: Pill(r['active'] == true ? 'Active' : 'Inactive', fg: r['active'] == true ? Brand.green : Brand.muted, bg: r['active'] == true ? Brand.greenTint : Brand.surface2), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -419,8 +420,9 @@ class StaffTransportScreen extends ConsumerWidget {
           ),
         ]),
       ]))])),
-      const NoteBox('To add a route, place stops on the map or put students on a bus, open School setup → Bus routes.'),
-    ]));
+      const NoteBox('To add a route, place stops on the map or put students on a bus, choose “Routes, stops & students” at the top.'),
+    ]);
+    return bodyOnly ? body : StaffPage(title: 'Transport', subtitle: 'Routes, crew and live trips. Drivers and bus assistants sign in with the login ID and password made here.', body: body);
   }
 }
 

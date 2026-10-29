@@ -13,9 +13,13 @@ final enrolmentProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref
   final s = ref.watch(sessionProvider).value?.active;
   if (s == null) return null;
   return await db.from('enrolment')
-      .select('roll_no,section:section_id(id,name,class_teacher:class_teacher_id(display_name,phone),grade:grade_id(id,code,name,division)),academic_year!inner(is_current,label)')
-      .eq('student_id', s.id).eq('academic_year.is_current', true).maybeSingle();
+      .select('roll_no,is_current,section:section_id(id,name,status,placeholder,class_teacher:class_teacher_id(display_name,phone),grade:grade_id(id,code,name,division)),academic_year:academic_year_id(id,label)')
+      .eq('student_id', s.id).eq('is_current', true).maybeSingle();
 });
+
+/// The section name to show, or null while it is still to be announced (new year, not published yet).
+String? shownSection(Map<String, dynamic>? sec) =>
+    sec == null || sec['placeholder'] == true || sec['status'] == 'planned' || sec['status'] == 'ready' ? null : sec['name'] as String?;
 
 /// Full profile (no Aadhaar / APAAR / PEN — those columns are never selected).
 final profileProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
@@ -138,14 +142,19 @@ bool isWorkingSaturday(DateTime d, String? grade) =>
 String saturdayOrdinal(DateTime d) => const ['1st', '2nd', '3rd', '4th', '5th'][(d.day - 1) ~/ 7];
 
 final calendarProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final data = await db.from('calendar_event').select('title,starts_on,ends_on,kind,grades,note,academic_year!inner(is_current)').eq('academic_year.is_current', true).order('starts_on', ascending: true);
+  // this year and next year together (from 1 March some classes are already in the new year)
+  final from = DateTime.now().subtract(const Duration(days: 300)).toIso8601String().substring(0, 10);
+  final data = await db.from('calendar_event').select('title,starts_on,ends_on,kind,grades,note').gte('starts_on', from).order('starts_on', ascending: true);
   return List<Map<String, dynamic>>.from(data);
 });
 
 final reportCardsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final s = ref.watch(sessionProvider).value?.active;
   if (s == null) return [];
-  final data = await db.from('report_card').select('id,term,working_days,days_present,remarks,published_at,academic_year:academic_year_id(label)').eq('student_id', s.id).eq('status', 'published').order('published_at', ascending: false);
+  // the earlier admission too (e.g. Grade 10 before re-admission in Grade 11) — one history
+  final me = await db.from('student').select('previous_student_id').eq('id', s.id).maybeSingle();
+  final ids = [s.id, if (me?['previous_student_id'] != null) me!['previous_student_id'] as String];
+  final data = await db.from('report_card').select('id,term,working_days,days_present,remarks,published_at,academic_year:academic_year_id(label)').inFilter('student_id', ids).eq('status', 'published').order('published_at', ascending: false);
   return List<Map<String, dynamic>>.from(data);
 });
 
@@ -285,9 +294,15 @@ List<Map<String, dynamic>> travelOrder(List<Map<String, dynamic>> stops, bool mo
 /// Roads are ~35% longer than a straight line; city school-bus speed ~18 km/h including stops.
 (double metres, int minutes) etaTo(double busLat, double busLng, List<Map<String, dynamic>> order, int fromIdx, int toIdx) {
   if (fromIdx < 0 || toIdx < fromIdx || toIdx >= order.length) return (0.0, 0);
-  var m = metresBetween(busLat, busLng, (order[fromIdx]['lat'] as num).toDouble(), (order[fromIdx]['lng'] as num).toDouble());
-  for (var i = fromIdx; i < toIdx; i++) {
-    m += metresBetween((order[i]['lat'] as num).toDouble(), (order[i]['lng'] as num).toDouble(), (order[i + 1]['lat'] as num).toDouble(), (order[i + 1]['lng'] as num).toDouble());
+  // stops not yet pinned on the map are skipped
+  var m = 0.0;
+  var lat = busLat, lng = busLng;
+  for (var i = fromIdx; i <= toIdx; i++) {
+    final a = order[i]['lat'], b = order[i]['lng'];
+    if (a == null || b == null) continue;
+    final la = (a as num).toDouble(), lo = (b as num).toDouble();
+    m += metresBetween(lat, lng, la, lo);
+    lat = la; lng = lo;
   }
   m *= 1.35;
   return (m, math.max(1, (m / 1000 / 18 * 60).round()));

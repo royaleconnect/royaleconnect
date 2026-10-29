@@ -19,7 +19,9 @@ class StudentRef {
       grade: j['grade'], gradeCode: j['grade_code'], section: j['section']);
   Map<String, dynamic> toJson() => {'id': id, 'admission_no': admissionNo, 'full_name': fullName, 'grade': grade, 'grade_code': gradeCode, 'section': section};
   String get initials => fullName.trim().split(RegExp(r'\s+')).take(2).map((w) => w[0]).join().toUpperCase();
-  String get cls => '${gradeCode ?? ''}-${section ?? ''}';
+  /// 'IX-B', or 'IX' while the new section is still to be announced
+  String get cls => section == null || section!.isEmpty ? (gradeCode ?? '') : '${gradeCode ?? ''}-$section';
+  String get sectionText => section == null || section!.isEmpty ? 'section to be announced' : 'Section $section';
 }
 
 /// Everything the app knows about who is signed in on this phone.

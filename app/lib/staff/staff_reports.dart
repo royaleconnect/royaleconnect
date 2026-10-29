@@ -20,8 +20,8 @@ final _coAreasProvider = FutureProvider<List<String>>((ref) async {
 
 /// Report card names for a grade: Term I, Term II, plus every periodic test in the exam list.
 final _termsProvider = FutureProvider.autoDispose.family<List<String>, String>((ref, gradeId) async {
-  final year = await ref.watch(yearProvider.future);
-  final ex = await db.from('exam').select('name,term,max_marks').eq('grade_id', gradeId).eq('academic_year_id', year['id']).order('starts_on', ascending: true);
+  final yearId = await gradeYearId(gradeId);
+  final ex = await db.from('exam').select('name,term,max_marks').eq('grade_id', gradeId).eq('academic_year_id', yearId).order('starts_on', ascending: true);
   final out = <String>['Term I', 'Term II'];
   for (final e in ex) {
     final t = '${e['term']}';
@@ -36,12 +36,12 @@ final _termsProvider = FutureProvider.autoDispose.family<List<String>, String>((
 
 final _cardsProvider = FutureProvider.autoDispose.family<Map<String, Map<String, dynamic>>, (String, String)>((ref, key) async {
   final (sectionId, term) = key;
-  final year = await ref.watch(yearProvider.future);
+  final yearId = await sectionYearId(sectionId);
   final studs = await ref.watch(sectionStudentsProvider(sectionId).future);
   final ids = [for (final s in studs) s['student']['id'] as String];
   if (ids.isEmpty) return {};
   final rows = await db.from('report_card').select('id,student_id,status,working_days,days_present,height_cm,weight_kg,remarks,co_scholastic,published_at')
-      .eq('academic_year_id', year['id']).eq('term', term).inFilter('student_id', ids);
+      .eq('academic_year_id', yearId).eq('term', term).inFilter('student_id', ids);
   return {for (final r in rows) r['student_id'] as String: Map<String, dynamic>.from(r)};
 });
 
@@ -113,10 +113,10 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
     }
     setState(() => busy = true);
     try {
-      final year = await ref.read(yearProvider.future);
+      final yearId = await sectionYearId(sectionId!);
       final payload = [
         for (final e in rows.entries) if (e.value.status != 'locked') {
-          'academic_year_id': year['id'], 'student_id': e.key, 'term': term,
+          'academic_year_id': yearId, 'student_id': e.key, 'term': term,
           'status': e.value.status == 'new' ? 'draft' : e.value.status,
           'working_days': wd, 'days_present': _num(e.value.present.text),
           'height_cm': _num(e.value.height.text), 'weight_kg': _num(e.value.weight.text),
@@ -147,10 +147,10 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
     if (!await _save(areas, quiet: true)) return;
     setState(() => busy = true);
     try {
-      final year = await ref.read(yearProvider.future);
+      final yearId = await sectionYearId(sectionId!);
       final s = ref.read(sessionProvider).value!;
       await db.from('report_card').update({'status': 'published', 'published_at': nowIso(), 'published_by': s.staff!['id']})
-          .eq('academic_year_id', year['id']).eq('term', term).inFilter('student_id', rows.keys.toList()).inFilter('status', ['draft', 'ready']);
+          .eq('academic_year_id', yearId).eq('term', term).inFilter('student_id', rows.keys.toList()).inFilter('status', ['draft', 'ready']);
       loadedFor = null;
       ref.invalidate(_cardsProvider((sectionId!, term)));
       if (mounted) toast(context, 'Published. Families are being notified.');

@@ -60,9 +60,10 @@ final feesProvider = FutureProvider.autoDispose<FeeSummary>((ref) async {
   final s = ref.watch(sessionProvider).value?.active;
   if (s == null) return FeeSummary([]);
   final data = await db.from('fee_ledger')
-      .select('id,title,amount,due_on,status,paid_on,parent_ledger_id,note,fee_head:fee_head_id(kind),academic_year!inner(is_current)')
-      .eq('student_id', s.id).eq('academic_year.is_current', true).order('due_on', ascending: true);
-  return FeeSummary([for (final r in data) FeeRow(r['id'], r['title'], r['amount'] as num, r['due_on'], r['status'], r['fee_head']?['kind'] ?? 'other', r['paid_on'], r['parent_ledger_id'], r['note'])]);
+      .select('id,title,amount,due_on,status,paid_on,parent_ledger_id,note,fee_head:fee_head_id(kind),academic_year:academic_year_id(is_current)')
+      .eq('student_id', s.id).order('due_on', ascending: true);
+  // this year's fees, plus anything still unpaid from another year (e.g. next year's fees from 1 March)
+  return FeeSummary([for (final r in data) if (r['academic_year']?['is_current'] == true || r['status'] == 'pending') FeeRow(r['id'], r['title'], r['amount'] as num, r['due_on'], r['status'], r['fee_head']?['kind'] ?? 'other', r['paid_on'], r['parent_ledger_id'], r['note'])]);
 });
 
 class Notice { final String id, category, title, body, by, when, audience; final bool urgent, read; final String? file;

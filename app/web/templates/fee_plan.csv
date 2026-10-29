@@ -1,0 +1,4 @@
+Grade,Fee Name,Amount,Due Date,Category,Optional
+VIII,Term 1 tuition,45000,10/06/2026,Tuition,No
+VIII,Term 2 tuition,45000,10/10/2026,Tuition,No
+VIII,Bus fee - Term 1,12000,10/06/2026,Transport,Yes

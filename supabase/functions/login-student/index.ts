@@ -3,6 +3,9 @@
 //   link_to = student ids already on this phone (add-a-sibling): the new token carries all of them.
 // returns: { token, students:[{id,admission_no,full_name,grade,section}], must_change_password }
 import { admin, json, preflight, normAdmission, verifyPassword, mintToken, audit } from "../_shared/lib.ts";
+// the class to show: a section that is not open yet shows as "to be announced" (null)
+const secName = (s: any) => (!s || s.placeholder || s.status === "planned" || s.status === "ready") ? null : s.name;
+
 
 Deno.serve(async (req) => {
   const pf = preflight(req); if (pf) return pf;
@@ -36,13 +39,13 @@ Deno.serve(async (req) => {
     const ids = new Set<string>([s.id]);
     for (const id of (Array.isArray(link_to) ? link_to : [])) if (typeof id === "string") ids.add(id);
     const { data: students } = await db.from("student")
-      .select("id, admission_no, full_name, enrolment!inner(section:section_id(name, grade:grade_id(code,name)), academic_year!inner(is_current))")
-      .in("id", [...ids]).eq("enrolment.academic_year.is_current", true);
+      .select("id, admission_no, full_name, enrolment!inner(is_current, section:section_id(name, status, placeholder, grade:grade_id(code,name)))")
+      .in("id", [...ids]).eq("enrolment.is_current", true);
 
     const list = (students ?? []).map((x: any) => ({
       id: x.id, admission_no: x.admission_no, full_name: x.full_name,
       grade: x.enrolment?.[0]?.section?.grade?.name, grade_code: x.enrolment?.[0]?.section?.grade?.code,
-      section: x.enrolment?.[0]?.section?.name,
+      section: secName(x.enrolment?.[0]?.section),
     }));
     const studentIds = list.map((x: any) => x.id);
 

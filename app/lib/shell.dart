@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'core/data.dart';
+import 'core/data3.dart';
 import 'screens/help_screen.dart' show HelpFab;
 
 /// Bottom navigation. The Bus tab appears only for students with a transport enrolment.
@@ -10,7 +11,7 @@ class AppShell extends ConsumerWidget {
   const AppShell({super.key, required this.shell});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final onBus = ref.watch(transportProvider).value != null;
+    final onBus = ref.watch(transportProvider).value != null && featureOn(ref.watch(appSettingsProvider).value, 'bus');
     final unread = ref.watch(unreadMessagesProvider).value ?? 0;
     const items = [
       (Icons.home_rounded, Icons.home_outlined, 'Home'),

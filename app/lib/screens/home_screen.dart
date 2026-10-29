@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../auth/session.dart';
 import '../core/data.dart';
 import '../core/data2.dart';
+import '../core/data3.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
 
@@ -20,7 +21,12 @@ class HomeScreen extends ConsumerWidget {
     final unread = ref.watch(unreadMessagesProvider).value ?? 0;
     final transport = ref.watch(transportProvider).value;
     final calendar = ref.watch(calendarProvider).value ?? const [];
-    final gradeCode = ref.watch(enrolmentProvider).value?['section']?['grade']?['code'] as String?;
+    final enrol = ref.watch(enrolmentProvider).value;
+    final gradeCode = enrol?['section']?['grade']?['code'] as String?;
+    // the class as it is today (after a move-up the saved sign-in still has the old one)
+    final cls = gradeCode == null ? st.cls : (shownSection(enrol?['section']) == null ? '$gradeCode · section to be announced' : '$gradeCode-${shownSection(enrol?['section'])}');
+    final settings = ref.watch(appSettingsProvider).value;
+    bool on(String k) => featureOn(settings, k);
     final cs = Theme.of(context).colorScheme;
     final t = Theme.of(context).textTheme;
     final now = DateTime.now();
@@ -41,13 +47,13 @@ class HomeScreen extends ConsumerWidget {
               Text(DateFormat('EEEE, d MMMM').format(now), style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
               Text(greet, style: t.headlineMedium),
             ])),
-            Text('${st.fullName} · ${st.cls}', style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w700)),
+            Text('${st.fullName} · $cls', style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w700)),
           ]),
           const SizedBox(height: 18),
           ...?notices.value?.where((n) => n.urgent && !n.read).map((n) => Padding(padding: const EdgeInsets.only(bottom: 14), child: Material(color: Brand.crimson, borderRadius: BorderRadius.circular(16),
               child: ListTile(onTap: () => context.push('/notice/${n.id}'), leading: const Icon(Icons.warning_amber_rounded, color: Colors.white), title: Text(n.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)), trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white))))),
           IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Expanded(flex: 5, child: _MorningCard(fees: fees.value, transport: transport, cls: st.cls, calendar: calendar, grade: gradeCode)),
+            Expanded(flex: 5, child: _MorningCard(fees: fees.value, transport: transport, cls: cls, calendar: calendar, grade: gradeCode)),
             const SizedBox(width: 18),
             Expanded(flex: 4, child: fees.when(loading: () => const _CardShell(child: Center(child: CircularProgressIndicator())), error: (e, _) => _CardShell(child: Text('Could not load fees.', style: TextStyle(color: cs.onSurfaceVariant))), data: (f) => _FeeCard(f))),
           ])),
@@ -86,13 +92,12 @@ class HomeScreen extends ConsumerWidget {
                         Avatar(st.initials, bg: Colors.white, fg: Brand.crimsonDeep, size: 34), const SizedBox(width: 10),
                         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text(st.fullName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14)),
-                          Text('${st.grade ?? ''} · ${st.section ?? ''}', style: TextStyle(color: Colors.white.withValues(alpha: .9), fontSize: 11)),
+                          Text('${st.grade ?? ''} · ${st.sectionText}', style: TextStyle(color: Colors.white.withValues(alpha: .9), fontSize: 11)),
                         ]),
                         if (s.students.length > 1) const Padding(padding: EdgeInsets.only(left: 6), child: Icon(Icons.expand_more_rounded, color: Colors.white, size: 18)),
                       ]))),
               const Spacer(),
-              _HeaderIcon(Icons.chat_bubble_outline_rounded, unread, () => context.push('/messages')),
-              const SizedBox(width: 8),
+              if (on('messages')) ...[_HeaderIcon(Icons.chat_bubble_outline_rounded, unread, () => context.push('/messages')), const SizedBox(width: 8)],
               _HeaderIcon(Icons.notifications_none_rounded, unreadNotices, () => context.go('/announcements')),
               const SizedBox(width: 8),
               _HeaderIcon(Icons.settings_outlined, 0, () => context.push('/settings')),
@@ -102,7 +107,7 @@ class HomeScreen extends ConsumerWidget {
             Text(greet, style: t.headlineMedium?.copyWith(color: Colors.white)),
             const SizedBox(height: 16),
             // morning card — sits inside the header
-            _MorningCard(fees: fees.value, transport: transport, cls: st.cls, calendar: calendar, grade: gradeCode),
+            _MorningCard(fees: fees.value, transport: transport, cls: cls, calendar: calendar, grade: gradeCode),
           ]))),
           SliverPadding(padding: const EdgeInsets.fromLTRB(20, 16, 20, 24), sliver: SliverList(delegate: SliverChildListDelegate([
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -123,14 +128,16 @@ class HomeScreen extends ConsumerWidget {
               // tiles
               GridView.count(crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: .98, children: [
                 _Tile('Timetable', Icons.grid_view_rounded, Brand.blue, Brand.blueTint, () => context.push('/timetable')),
-                _Tile('Star of the month', Icons.star_border_rounded, Brand.violet, Brand.violetTint, () => context.push('/star')),
-                _Tile('Gallery', Icons.image_outlined, Brand.green, Brand.greenTint, () => context.push('/gallery')),
-                _Tile('Leave', Icons.event_available_outlined, Brand.crimsonDeep, Brand.crimsonTint, () => context.push('/leave')),
-                _Tile('Monthly plan', Icons.format_list_bulleted_rounded, Brand.amber, Brand.amberTint, () => context.push('/plan')),
-                _Tile('Worksheets', Icons.task_outlined, Brand.blue, Brand.blueTint, () => context.push('/worksheets')),
+                if (on('star')) _Tile('Star of the month', Icons.star_border_rounded, Brand.violet, Brand.violetTint, () => context.push('/star')),
+                if (on('gallery')) _Tile('Gallery', Icons.image_outlined, Brand.green, Brand.greenTint, () => context.push('/gallery')),
+                if (on('leave')) _Tile('Leave', Icons.event_available_outlined, Brand.crimsonDeep, Brand.crimsonTint, () => context.push('/leave')),
+                if (on('plan')) _Tile('Monthly plan', Icons.format_list_bulleted_rounded, Brand.amber, Brand.amberTint, () => context.push('/plan')),
+                if (on('worksheets')) _Tile('Worksheets', Icons.task_outlined, Brand.blue, Brand.blueTint, () => context.push('/worksheets')),
                 _Tile('Exams', Icons.fact_check_outlined, Brand.crimsonDeep, Brand.crimsonTint, () => context.push('/exams')),
                 _Tile('Calendar', Icons.calendar_month_outlined, Brand.green, Brand.greenTint, () => context.push('/calendar')),
-                _Tile('Messages', Icons.chat_bubble_outline_rounded, Brand.amber, Brand.amberTint, () => context.push('/messages'), badge: unread),
+                // Toppers takes the old Messages place (Messages stays one tap away in the top bar)
+                if (on('toppers') || on('fame')) _Tile(on('toppers') ? 'Toppers' : 'Hall of Fame', Icons.emoji_events_outlined, Brand.amber, Brand.amberTint, () => context.push(on('toppers') ? '/toppers' : '/fame'))
+                else if (on('messages')) _Tile('Messages', Icons.chat_bubble_outline_rounded, Brand.amber, Brand.amberTint, () => context.push('/messages'), badge: unread),
               ]),
               const SizedBox(height: 18),
               Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text("What's new", style: t.titleLarge?.copyWith(fontSize: 16)), TextButton(onPressed: () => context.go('/announcements'), child: const Text('See all'))]),
@@ -168,7 +175,7 @@ class _CardShell extends StatelessWidget {
 
 String _hm(dynamic t) { final x = (t ?? '').toString(); return x.length >= 5 ? x.substring(0, 5) : x; }
 
-class _MorningCard extends StatelessWidget {
+class _MorningCard extends ConsumerWidget {
   final FeeSummary? fees; final Map<String, dynamic>? transport; final String cls;
   final List<Map<String, dynamic>> calendar; final String? grade;
   const _MorningCard({this.fees, this.transport, required this.cls, this.calendar = const [], this.grade});
@@ -186,7 +193,7 @@ class _MorningCard extends StatelessWidget {
   bool _schoolDay(DateTime d) => (d.weekday < 6 || isWorkingSaturday(d, grade)) && _holiday(d) == null;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final now = DateTime.now(); final today = DateTime(now.year, now.month, now.day);
     final workingSat = isWorkingSaturday(today, grade);
     final weekend = now.weekday == 7 || (now.weekday == 6 && !workingSat); // no school by the week pattern
@@ -206,6 +213,8 @@ class _MorningCard extends StatelessWidget {
     Color dot(String k) => k == 'exam' ? examAmber : k == 'ptm' ? ptmViolet : Brand.blue;
 
     final next = fees?.unpaid.isNotEmpty == true ? fees!.unpaid.first : null;
+    // homework and projects due on the next school day
+    final hw = ref.watch(homeworkDueProvider(_iso(back))).value ?? 0;
     final noSchool = hol != null || weekend;
     final items = <(String, String, Color)>[
       if (hol != null) ('Holiday · ${_clean(hol['title'])}', 'No school today · classes resume $resume', holidayRed)
@@ -213,6 +222,7 @@ class _MorningCard extends StatelessWidget {
       else if (workingSat) ('Working Saturday', 'School is on today (${saturdayOrdinal(today)} Saturday)', Brand.blue)
       else ('School day', 'Check the timetable for what to carry', Brand.blue),
       for (final e in todays.take(3)) (e['title'] as String, label(e['kind']), dot(e['kind'])),
+      if (hw > 0) ('$hw homework for ${gap == 1 ? 'tomorrow' : resume}', 'See what to do in the Diary', Brand.gold2),
       if (todays.length > 3) ('+${todays.length - 3} more today', 'See the calendar', Brand.muted),
       if (holTomorrow != null) ('Tomorrow: ${_clean(holTomorrow['title'])}', 'Holiday · no school tomorrow', holidayRed)
       else if (!noSchool && isWorkingSaturday(tomorrow, grade)) ('Tomorrow is a working Saturday', 'School is on (${saturdayOrdinal(tomorrow)} Saturday)', Brand.blue),
@@ -276,7 +286,7 @@ class _Tile extends StatelessWidget {
         Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
           Container(width: 44, height: 44, decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(14)), child: Icon(icon, color: fg, size: 22)),
           const SizedBox(height: 8),
-          Padding(padding: const EdgeInsets.symmetric(horizontal: 6), child: Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+          Padding(padding: const EdgeInsets.symmetric(horizontal: 6), child: Text(label, textAlign: TextAlign.center, maxLines: 2, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, height: 1.15))),
         ])),
         if (badge > 0) Positioned(top: 10, right: 10, child: Container(height: 18, constraints: const BoxConstraints(minWidth: 18), alignment: Alignment.center, padding: const EdgeInsets.symmetric(horizontal: 5),
             decoration: BoxDecoration(color: Brand.gold, borderRadius: BorderRadius.circular(9)), child: Text('$badge', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Brand.ink)))),

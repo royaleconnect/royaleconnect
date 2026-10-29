@@ -153,7 +153,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(20)), child: Row(children: [
             m['photo_path'] != null ? StorageImage(m['photo_path'], width: 64, height: 64, radius: BorderRadius.circular(20)) : Avatar(m['full_name'].toString().split(' ').take(2).map((w) => w[0]).join(), size: 64),
             const SizedBox(width: 14),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(m['full_name'], style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)), Text('${sec?['grade']?['name'] ?? ''} ${sec?['name'] ?? ''} · ${m['admission_no']}', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13))])),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(m['full_name'], style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)), Text('${sec?['grade']?['name'] ?? ''} ${shownSection(sec) ?? '(section to be announced)'} · ${m['admission_no']}', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13))])),
           ])),
           const SizedBox(height: 12),
           Container(padding: const EdgeInsets.fromLTRB(16, 8, 16, 8), decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(20)), child: Column(children: [
@@ -163,7 +163,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               for (final ph in phones) row(ph['label'] ?? 'Phone', ph['phone']),
               row('Address', m['address']),
             ] else if (tabs[tab] == 'Academic') ...[
-              row('Academic year', e.value?['academic_year']?['label']), row('Class', '${sec?['grade']?['name'] ?? ''} – ${sec?['name'] ?? ''}'), row('Roll number', e.value?['roll_no']?.toString()),
+              row('Academic year', e.value?['academic_year']?['label']), row('Class', '${sec?['grade']?['name'] ?? ''} – ${shownSection(sec) ?? 'section to be announced'}'), row('Roll number', e.value?['roll_no']?.toString()),
               row('Class teacher', sec?['class_teacher']?['display_name']), row('Admission type', m['admission_type']), row('Division', sec?['grade']?['division']?.toString()),
             ] else ...[
               row('Route', r.value?['name']), row('Bus', r.value?['bus_reg_no']), row('Stop', r.value?['my_stop']?['name']),

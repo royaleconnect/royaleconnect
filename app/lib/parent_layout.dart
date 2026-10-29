@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'auth/session.dart';
 import 'core/config.dart';
 import 'core/data.dart';
+import 'core/data3.dart';
 import 'core/theme.dart';
 import 'router.dart';
 import 'widgets/common.dart';
@@ -16,7 +17,7 @@ class ParentFrame extends ConsumerWidget {
   static const _groups = <(String, List<(String, String, IconData)>)>[
     ('DAILY', [('/', 'Home', Icons.home_rounded), ('/diary', 'Class diary', Icons.menu_book_rounded), ('/announcements', 'Announcements', Icons.campaign_rounded), ('/messages', 'Messages', Icons.chat_bubble_rounded)]),
     ('STUDIES', [('/calendar', 'Calendar', Icons.calendar_month_rounded), ('/timetable', 'Timetable', Icons.grid_view_rounded), ('/exams', 'Exams & portions', Icons.fact_check_rounded), ('/plan', 'Monthly plan', Icons.format_list_bulleted_rounded), ('/worksheets', 'Worksheets', Icons.task_rounded), ('/reports', 'Report cards', Icons.school_rounded)]),
-    ('SCHOOL', [('/fees', 'Fees & receipts', Icons.account_balance_wallet_rounded), ('/bus', 'Bus', Icons.directions_bus_rounded), ('/gallery', 'Moments & albums', Icons.photo_library_rounded), ('/star', 'Star of the month', Icons.star_rounded), ('/leave', 'Leave', Icons.event_available_rounded), ('/feedback', 'Feedback', Icons.rate_review_rounded), ('/help', 'Help', Icons.help_outline_rounded)]),
+    ('SCHOOL', [('/fees', 'Fees & receipts', Icons.account_balance_wallet_rounded), ('/bus', 'Bus', Icons.directions_bus_rounded), ('/gallery', 'Moments & albums', Icons.photo_library_rounded), ('/star', 'Star of the month', Icons.star_rounded), ('/leave', 'Leave', Icons.event_available_rounded), ('/toppers', 'Board Toppers', Icons.emoji_events_rounded), ('/fame', 'Hall of Fame', Icons.workspace_premium_rounded), ('/feedback', 'Feedback', Icons.rate_review_rounded), ('/help', 'Help', Icons.help_outline_rounded)]),
   ];
 
   @override
@@ -27,6 +28,10 @@ class ParentFrame extends ConsumerWidget {
     final onBus = ref.watch(transportProvider).value != null;
     final unreadMsgs = ref.watch(unreadMessagesProvider).value ?? 0;
     final unreadNotices = ref.watch(noticesProvider).value?.where((n) => !n.read).length ?? 0;
+    final settings = ref.watch(appSettingsProvider).value;
+    // pages IT has switched off are not shown
+    const switches = {'/messages': 'messages', '/bus': 'bus', '/gallery': 'gallery', '/star': 'star', '/worksheets': 'worksheets', '/plan': 'plan', '/leave': 'leave', '/toppers': 'toppers', '/fame': 'fame'};
+    bool allowed(String p) => switches[p] == null || featureOn(settings, switches[p]!);
     return AnimatedBuilder(animation: router.routerDelegate, builder: (context, _) {
       final loc = router.routerDelegate.currentConfiguration.uri.path;
       bool on(String p) => p == '/' ? loc == '/' : (loc == p || loc.startsWith('$p/') || (p == '/announcements' && loc.startsWith('/notice')) || (p == '/messages' && loc.startsWith('/chat')) || (p == '/fees' && (loc.startsWith('/pay') || loc.startsWith('/receipt'))));
@@ -38,7 +43,7 @@ class ParentFrame extends ConsumerWidget {
             const SizedBox(width: 10),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               const Text('Royale Connect', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
-              Text('Parent portal · ${AppConfig.academicYearLabel}', style: TextStyle(color: Colors.white.withValues(alpha: .8), fontSize: 11)),
+              Text('Parent portal · ${ref.watch(yearLabelProvider).value ?? AppConfig.academicYearLabel}', style: TextStyle(color: Colors.white.withValues(alpha: .8), fontSize: 11)),
             ])),
           ])),
           Container(height: 2, margin: const EdgeInsets.symmetric(horizontal: 18), decoration: const BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, Brand.gold, Colors.transparent]))),
@@ -55,7 +60,7 @@ class ParentFrame extends ConsumerWidget {
           Expanded(child: ListView(padding: const EdgeInsets.fromLTRB(10, 4, 10, 8), children: [
             for (final (g, items) in _groups) ...[
               Padding(padding: const EdgeInsets.fromLTRB(12, 14, 12, 4), child: Text(g, style: TextStyle(color: Colors.white.withValues(alpha: .6), fontSize: 10.5, letterSpacing: 1.6, fontWeight: FontWeight.w800))),
-              for (final (p, l, i) in items) if (p != '/bus' || onBus) _Nav(l, i, selected: on(p), badge: badge(p), onTap: () => router.go(p)),
+              for (final (p, l, i) in items) if ((p != '/bus' || onBus) && allowed(p)) _Nav(l, i, selected: on(p), badge: badge(p), onTap: () => router.go(p)),
             ],
           ])),
           Container(height: 1, margin: const EdgeInsets.symmetric(horizontal: 18), color: Colors.white.withValues(alpha: .15)),

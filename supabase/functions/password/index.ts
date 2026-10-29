@@ -5,9 +5,13 @@
 //  { action:'crew_account', route_id, role:'driver'|'conductor' (= bus assistant), name, phone? }   (bearer: transport in-charge / office / IT / principal)
 //      creates or refreshes the bus crew login for that route: login ID dr<route no.> / as<route no.>, the common bus password
 //  { action:'crew_password', password }   (same people) → one common password for every driver and bus assistant (not case-sensitive)
+//  { action:'bulk_first_use' | 'bulk_first_use_staff', ids:[…≤60] }   → first-use passwords for people who never signed in (Excel import slips)
 //  { action:'view_as', student_id }   (bearer: IT admin / principal / vice principal) → a 2-hour READ-ONLY family token (the database refuses every change)
 import { admin, json, preflight, hashPassword, verifyPassword, firstUsePassword, audit, mintToken } from "../_shared/lib.ts";
 import { verify } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
+// the class to show: a section that is not open yet shows as "to be announced" (null)
+const secName = (s: any) => (!s || s.placeholder || s.status === "planned" || s.status === "ready") ? null : s.name;
+
 
 async function claims(req: Request) {
   const h = req.headers.get("authorization") ?? "";
@@ -54,13 +58,13 @@ Deno.serve(async (req) => {
     if (body.action === "view_as") {
       if (!(c.roles ?? []).some((r: string) => ["it_admin", "principal", "vice_principal"].includes(r))) return json({ error: "Not allowed." }, 403);
       const { data: x } = await db.from("student")
-        .select("id, admission_no, full_name, enrolment!inner(section:section_id(name, grade:grade_id(code,name)), academic_year!inner(is_current))")
-        .eq("id", body.student_id).eq("enrolment.academic_year.is_current", true).maybeSingle();
+        .select("id, admission_no, full_name, enrolment!inner(is_current, section:section_id(name, status, placeholder, grade:grade_id(code,name)))")
+        .eq("id", body.student_id).eq("enrolment.is_current", true).maybeSingle();
       if (!x) return json({ error: "Student not found in this year's classes." }, 404);
       const e = (x as any).enrolment?.[0];
       const token = await mintToken({ sub: x.id, kind: "student", student_ids: [x.id], view_only: true, viewer: c.staff_id }, 2);
       await audit(db, { actor_staff_id: c.staff_id, action: "view_as.family", entity: "student", entity_id: x.id });
-      return json({ token, students: [{ id: x.id, admission_no: x.admission_no, full_name: x.full_name, grade: e?.section?.grade?.name, grade_code: e?.section?.grade?.code, section: e?.section?.name }] });
+      return json({ token, students: [{ id: x.id, admission_no: x.admission_no, full_name: x.full_name, grade: e?.section?.grade?.name, grade_code: e?.section?.grade?.code, section: secName(e?.section) }] });
     }
 
     const canCrew = (c.roles ?? []).some((r: string) => ["transport_incharge", "office", "it_admin", "principal", "vice_principal"].includes(r));
@@ -138,8 +142,8 @@ Deno.serve(async (req) => {
       // class teacher: only for students in own section
       if (!isOffice) {
         if (!isClassTeacher) return json({ error: "Not allowed." }, 403);
-        const { data: ok } = await db.from("enrolment").select("id, section:section_id!inner(class_teacher_id), academic_year!inner(is_current)")
-          .eq("student_id", body.student_id).eq("section.class_teacher_id", c.staff_id).eq("academic_year.is_current", true).maybeSingle();
+        const { data: ok } = await db.from("enrolment").select("id, is_current, section:section_id!inner(class_teacher_id)")
+          .eq("student_id", body.student_id).eq("section.class_teacher_id", c.staff_id).eq("is_current", true).maybeSingle();
         if (!ok) return json({ error: "You can reset passwords only for your own class." }, 403);
       }
       const temp = firstUsePassword();
@@ -157,6 +161,28 @@ Deno.serve(async (req) => {
       await db.from("app_session").update({ revoked_at: new Date().toISOString() }).eq("student_id", body.student_id).is("revoked_at", null);
       await audit(db, { actor_staff_id: c.staff_id ?? null, actor_student_id: own ? body.student_id : null, action: "session.revoke_all", entity: "student", entity_id: body.student_id });
       return json({ ok: true });
+    }
+
+    if (body.action === "bulk_first_use" || body.action === "bulk_first_use_staff") {
+      // after an Excel import: first-use passwords for many people at once, for the printed slips.
+      // Only for people who have never signed in themselves, so families already using the app are never locked out.
+      const staffKind = body.action === "bulk_first_use_staff";
+      const allowed = staffKind ? (c.roles ?? []).some((r: string) => ["it_admin", "principal"].includes(r)) : isOffice;
+      if (!allowed) return json({ error: "Not allowed." }, 403);
+      const ids: string[] = Array.isArray(body.ids) ? body.ids.slice(0, 60) : [];
+      if (!ids.length) return json({ ok: true, passwords: [] });
+      const table = staffKind ? "staff" : "student";
+      const { data: rows } = await db.from(table).select("id, password_set_at" + (staffKind ? "" : ", first_login_done")).in("id", ids);
+      const out: { id: string; password?: string; skipped?: string }[] = [];
+      for (const r of (rows ?? []) as any[]) {
+        if (r.password_set_at || r.first_login_done) { out.push({ id: r.id, skipped: "already using the app" }); continue; }
+        const temp = firstUsePassword();
+        // first-use passwords must be changed at first sign-in, so a lighter hash keeps 2,000 slips quick
+        await db.from(table).update({ password_hash: await hashPassword(temp, 20_000), must_change_password: true, failed_logins: 0, locked_until: null }).eq("id", r.id);
+        out.push({ id: r.id, password: temp });
+      }
+      await audit(db, { actor_staff_id: c.staff_id, action: staffKind ? "password.bulk.staff" : "password.bulk", detail: { count: out.filter((x) => x.password).length } });
+      return json({ ok: true, passwords: out });
     }
 
     return json({ error: "Unknown action." }, 400);

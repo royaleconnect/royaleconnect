@@ -19,17 +19,30 @@ final yearProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   return y;
 });
 
+/// Years that have open classes right now (from 1 March: this year and next year).
+final liveYearIdsProvider = FutureProvider.autoDispose<List<String>>((ref) async {
+  final year = await ref.watch(yearProvider.future);
+  final rows = await db.from('section').select('academic_year_id').eq('status', 'active');
+  return {year['id'] as String, for (final r in rows) r['academic_year_id'] as String}.toList();
+});
+
+/// The school year a grade is working in (Grade X from 1 March = next year).
+Future<String> gradeYearId(String gradeId) async => (await db.rpc('year_for_grade', params: {'g': gradeId})) as String;
+
+/// The school year of a section.
+Future<String> sectionYearId(String sectionId) async => (await db.from('section').select('academic_year_id').eq('id', sectionId).single())['academic_year_id'] as String;
+
 /// Sections this staff member works with (class teacher / subject teacher / coordinator / office → all).
 final mySectionsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final s = ref.watch(sessionProvider).value;
   if (s == null || !s.isStaff) return [];
-  final year = await ref.watch(yearProvider.future);
-  final all = await db.from('section').select('id,name,class_teacher_id,grade:grade_id(id,code,name,division,sort_order)').eq('academic_year_id', year['id']);
+  // open sections (from 1 March the new Grade IX, X and XII are open while the rest are still in the old year)
+  final all = await db.from('section').select('id,name,class_teacher_id,academic_year_id,grade:grade_id(id,code,name,division,sort_order)').eq('status', 'active').eq('placeholder', false);
   final rows = List<Map<String, dynamic>>.from(all);
   rows.sort((a, b) { final g = (a['grade']['sort_order'] as int).compareTo(b['grade']['sort_order'] as int); return g != 0 ? g : (a['name'] as String).compareTo(b['name']); });
   if (s.isOffice) return rows;
   final me = s.staff!['id'];
-  final ta = await db.from('teaching_assignment').select('section_id,subject:subject_id(id,name)').eq('staff_id', me).eq('academic_year_id', year['id']);
+  final ta = await db.from('teaching_assignment').select('section_id,subject:subject_id(id,name)').eq('staff_id', me).inFilter('section_id', [for (final r in rows) r['id']]);
   final taught = {for (final t in ta) t['section_id'] as String};
   final division = s.staff!['division'];
   return rows.where((r) => r['class_teacher_id'] == me || taught.contains(r['id']) || (s.hasRole('coordinator') && r['grade']['division'] == division)).toList();
@@ -39,8 +52,7 @@ final mySectionsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>
 final myAssignmentsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final s = ref.watch(sessionProvider).value;
   if (s == null || !s.isStaff) return [];
-  final year = await ref.watch(yearProvider.future);
-  final data = await db.from('teaching_assignment').select('section_id,subject:subject_id(id,name),section:section_id(name,grade:grade_id(code))').eq('staff_id', s.staff!['id']).eq('academic_year_id', year['id']);
+  final data = await db.from('teaching_assignment').select('section_id,subject:subject_id(id,name),section:section_id!inner(name,status,grade:grade_id(code))').eq('staff_id', s.staff!['id']).eq('section.status', 'active');
   return List<Map<String, dynamic>>.from(data);
 });
 
@@ -58,9 +70,9 @@ final sectionStudentsProvider = FutureProvider.autoDispose.family<List<Map<Strin
 /// Student search (office): by name or admission number.
 final studentSearchProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, q) async {
   if (q.trim().length < 2) return [];
-  final data = await db.from('student').select('id,admission_no,full_name,active,enrolment(section:section_id(name,grade:grade_id(code)),academic_year!inner(is_current))')
-      .or('full_name.ilike.%${q.trim()}%,admission_no.ilike.%${q.trim()}%').eq('enrolment.academic_year.is_current', true).limit(30);
-  return List<Map<String, dynamic>>.from(data);
+  // name, admission number (old or new) or a parent's phone; current students
+  final data = await db.rpc('find_students', params: {'p_q': q.trim(), 'p_past': false, 'p_limit': 30});
+  return [for (final r in data as List) {...Map<String, dynamic>.from(r), 'enrolment': [{'section': {'name': (r['class'] ?? '').toString().contains('-') ? r['class'].toString().split('-').last : null, 'grade': {'code': (r['class'] ?? '').toString().split('-').first.split(' ').first}}}]}];
 });
 
 // ---------------------------------------------------------------- overview numbers
@@ -78,8 +90,8 @@ final staffOverviewProvider = FutureProvider.autoDispose<Map<String, int>>((ref)
 // ---------------------------------------------------------------- messages (staff inbox)
 final inboxProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final me = _me(ref)['id'];
-  final data = await db.from('conversation').select('id,student_id,last_message_at,staff_unread,staff_done,student:student_id(full_name,admission_no,enrolment(section:section_id(name,grade:grade_id(code)),academic_year!inner(is_current)))')
-      .eq('staff_id', me).eq('student.enrolment.academic_year.is_current', true).order('last_message_at', ascending: false, nullsFirst: false);
+  final data = await db.from('conversation').select('id,student_id,last_message_at,staff_unread,staff_done,student:student_id(full_name,admission_no,enrolment(is_current,section:section_id(name,grade:grade_id(code))))')
+      .eq('staff_id', me).eq('student.enrolment.is_current', true).order('last_message_at', ascending: false, nullsFirst: false);
   return List<Map<String, dynamic>>.from(data);
 });
 
@@ -151,8 +163,8 @@ Future<void> deleteDiary(String id) => db.from('diary_entry').delete().eq('id', 
 
 // ---------------------------------------------------------------- leave
 final staffLeavesProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final data = await db.from('leave_request').select('id,from_date,to_date,reason,note,status,created_at,student:student_id(full_name,admission_no,enrolment(section:section_id(name,grade:grade_id(code)),academic_year!inner(is_current)))')
-      .eq('student.enrolment.academic_year.is_current', true).order('created_at', ascending: false).limit(100);
+  final data = await db.from('leave_request').select('id,from_date,to_date,reason,note,status,created_at,student:student_id(full_name,admission_no,enrolment(is_current,section:section_id(name,grade:grade_id(code))))')
+      .eq('student.enrolment.is_current', true).order('created_at', ascending: false).limit(100);
   return List<Map<String, dynamic>>.from(data);
 });
 Future<void> decideLeave(WidgetRef ref, String id, bool approve) => db.from('leave_request').update({'status': approve ? 'approved' : 'declined', 'decided_by': myId(ref), 'decided_at': nowIso()}).eq('id', id);
@@ -176,14 +188,14 @@ final staffMomentsProvider = FutureProvider.autoDispose<List<Map<String, dynamic
 
 // ---------------------------------------------------------------- exams, plan, worksheets
 final staffExamsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final year = await ref.watch(yearProvider.future);
-  final data = await db.from('exam').select('id,name,term,starts_on,ends_on,max_marks,note,published_at,grade:grade_id(id,code,name),exam_paper(id,on_date,portions,confirmed_at,subject:subject_id(id,name))').eq('academic_year_id', year['id']).order('starts_on', ascending: false);
+  final years = await ref.watch(liveYearIdsProvider.future);
+  final data = await db.from('exam').select('id,name,term,starts_on,ends_on,max_marks,note,published_at,grade:grade_id(id,code,name),exam_paper(id,on_date,portions,confirmed_at,subject:subject_id(id,name))').inFilter('academic_year_id', years).order('starts_on', ascending: false);
   return List<Map<String, dynamic>>.from(data);
 });
 
 Future<String> createExam(WidgetRef ref, {required String gradeId, required String name, required String term, DateTime? starts, DateTime? ends, int maxMarks = 100, String? note, required List<String> subjectIds}) async {
-  final year = await ref.read(yearProvider.future);
-  final e = await db.from('exam').insert({'academic_year_id': year['id'], 'grade_id': gradeId, 'name': name, 'term': term, 'starts_on': starts == null ? null : _d(starts), 'ends_on': ends == null ? null : _d(ends), 'max_marks': maxMarks, 'note': note, 'created_by': myId(ref)}).select('id').single();
+  final yearId = await gradeYearId(gradeId);
+  final e = await db.from('exam').insert({'academic_year_id': yearId, 'grade_id': gradeId, 'name': name, 'term': term, 'starts_on': starts == null ? null : _d(starts), 'ends_on': ends == null ? null : _d(ends), 'max_marks': maxMarks, 'note': note, 'created_by': myId(ref)}).select('id').single();
   if (subjectIds.isNotEmpty) await db.from('exam_paper').insert([for (final s in subjectIds) {'exam_id': e['id'], 'subject_id': s}]);
   return e['id'];
 }
@@ -197,8 +209,8 @@ final staffPlanProvider = FutureProvider.autoDispose.family<List<Map<String, dyn
   return List<Map<String, dynamic>>.from(data);
 });
 Future<void> savePlan(WidgetRef ref, {required String gradeId, required String monthIso, required String subjectId, required String topics, String? assessment, bool publish = true}) async {
-  final year = await ref.read(yearProvider.future);
-  await db.from('monthly_plan').upsert({'academic_year_id': year['id'], 'grade_id': gradeId, 'month': monthIso, 'subject_id': subjectId, 'topics': topics, 'assessment': assessment, 'published_at': publish ? nowIso() : null}, onConflict: 'academic_year_id,grade_id,month,subject_id');
+  final yearId = await gradeYearId(gradeId);
+  await db.from('monthly_plan').upsert({'academic_year_id': yearId, 'grade_id': gradeId, 'month': monthIso, 'subject_id': subjectId, 'topics': topics, 'assessment': assessment, 'published_at': publish ? nowIso() : null}, onConflict: 'academic_year_id,grade_id,month,subject_id');
 }
 
 final staffWorksheetsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
@@ -228,13 +240,13 @@ Future<void> replyFeedback(WidgetRef ref, String id, String reply, String status
 
 // ---------------------------------------------------------------- fees desk (office / accounts)
 final studentLedgerProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, studentId) async {
-  final data = await db.from('fee_ledger').select('id,title,amount,due_on,status,paid_on,parent_ledger_id,note,academic_year!inner(is_current)').eq('student_id', studentId).eq('academic_year.is_current', true).order('due_on', ascending: true);
-  return List<Map<String, dynamic>>.from(data);
+  final data = await db.from('fee_ledger').select('id,title,amount,due_on,status,paid_on,parent_ledger_id,note,academic_year:academic_year_id(is_current,label)').eq('student_id', studentId).order('due_on', ascending: true);
+  return [for (final r in data) if (r['academic_year']?['is_current'] == true || r['status'] == 'pending') Map<String, dynamic>.from(r)];
 });
 final overdueReportProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final today = _d(DateTime.now());
-  final data = await db.from('fee_ledger').select('id,title,amount,due_on,student:student_id(id,full_name,admission_no,enrolment(section:section_id(name,grade:grade_id(code)),academic_year!inner(is_current)))')
-      .eq('status', 'pending').lt('due_on', today).eq('student.enrolment.academic_year.is_current', true).order('due_on', ascending: true).limit(500);
+  final data = await db.from('fee_ledger').select('id,title,amount,due_on,student:student_id(id,full_name,admission_no,enrolment(is_current,section:section_id(name,grade:grade_id(code))))')
+      .eq('status', 'pending').lt('due_on', today).eq('student.enrolment.is_current', true).order('due_on', ascending: true).limit(500);
   return List<Map<String, dynamic>>.from(data);
 });
 final recentPaymentsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {

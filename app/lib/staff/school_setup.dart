@@ -9,6 +9,7 @@ import '../auth/session.dart';
 import '../core/data.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
+import 'import_excel.dart';
 import 'staff_data.dart';
 import 'staff_shell.dart';
 
@@ -17,15 +18,14 @@ import 'staff_shell.dart';
 /// Every save goes through one checked database function (0016_school_setup.sql) that also writes the activity log.
 
 // ------------------------------------------------------------------ who sees which tab
+// Students, Staff and Bus routes now live on their own pages (Students · Staff · Transport).
 const _tabRoles = {
-  'students': ['office', 'it_admin', 'principal', 'vice_principal'],
-  'staff': ['it_admin', 'principal'],
   'classes': ['office', 'it_admin', 'principal', 'vice_principal'],
   'fees': ['accounts', 'it_admin', 'principal'],
-  'transport': ['transport_incharge', 'office', 'it_admin', 'principal', 'vice_principal'],
+  'import': ['office', 'accounts', 'transport_incharge', 'it_admin', 'principal', 'vice_principal'],
 };
-const _tabNames = {'students': 'Students', 'staff': 'Staff', 'classes': 'Classes', 'fees': 'Fees', 'transport': 'Bus routes'};
-const _tabIcons = {'students': Icons.school_rounded, 'staff': Icons.badge_rounded, 'classes': Icons.class_rounded, 'fees': Icons.currency_rupee_rounded, 'transport': Icons.directions_bus_rounded};
+const _tabNames = {'students': 'Students', 'staff': 'Staff', 'classes': 'Classes', 'fees': 'Fees', 'transport': 'Bus routes', 'import': 'Import from Excel'};
+const _tabIcons = {'students': Icons.school_rounded, 'staff': Icons.badge_rounded, 'classes': Icons.class_rounded, 'fees': Icons.currency_rupee_rounded, 'transport': Icons.directions_bus_rounded, 'import': Icons.upload_file_rounded};
 const setupRoles = ['office', 'accounts', 'transport_incharge', 'it_admin', 'principal', 'vice_principal'];
 
 String _msg(Object e) => e is PostgrestException ? e.message : e.toString().replaceFirst('Exception: ', '');
@@ -66,10 +66,9 @@ void _slip(BuildContext context, String title, String text) => showDialog(contex
 
 // ------------------------------------------------------------------ data
 final setupSectionsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  final year = await ref.watch(yearProvider.future);
   final data = await db.from('section')
-      .select('id,name,class_teacher_id,grade:grade_id(id,code,name,sort_order),class_teacher:class_teacher_id(display_name),enrolment(count),teaching_assignment(subject_id,staff_id)')
-      .eq('academic_year_id', year['id']);
+      .select('id,name,class_teacher_id,academic_year_id,grade:grade_id(id,code,name,sort_order),class_teacher:class_teacher_id(display_name),enrolment(count),teaching_assignment(subject_id,staff_id)')
+      .eq('status', 'active').eq('placeholder', false);
   final rows = List<Map<String, dynamic>>.from(data);
   rows.sort((a, b) {
     final g = ((a['grade']?['sort_order'] ?? 0) as int).compareTo((b['grade']?['sort_order'] ?? 0) as int);
@@ -87,9 +86,9 @@ final _teachersProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>
 });
 
 final _feePlanProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, gradeId) async {
-  final year = await ref.watch(yearProvider.future);
+  final yearId = await gradeYearId(gradeId);
   final data = await db.from('fee_plan').select('id,amount,due_on,optional,fee_head:fee_head_id(id,name,kind,sort_order)')
-      .eq('academic_year_id', year['id']).eq('grade_id', gradeId);
+      .eq('academic_year_id', yearId).eq('grade_id', gradeId);
   final rows = List<Map<String, dynamic>>.from(data);
   rows.sort((a, b) => ((a['due_on'] ?? '') as String).compareTo((b['due_on'] ?? '') as String));
   return rows;
@@ -117,11 +116,11 @@ class _SchoolSetupScreenState extends ConsumerState<SchoolSetupScreen> {
   Widget build(BuildContext context) {
     final s = ref.watch(sessionProvider).value!;
     final tabs = [for (final e in _tabRoles.entries) if (e.value.any(s.hasRole)) e.key];
-    if (tabs.isEmpty) return const StaffPage(title: 'School setup', body: NoteBox('Your role does not include school setup.'));
+    if (tabs.isEmpty) return const StaffPage(title: 'Classes & fees', body: NoteBox('Your role does not include this page.'));
     final t = tabs.contains(tab) ? tab! : tabs.first;
     return StaffPage(
-      title: 'School setup',
-      subtitle: 'Add and change students, staff, classes, fees and bus routes. Every change is saved at once and recorded in the activity log.',
+      title: 'Classes & fees',
+      subtitle: 'Sections and their teachers, the fee plan for each grade, and loading lists from Excel. Every change is saved at once and recorded in the activity log.',
       body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
           for (final k in tabs) Padding(padding: const EdgeInsets.only(right: 8), child: ChoiceChip(
@@ -132,11 +131,10 @@ class _SchoolSetupScreenState extends ConsumerState<SchoolSetupScreen> {
         ])),
         const SizedBox(height: 16),
         switch (t) {
-          'students' => const _StudentsTab(),
-          'staff' => const _StaffTab(),
           'classes' => const _ClassesTab(),
           'fees' => const _FeesTab(),
-          _ => const _TransportTab(),
+          'import' => const ImportTab(),
+          _ => const _ClassesTab(),
         },
       ]),
     );
@@ -144,80 +142,15 @@ class _SchoolSetupScreenState extends ConsumerState<SchoolSetupScreen> {
 }
 
 // ================================================================== STUDENTS
-class _StudentsTab extends ConsumerStatefulWidget {
-  const _StudentsTab();
-  @override
-  ConsumerState<_StudentsTab> createState() => _StudentsTabState();
-}
-
-class _StudentsTabState extends ConsumerState<_StudentsTab> {
-  String q = ''; String? sectionId;
-
-  Future<void> _open([String? id]) async {
-    final saved = await showDialog<bool>(context: context, barrierDismissible: false, builder: (_) => _StudentEditor(studentId: id, sectionId: sectionId));
-    if (saved == true) {
-      ref.invalidate(studentSearchProvider);
-      if (sectionId != null) ref.invalidate(sectionStudentsProvider(sectionId!));
-      ref.invalidate(setupSectionsProvider);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final sections = ref.watch(setupSectionsProvider).value ?? const <Map<String, dynamic>>[];
-    Widget tile(String id, String name, String adm, bool active, String extra) => ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-      leading: Avatar(name.trim().split(RegExp(r'\s+')).take(2).map((w) => w.isEmpty ? '' : w[0]).join(), size: 40),
-      title: Text(name, style: const TextStyle(fontWeight: FontWeight.w700)),
-      subtitle: Text('$adm$extra', style: TextStyle(color: cs.onSurfaceVariant)),
-      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (!active) const Pill('Left', fg: Brand.muted, bg: Brand.surface2),
-        const Icon(Icons.chevron_right_rounded),
-      ]),
-      onTap: () => _open(id),
-    );
-
-    Widget list;
-    if (q.trim().length >= 2) {
-      list = ref.watch(studentSearchProvider(q)).when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty
-          ? Padding(padding: const EdgeInsets.all(16), child: Text('No student found for “$q”.', style: TextStyle(color: cs.onSurfaceVariant)))
-          : Column(children: [for (final r in rows) tile(r['id'], r['full_name'] ?? '', r['admission_no'] ?? '', r['active'] == true,
-              (r['enrolment'] as List?)?.isNotEmpty == true ? ' · ${sectionLabelOf((r['enrolment'] as List).first['section'])}' : '')]));
-    } else if (sectionId != null) {
-      list = ref.watch(sectionStudentsProvider(sectionId!)).when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty
-          ? Padding(padding: const EdgeInsets.all(16), child: Text('No students in this class yet.', style: TextStyle(color: cs.onSurfaceVariant)))
-          : Column(children: [for (final r in rows) if (r['student'] != null) tile(r['student']['id'], r['student']['full_name'] ?? '', r['student']['admission_no'] ?? '', r['student']['active'] == true,
-              r['roll_no'] != null ? ' · Roll ${r['roll_no']}' : '')]));
-    } else {
-      list = Padding(padding: const EdgeInsets.all(16), child: Text('Search by name or admission number, or pick a class.', style: TextStyle(color: cs.onSurfaceVariant)));
-    }
-
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Panel(title: 'Students', trailing: FilledButton.icon(onPressed: () => _open(), icon: const Icon(Icons.person_add_alt_1_rounded, size: 18), label: const Text('New admission')),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          PickRow(children: [
-            Expanded(child: TextField(decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: 'Name or admission number'), onChanged: (v) => setState(() => q = v))),
-            const SizedBox(width: 10),
-            Expanded(child: PickField<String>(label: 'Class', value: sections.any((x) => x['id'] == sectionId) ? sectionId : null, onChanged: (v) => setState(() => sectionId = v),
-                items: [for (final s in sections) DropdownMenuItem(value: s['id'] as String, child: Text('${sectionLabel(s)}  ·  ${(s['enrolment'] as List?)?.firstOrNull?['count'] ?? 0} students'))])),
-          ]),
-          const SizedBox(height: 8),
-          list,
-        ])),
-      const NoteBox('A student who leaves: open them and switch off “Studying here”. Their old receipts and report cards stay available, and the family can no longer sign in once the TC date is set.'),
-    ]);
-  }
-}
-
-class _StudentEditor extends ConsumerStatefulWidget {
+/// Add or change one student (new admission, class, phones, bus, leaving). Opened from the Students page.
+class StudentEditor extends ConsumerStatefulWidget {
   final String? studentId; final String? sectionId;
-  const _StudentEditor({this.studentId, this.sectionId});
+  const StudentEditor({super.key, this.studentId, this.sectionId});
   @override
-  ConsumerState<_StudentEditor> createState() => _StudentEditorState();
+  ConsumerState<StudentEditor> createState() => StudentEditorState();
 }
 
-class _StudentEditorState extends ConsumerState<_StudentEditor> {
+class StudentEditorState extends ConsumerState<StudentEditor> {
   bool loading = true, busy = false;
   final adm = TextEditingController(), name = TextEditingController(), father = TextEditingController(), mother = TextEditingController(),
       guardian = TextEditingController(), address = TextEditingController(), blood = TextEditingController(), house = TextEditingController();
@@ -241,8 +174,8 @@ class _StudentEditorState extends ConsumerState<_StudentEditor> {
     try {
       final r = await db.from('student')
           .select('id,admission_no,full_name,dob,gender,blood_group,house,admission_type,address,father_name,mother_name,guardian_name,photo_consent,active,tc_issued_on,'
-              'family_phone(phone,label,is_primary),enrolment(section_id,academic_year!inner(is_current)),transport_enrolment(route_id,stop_id)')
-          .eq('id', widget.studentId!).eq('enrolment.academic_year.is_current', true).single();
+              'family_phone(phone,label,is_primary),enrolment(section_id,is_current),transport_enrolment(route_id,stop_id)')
+          .eq('id', widget.studentId!).eq('enrolment.is_current', true).single();
       adm.text = r['admission_no'] ?? ''; name.text = r['full_name'] ?? '';
       father.text = r['father_name'] ?? ''; mother.text = r['mother_name'] ?? ''; guardian.text = r['guardian_name'] ?? '';
       address.text = r['address'] ?? ''; blood.text = r['blood_group'] ?? ''; house.text = r['house'] ?? '';
@@ -265,7 +198,6 @@ class _StudentEditorState extends ConsumerState<_StudentEditor> {
 
   Future<void> _save() async {
     if (adm.text.trim().isEmpty || name.text.trim().isEmpty || dob == null) { toast(context, 'Admission number, name and date of birth are needed.'); return; }
-    if (sectionId == null) { toast(context, 'Please pick the class.'); return; }
     final list = <Map<String, String>>[];
     for (var i = 0; i < 3; i++) {
       final d = phones[i].text.replaceAll(RegExp(r'\D'), '');
@@ -288,6 +220,8 @@ class _StudentEditorState extends ConsumerState<_StudentEditor> {
         await db.rpc('admin_set_transport', params: {'p_student': id, 'p_route': routeId, 'p_stop': routeId == null ? null : stopId});
       }
       if (!active && tc != null) await db.from('student').update({'tc_issued_on': _iso(tc!)}).eq('id', id);
+      // a student who leaves goes to Past students (the date is kept the first time only)
+      if (!active) { try { await db.from('student').update({'left_on': _iso(tc ?? DateTime.now()), 'leaving_reason': tc != null ? 'Left with TC' : 'Left the school'}).eq('id', id).isFilter('left_on', null); } catch (_) {} }
       if (!active) { try { await callFunction(ref, 'password', {'action': 'signout_all', 'student_id': id}); } catch (_) {} }
       String? pw;
       if (isNew) {
@@ -328,12 +262,16 @@ class _StudentEditorState extends ConsumerState<_StudentEditor> {
           }, icon: const Icon(Icons.cake_rounded, size: 18), label: Text(dob == null ? 'Date of birth *' : 'Born ${df.format(dob!)}')),
           Wrap(spacing: 8, children: [for (final g in const ['Male', 'Female']) ChoiceChip(label: Text(g), selected: gender == g, onSelected: (v) => setState(() => gender = v ? g : null))])),
       const SizedBox(height: 10),
-      two(PickField<String>(label: 'Class *', value: sections.any((x) => x['id'] == sectionId) ? sectionId : null, onChanged: (v) => setState(() => sectionId = v),
-              items: [for (final s in sections) DropdownMenuItem(value: s['id'] as String, child: Text(sectionLabel(s)))]),
+      two(PickField<String?>(label: 'Class', value: sectionId, onChanged: (v) => setState(() => sectionId = v),
+              items: [
+                if (sectionId != null && !sections.any((x) => x['id'] == sectionId)) DropdownMenuItem<String?>(value: sectionId, child: const Text('Keep the class it has now')),
+                const DropdownMenuItem<String?>(value: null, child: Text('No class yet — placed later in New sections')),
+                for (final s in sections) DropdownMenuItem<String?>(value: s['id'] as String, child: Text(sectionLabel(s))),
+              ]),
           PickField<String>(label: 'Admission type', value: admissionType, onChanged: (v) => setState(() => admissionType = v ?? 'Day Scholar'),
               items: [for (final a in {'Day Scholar', 'Day Boarder', 'Boarder', admissionType}) DropdownMenuItem(value: a, child: Text(a))])),
       if (isNew) CheckboxListTile(contentPadding: EdgeInsets.zero, value: addFees, onChanged: (v) => setState(() => addFees = v ?? true),
-          title: const Text('Add this year’s fees for the class'), subtitle: const Text('From the fee plan in the Fees tab. Concessions can be set in the Fees desk.')),
+          title: const Text('Add this year’s fees for the class'), subtitle: const Text('From the fee plan in Classes & fees → Fees. Concessions can be set in the Fees desk.')),
 
       _label(context, 'PARENTS’ PHONES — SIGN-IN AND NOTIFICATIONS'),
       for (var i = 0; i < 3; i++) Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [
@@ -381,13 +319,13 @@ class _StudentEditorState extends ConsumerState<_StudentEditor> {
 const _staffRoles = ['teacher', 'class_teacher', 'coordinator', 'accounts', 'office', 'transport_incharge', 'vice_principal', 'principal', 'it_admin'];
 const _divisions = {'pre_primary': 'Pre-primary', 'primary': 'Primary', 'middle': 'Middle', 'high_senior': 'High & senior'};
 
-class _StaffTab extends ConsumerStatefulWidget {
-  const _StaffTab();
+class StaffTab extends ConsumerStatefulWidget {
+  const StaffTab({super.key});
   @override
-  ConsumerState<_StaffTab> createState() => _StaffTabState();
+  ConsumerState<StaffTab> createState() => StaffTabState();
 }
 
-class _StaffTabState extends ConsumerState<_StaffTab> {
+class StaffTabState extends ConsumerState<StaffTab> {
   String q = ''; bool showLeft = false;
 
   Future<void> _open([Map<String, dynamic>? st]) async {
@@ -422,7 +360,7 @@ class _StaffTabState extends ConsumerState<_StaffTab> {
               onTap: () => _open(st),
             ),
           ])),
-        const NoteBox('Drivers and bus assistants are set up in the Bus routes tab (or Transport) with their dr / as login IDs.'),
+        const NoteBox('Drivers and bus assistants are set up in Transport with their dr / as login IDs.'),
       ]);
     });
   }
@@ -776,8 +714,8 @@ class _FeeLineEditorState extends ConsumerState<_FeeLineEditor> {
 }
 
 // ================================================================== BUS ROUTES
-class _TransportTab extends ConsumerWidget {
-  const _TransportTab();
+class TransportTab extends ConsumerWidget {
+  const TransportTab({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -886,8 +824,10 @@ class _StopsEditor extends ConsumerStatefulWidget {
 }
 
 class _Stop {
-  String? id; String name; double lat, lng; TimeOfDay? morning, afternoon;
-  _Stop({this.id, required this.name, required this.lat, required this.lng, this.morning, this.afternoon});
+  String? id; String name; double? lat, lng; TimeOfDay? morning, afternoon;
+  _Stop({this.id, required this.name, this.lat, this.lng, this.morning, this.afternoon});
+  /// null = not pinned on the map yet (e.g. imported from Excel without a location)
+  LatLng? get ll => lat == null || lng == null ? null : LatLng(lat!, lng!);
 }
 
 class _StopsEditorState extends ConsumerState<_StopsEditor> {
@@ -903,7 +843,7 @@ class _StopsEditorState extends ConsumerState<_StopsEditor> {
     try {
       final rows = await db.from('route_stop').select('id,seq,name,lat,lng,morning_eta,afternoon_eta').eq('route_id', widget.route['id']).order('seq', ascending: true);
       for (final s in rows) {
-        stops.add(_Stop(id: s['id'], name: s['name'] ?? '', lat: (s['lat'] as num).toDouble(), lng: (s['lng'] as num).toDouble(),
+        stops.add(_Stop(id: s['id'], name: s['name'] ?? '', lat: (s['lat'] as num?)?.toDouble(), lng: (s['lng'] as num?)?.toDouble(),
             morning: _RouteEditorState._tod(s['morning_eta']), afternoon: _RouteEditorState._tod(s['afternoon_eta'])));
       }
     } catch (e) { if (mounted) toast(context, _msg(e)); }
@@ -913,8 +853,10 @@ class _StopsEditorState extends ConsumerState<_StopsEditor> {
   void _fit() {
     if (stops.isEmpty) return;
     try {
-      if (stops.length == 1) { _mc.move(LatLng(stops.first.lat, stops.first.lng), 16); return; }
-      _mc.fitCamera(CameraFit.bounds(bounds: LatLngBounds.fromPoints([for (final s in stops) LatLng(s.lat, s.lng)]), padding: const EdgeInsets.all(40)));
+      final pts = [for (final s in stops) if (s.ll != null) s.ll!];
+      if (pts.isEmpty) return;
+      if (pts.length == 1) { _mc.move(pts.first, 16); return; }
+      _mc.fitCamera(CameraFit.bounds(bounds: LatLngBounds.fromPoints(pts), padding: const EdgeInsets.all(40)));
     } catch (_) {}
   }
 
@@ -954,6 +896,8 @@ class _StopsEditorState extends ConsumerState<_StopsEditor> {
 
   Future<void> _save() async {
     if (stops.isEmpty) { toast(context, 'Add at least one stop.'); return; }
+    final unpinned = stops.where((s) => s.ll == null).length;
+    if (unpinned > 0) toast(context, '$unpinned stop${unpinned == 1 ? '' : 's'} still without a map pin — saved, but bus alerts for them start once they are pinned.');
     setState(() => busy = true);
     String? t(TimeOfDay? x) => x == null ? null : '${x.hour.toString().padLeft(2, '0')}:${x.minute.toString().padLeft(2, '0')}';
     try {
@@ -970,7 +914,7 @@ class _StopsEditorState extends ConsumerState<_StopsEditor> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final start = stops.isNotEmpty ? LatLng(stops.first.lat, stops.first.lng) : const LatLng(13.0244, 77.6410);   // the school
+    final start = stops.where((s) => s.ll != null).firstOrNull?.ll ?? const LatLng(13.0244, 77.6410);   // the school
     final wide = MediaQuery.sizeOf(context).width >= 900;
 
     final map = Stack(children: [
@@ -981,10 +925,10 @@ class _StopsEditorState extends ConsumerState<_StopsEditor> {
           TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', fallbackUrl: 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
               userAgentPackageName: 'in.rcis.royale_connect', tileBuilder: dark ? darkModeTileBuilder : null),
           PolylineLayer(polylines: [
-            if (stops.length > 1) Polyline(points: [for (final s in stops) LatLng(s.lat, s.lng)], color: Brand.crimson.withValues(alpha: .7), strokeWidth: 4, pattern: StrokePattern.dashed(segments: const [12, 8])),
+            if (stops.where((s) => s.ll != null).length > 1) Polyline(points: [for (final s in stops) if (s.ll != null) s.ll!], color: Brand.crimson.withValues(alpha: .7), strokeWidth: 4, pattern: StrokePattern.dashed(segments: const [12, 8])),
           ]),
           MarkerLayer(markers: [
-            for (final (i, s) in stops.indexed) Marker(point: LatLng(s.lat, s.lng), width: 30, height: 30, child: Container(
+            for (final (i, s) in stops.indexed) if (s.ll != null) Marker(point: s.ll!, width: 30, height: 30, child: Container(
               decoration: BoxDecoration(color: moving == i ? Brand.gold : Brand.crimson, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2.5), boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)]),
               child: Center(child: Text('${i + 1}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13))))),
           ]),
@@ -1011,12 +955,13 @@ class _StopsEditorState extends ConsumerState<_StopsEditor> {
                 key: ObjectKey(s),
                 leading: CircleAvatar(radius: 15, backgroundColor: moving == i ? Brand.gold : Brand.crimson, child: Text('${i + 1}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 12))),
                 title: Text(s.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text('Morning ${s.morning?.format(context) ?? '—'} · Afternoon ${s.afternoon?.format(context) ?? '—'}', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
-                onTap: () { try { _mc.move(LatLng(s.lat, s.lng), 17); } catch (_) {} },
+                subtitle: Text(s.ll == null ? 'Not on the map yet — tap here, then tap the map where it is' : 'Morning ${s.morning?.format(context) ?? '—'} · Afternoon ${s.afternoon?.format(context) ?? '—'}',
+                    style: TextStyle(color: s.ll == null ? context.tone(Brand.amber) : cs.onSurfaceVariant, fontSize: 12, fontWeight: s.ll == null ? FontWeight.w700 : null)),
+                onTap: () { if (s.ll == null) { setState(() => moving = i); return; } try { _mc.move(s.ll!, 17); } catch (_) {} },
                 trailing: PopupMenuButton<String>(
                   onSelected: (v) async {
                     if (v == 'name') { final n = await _askName(s.name); if (n != null && n.trim().isNotEmpty) setState(() { s.name = n.trim(); dirty = true; }); }
-                    if (v == 'move') { setState(() => moving = i); try { _mc.move(LatLng(s.lat, s.lng), 17); } catch (_) {} }
+                    if (v == 'move') { setState(() => moving = i); if (s.ll != null) { try { _mc.move(s.ll!, 17); } catch (_) {} } }
                     if (v == 'am' || v == 'pm') {
                       if (!mounted) return;
                       final t = await showTimePicker(context: context, initialTime: (v == 'am' ? s.morning : s.afternoon) ?? (v == 'am' ? const TimeOfDay(hour: 7, minute: 15) : const TimeOfDay(hour: 15, minute: 45)));

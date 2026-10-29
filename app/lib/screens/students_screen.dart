@@ -38,7 +38,7 @@ class StudentsScreen extends ConsumerWidget {
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(st.fullName, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 19)),
                         const SizedBox(height: 2),
-                        Text('${st.grade ?? ''} · Section ${st.section ?? ''}', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant)),
+                        Text('${st.grade ?? ''} · ${st.sectionText}', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: cs.onSurfaceVariant)),
                         Text(st.admissionNo, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                       ])),
                       Container(width: 40, height: 40, decoration: const BoxDecoration(color: Brand.crimson, shape: BoxShape.circle), child: const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20)),

@@ -4,6 +4,9 @@
 //                                   { token, kind:'crew', crew:{name, role, route, bus} }
 // SMS provider: set SMS_PROVIDER=msg91 and MSG91_AUTHKEY/MSG91_TEMPLATE_ID; without them (dev) the code is logged.
 import { admin, json, preflight, normPhone, mintToken, hashPassword, verifyPassword, audit } from "../_shared/lib.ts";
+// the class to show: a section that is not open yet shows as "to be announced" (null)
+const secName = (s: any) => (!s || s.placeholder || s.status === "planned" || s.status === "ready") ? null : s.name;
+
 
 async function sendSms(phone: string, code: string) {
   const provider = Deno.env.get("SMS_PROVIDER");
@@ -66,11 +69,11 @@ Deno.serve(async (req) => {
     }
 
     const { data: students } = await db.from("student")
-      .select("id, admission_no, full_name, must_change_password, enrolment!inner(section:section_id(name, grade:grade_id(code,name)), academic_year!inner(is_current))")
-      .in("id", studentIds).eq("active", true).eq("enrolment.academic_year.is_current", true);
+      .select("id, admission_no, full_name, must_change_password, enrolment!inner(is_current, section:section_id(name, status, placeholder, grade:grade_id(code,name)))")
+      .in("id", studentIds).eq("active", true).eq("enrolment.is_current", true);
     const list = (students ?? []).map((x: any) => ({
       id: x.id, admission_no: x.admission_no, full_name: x.full_name,
-      grade: x.enrolment?.[0]?.section?.grade?.name, grade_code: x.enrolment?.[0]?.section?.grade?.code, section: x.enrolment?.[0]?.section?.name,
+      grade: x.enrolment?.[0]?.section?.grade?.name, grade_code: x.enrolment?.[0]?.section?.grade?.code, section: secName(x.enrolment?.[0]?.section),
     }));
     const ids = list.map((x: any) => x.id);
     const { data: sess } = await db.from("app_session").insert({ student_id: ids[0], linked_student_ids: ids, device_label: body.device_label ?? null }).select("id").single();

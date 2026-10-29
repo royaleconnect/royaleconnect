@@ -148,7 +148,7 @@ const familyHelp = <HelpItem>[
   ], keywords: 'night quiet hours late morning delay'),
   // School
   HelpItem('m-teacher', 'School', 'How do I message the class teacher?', [
-    'On Home, tap Messages.',
+    'On Home, tap the 💬 speech bubble at the top.',
     'Choose the teacher and type your message. The teacher replies in the app.',
   ], keywords: 'message chat teacher contact talk ask', route: '/messages', button: 'Open messages'),
   HelpItem('m-leave', 'School', 'How do I apply for leave for my child?', [
@@ -163,6 +163,15 @@ const familyHelp = <HelpItem>[
     'On Home, tap ⚙ (Settings) → Feedback to the school.',
     'Write your message. The school office will reply.',
   ], keywords: 'feedback complaint suggestion problem', route: '/feedback', button: 'Open feedback'),
+  HelpItem('m-toppers', 'School', 'Where are the Board Toppers and the Hall of Fame?', [
+    'On Home, tap Toppers.',
+    'Choose Class X or Class XII and a year to see the top 3 and the subject centums.',
+    'Tap Hall of Fame to see former students and where they are today.',
+  ], keywords: 'toppers topper board results rank centum 100 hall of fame alumni old students', route: '/toppers', button: 'Open Toppers'),
+  HelpItem('m-newclass', 'School', 'It says “section to be announced”', [
+    'Your child has moved up to the new class. The school is now making the new sections.',
+    'When the school publishes them you get a notification with the section and class teacher.',
+  ], keywords: 'section to be announced new class next year moved up promotion tba'),
 ];
 
 // ------------------------------------------------------------------ teachers & office
@@ -182,9 +191,10 @@ const staffHelp = <HelpItem>[
     'They will give you a one-time password. Sign in with it and choose a new one.',
   ], keywords: 'forgot reset password locked'),
   HelpItem('t-menu', 'Getting started', 'Where is everything?', [
-    'On a laptop, the menu is on the left.',
+    'Start on Today: it shows what is waiting for you, with the button to do it.',
+    'On a laptop, the menu is on the left in groups: Today · My class · Exams & reports · Students · School · Me.',
     'On a phone, the 4 most used pages are at the bottom. Tap ☰ (top right) for the full menu.',
-    'You only see the pages for your role.',
+    'You only see the pages for your role. IT can change this in School settings.',
   ], keywords: 'menu find page navigation missing'),
   HelpItem('t-diary', 'Class', 'How do I post homework in the diary?', [
     'Open Class diary.',
@@ -232,7 +242,8 @@ const staffHelp = <HelpItem>[
   ], keywords: 'message chat reply parent', route: '/staff/messages', button: 'Open Messages', popular: true),
   HelpItem('t-slip', 'Parents', 'A parent forgot their password', [
     'Open Students → find the student.',
-    'Tap ⋮ → “Reset password (print slip)”. Give the slip to the parent.',
+    'Teachers: tap ⋮ → “Reset password (print slip)”. Office: open the student → “New password slip”.',
+    'Give the slip to the parent.',
   ], keywords: 'parent forgot password reset slip', route: '/staff/students', button: 'Open Students'),
   HelpItem('o-fees', 'Office', 'How do I check a student’s fees?', [
     'Open Fees desk and search the student’s name or admission number.',
@@ -247,21 +258,51 @@ const staffHelp = <HelpItem>[
     'They sign in at “School staff? Sign in here” with that ID and the common bus password.',
   ], keywords: 'driver bus assistant conductor login dr as transport', route: '/staff/transport', button: 'Open Transport'),
   HelpItem('s-admit', 'Setup', 'How do I add a new student?', [
-    'Open School setup → Students → New admission.',
+    'Open Students → New admission.',
     'Fill in the details and at least one parent mobile, then tap Admit student.',
     'Print the password slip that appears and give it to the parents.',
-  ], keywords: 'new admission add student join', route: '/staff/setup', button: 'Open School setup'),
+    'A student who studied here before (for example Grade X → re-admission in XI) is linked to the old admission by itself.',
+  ], keywords: 'new admission add student join readmission', route: '/staff/students', button: 'Open Students', popular: true),
   HelpItem('s-left', 'Setup', 'A student has left the school', [
-    'Open School setup → Students → find the student.',
-    'Switch off “Studying here” and add the TC date. Their old receipts and report cards are kept.',
-  ], keywords: 'left tc transfer certificate remove student', route: '/staff/setup', button: 'Open School setup'),
+    'Open Students → find the student → Edit details.',
+    'Switch off “Studying here” and add the TC date. Their old receipts and report cards are kept for ever under Past students.',
+  ], keywords: 'left tc transfer certificate remove student', route: '/staff/students', button: 'Open Students'),
+  HelpItem('s-docs', 'Setup', 'How do I keep a TC, marksheet or certificate?', [
+    'Open Students → search the name or admission number (choose Past students for old students).',
+    'Open the student → Documents → Upload. Choose what it is (TC, Marksheet, Conduct, Bonafide, Birth certificate) and pick the PDF or photo.',
+    'Later, tap the document to print it or share it. Every upload, print and share is recorded.',
+  ], keywords: 'tc transfer certificate marksheet conduct bonafide study birth document upload print share alumni old student', route: '/staff/students', button: 'Open Students', popular: true),
+  HelpItem('s-readmit', 'Setup', 'The app asks “Same child?”', [
+    'When a new admission has the same date of birth and name as an earlier student, the app links them so the child has one history.',
+    'If it is not sure, Students shows “re-admissions to check”. Tap Check now and choose “Same child — link” or “Not the same”.',
+  ], keywords: 'readmission re-admission link same child grade 11 xi new admission number', route: '/staff/students', button: 'Open Students'),
+  HelpItem('s-sections', 'Setup', 'How do I make next year’s sections?', [
+    'Open New sections (IT and the Principal).',
+    'Tap a grade. Step 1: add the sections and choose each class teacher.',
+    'Step 2: upload the school’s Excel list (Admission number + Section) or choose the section for each student.',
+    'Step 3: tap “Publish to families”. Until then families see “section to be announced”.',
+  ], keywords: 'new sections next year shuffle class teacher promote move up placement', route: '/staff/sections', button: 'Open New sections'),
+  HelpItem('s-moveup', 'Setup', 'When do classes move up?', [
+    '1 March: Grades VIII, IX and XI move up (XI → XII keep the same sections).',
+    '15 May: every other class moves up and Grades X and XII become past students.',
+    'It happens by itself. IT and the Principal get a reminder a week before. IT can change the dates in School settings → Year dates.',
+  ], keywords: 'move up promotion new year 1 march 15 may past students year end'),
+  HelpItem('s-toppers', 'Setup', 'How do I add Board Toppers or Hall of Fame?', [
+    'Open Toppers & Hall of Fame.',
+    'Choose Class X or XII, add the year, then the top 3 (with photos) and the subject centums.',
+    'For the Hall of Fame, tap “Add a person”.',
+  ], keywords: 'toppers board results centum hall of fame alumni photo', route: '/staff/toppers', button: 'Open Toppers'),
+  HelpItem('s-settings', 'Setup', 'How do I switch a feature off or change who sees a page?', [
+    'IT: open School settings.',
+    '“Who can use what” — tick the roles that see each page. “Features” — switch features on or off for families.',
+  ], keywords: 'settings permission access role feature switch off hide page', route: '/staff/settings', button: 'Open School settings'),
   HelpItem('s-import', 'Setup', 'How do I import a list from Excel?', [
-    'Open School setup → Import from Excel.',
+    'Open Classes & fees → Import from Excel.',
     'Choose what you are importing and upload the file. Columns are matched for you.',
     'Check the list of problems (nothing is saved yet), then tap Import.',
-  ], keywords: 'excel import upload sheet list bulk mcb', route: '/staff/setup', button: 'Open School setup'),
+  ], keywords: 'excel import upload sheet list bulk mcb', route: '/staff/setup', button: 'Open Classes & fees'),
   HelpItem('s-classes', 'Setup', 'How do I change a class teacher or subject teacher?', [
-    'Open School setup → Classes → tap the class.',
+    'Open Classes & fees → Classes → tap the class.',
     'Choose the class teacher and the teacher for each subject, then Save.',
-  ], keywords: 'class teacher subject teacher assign section', route: '/staff/setup', button: 'Open School setup'),
+  ], keywords: 'class teacher subject teacher assign section', route: '/staff/setup', button: 'Open Classes & fees'),
 ];

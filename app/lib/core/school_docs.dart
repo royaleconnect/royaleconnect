@@ -186,8 +186,8 @@ Future<Map<String, dynamic>> _student(String id) async =>
     await db.from('student').select('full_name,admission_no,dob,father_name,mother_name').eq('id', id).single();
 
 Future<Map<String, dynamic>?> _enrolment(String studentId, String? yearId) async {
-  var q = db.from('enrolment').select('section:section_id(name,grade:grade_id(id,code,name)),academic_year!inner(id,is_current,label)').eq('student_id', studentId);
-  q = yearId == null ? q.eq('academic_year.is_current', true) : q.eq('academic_year_id', yearId);
+  var q = db.from('enrolment').select('is_current,section:section_id(name,grade:grade_id(id,code,name)),academic_year!inner(id,is_current,label)').eq('student_id', studentId);
+  q = yearId == null ? q.eq('is_current', true) : q.eq('academic_year_id', yearId);
   return await q.maybeSingle();
 }
 
@@ -207,8 +207,8 @@ Future<Uint8List> buildReceiptPdf(String paymentId) async {
   final k = await _kit();
   final st = await _student(sid);
   final en = await _enrolment(sid, null);
-  final pending = await db.from('fee_ledger').select('amount,concession,due_on,academic_year!inner(is_current)')
-      .eq('student_id', sid).eq('academic_year.is_current', true).eq('status', 'pending').order('due_on', ascending: true);
+  final pending = await db.from('fee_ledger').select('amount,concession,due_on')
+      .eq('student_id', sid).eq('status', 'pending').order('due_on', ascending: true);
   final balance = pending.fold<num>(0, (a, r) => a + (r['amount'] as num) - ((r['concession'] ?? 0) as num));
   final nextDue = pending.isEmpty ? null : pending.first['due_on'] as String?;
   final lines = List<Map<String, dynamic>>.from(p['payment_line'] ?? const []);

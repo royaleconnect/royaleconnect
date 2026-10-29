@@ -55,10 +55,11 @@ class _BusMapState extends State<BusMap> with SingleTickerProviderStateMixin {
     if (_follow && _ready) { try { _mc.move(p, _mc.camera.zoom); } catch (_) {} }
   }
 
-  LatLng _ll(Map<String, dynamic> s) => LatLng((s['lat'] as num).toDouble(), (s['lng'] as num).toDouble());
+  /// null = this stop is not pinned on the map yet (it is simply not drawn)
+  LatLng? _ll(Map<String, dynamic> s) => s['lat'] == null || s['lng'] == null ? null : LatLng((s['lat'] as num).toDouble(), (s['lng'] as num).toDouble());
 
   void _fitAll() {
-    final pts = [for (final s in widget.stops) _ll(s), if (_shown != null) _shown!];
+    final pts = [for (final s in widget.stops) if (_ll(s) != null) _ll(s)!, if (_shown != null) _shown!];
     if (pts.isEmpty || !_ready) return;
     try {
       if (pts.length == 1) { _mc.move(pts.first, 15); return; }
@@ -76,10 +77,10 @@ class _BusMapState extends State<BusMap> with SingleTickerProviderStateMixin {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final ahead = <LatLng>[
       if (_shown != null && widget.running) _shown!,
-      for (final (i, s) in stops.indexed) if (!widget.running || next == null || i >= next) _ll(s),
+      for (final (i, s) in stops.indexed) if ((!widget.running || next == null || i >= next) && _ll(s) != null) _ll(s)!,
     ];
     final trail = [for (final p in widget.trail) LatLng(p[0], p[1]), if (_shown != null && widget.trail.isNotEmpty) _shown!];
-    final start = _shown ?? (stops.isNotEmpty ? _ll(stops.first) : const LatLng(13.0244, 77.6410));
+    final start = _shown ?? stops.map(_ll).whereType<LatLng>().firstOrNull ?? const LatLng(13.0244, 77.6410);
 
     Widget stopDot(int i, Map<String, dynamic> s) {
       final mine = s['id'] == widget.myStopId;
@@ -113,7 +114,7 @@ class _BusMapState extends State<BusMap> with SingleTickerProviderStateMixin {
             if (trail.length > 1) Polyline(points: trail, color: Brand.crimson, strokeWidth: 6, borderColor: Colors.white, borderStrokeWidth: 1.5),
           ]),
           MarkerLayer(markers: [
-            for (final (i, s) in stops.indexed) Marker(point: _ll(s), width: s['id'] == widget.myStopId ? 34 : 18, height: s['id'] == widget.myStopId ? 34 : 18, child: stopDot(i, s)),
+            for (final (i, s) in stops.indexed) if (_ll(s) != null) Marker(point: _ll(s)!, width: s['id'] == widget.myStopId ? 34 : 18, height: s['id'] == widget.myStopId ? 34 : 18, child: stopDot(i, s)),
             if (_shown != null) Marker(point: _shown!, width: 52, height: 52, child: Container(
               decoration: BoxDecoration(color: Brand.green, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 3),
                   boxShadow: [BoxShadow(color: Brand.green.withValues(alpha: .45), blurRadius: 14, spreadRadius: 4)]),

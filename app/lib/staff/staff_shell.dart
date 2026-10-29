@@ -7,37 +7,57 @@ import '../core/theme.dart';
 import '../widgets/common.dart';
 import '../screens/help_screen.dart' show HelpFab;
 import 'staff_data.dart';
+import '../core/data3.dart' show appSettingsProvider, staffAccessOf, yearLabelProvider;
 
-/// One menu entry: route, label, icon, and which roles see it (empty = everyone).
+/// One menu entry: route, label, icon, group, and which roles see it (empty = everyone).
 class StaffItem {
-  final String path, label; final IconData icon; final List<String> roles; final bool officeOnly;
-  const StaffItem(this.path, this.label, this.icon, {this.roles = const [], this.officeOnly = false});
+  final String path, label, group; final IconData icon; final List<String> roles;
+  /// locked = always shown to the roles above; IT cannot switch it off (Today, Help, My settings, School settings)
+  final bool locked;
+  const StaffItem(this.path, this.label, this.icon, this.group, {this.roles = const [], this.locked = false});
 }
 
+const officeRoles = ['office', 'it_admin', 'principal', 'vice_principal'];
+const allStaffRoles = ['teacher', 'class_teacher', 'coordinator', 'accounts', 'office', 'transport_incharge', 'vice_principal', 'principal', 'it_admin'];
+
 const staffMenu = [
-  StaffItem('/staff', 'Overview', Icons.dashboard_rounded),
-  StaffItem('/staff/messages', 'Messages', Icons.chat_bubble_rounded),
-  StaffItem('/staff/announcements', 'Announcements', Icons.campaign_rounded),
-  StaffItem('/staff/diary', 'Class diary', Icons.menu_book_rounded),
-  StaffItem('/staff/leave', 'Leave requests', Icons.event_busy_rounded),
-  StaffItem('/staff/exams', 'Exams & portions', Icons.quiz_rounded),
-  StaffItem('/staff/marks', 'Marks entry', Icons.grading_rounded),
-  StaffItem('/staff/reports', 'Report cards', Icons.assignment_turned_in_rounded, roles: ['class_teacher', 'office', 'it_admin', 'principal', 'vice_principal']),
-  StaffItem('/staff/plan', 'Monthly plan', Icons.view_agenda_rounded, roles: ['coordinator', 'office', 'it_admin', 'principal', 'vice_principal']),
-  StaffItem('/staff/worksheets', 'Worksheets', Icons.description_rounded),
-  StaffItem('/staff/star', 'Star of the month', Icons.star_rounded),
-  StaffItem('/staff/moments', 'Class moments', Icons.photo_library_rounded),
-  StaffItem('/staff/feedback', 'Parent feedback', Icons.rate_review_rounded, officeOnly: true),
-  StaffItem('/staff/calendar', 'School calendar', Icons.calendar_month_rounded, officeOnly: true),
-  StaffItem('/staff/fees', 'Fees desk', Icons.account_balance_wallet_rounded, roles: ['accounts', 'office', 'it_admin', 'principal', 'vice_principal']),
-  StaffItem('/staff/transport', 'Transport', Icons.directions_bus_rounded, roles: ['transport_incharge', 'office', 'it_admin', 'principal', 'vice_principal']),
-  StaffItem('/staff/students', 'Students', Icons.people_alt_rounded),
-  StaffItem('/staff/setup', 'School setup', Icons.tune_rounded, roles: ['office', 'accounts', 'transport_incharge', 'it_admin', 'principal', 'vice_principal']),
-  StaffItem('/staff/users', 'Staff & settings', Icons.admin_panel_settings_rounded, roles: ['it_admin', 'principal']),
-  StaffItem('/staff/help', 'Help', Icons.help_outline_rounded),
+  StaffItem('/staff', 'Today', Icons.today_rounded, 'TODAY', locked: true),
+  StaffItem('/staff/messages', 'Messages', Icons.chat_bubble_rounded, 'TODAY'),
+  StaffItem('/staff/announcements', 'Notices', Icons.campaign_rounded, 'TODAY'),
+  StaffItem('/staff/feedback', 'Parent feedback', Icons.rate_review_rounded, 'TODAY', roles: officeRoles),
+  StaffItem('/staff/calendar', 'School calendar', Icons.calendar_month_rounded, 'TODAY', roles: officeRoles),
+  StaffItem('/staff/diary', 'Class diary', Icons.menu_book_rounded, 'MY CLASS'),
+  StaffItem('/staff/leave', 'Leave requests', Icons.event_busy_rounded, 'MY CLASS'),
+  StaffItem('/staff/moments', 'Class photos', Icons.photo_library_rounded, 'MY CLASS'),
+  StaffItem('/staff/star', 'Star of the month', Icons.star_rounded, 'MY CLASS'),
+  StaffItem('/staff/worksheets', 'Worksheets', Icons.description_rounded, 'MY CLASS'),
+  StaffItem('/staff/plan', 'Monthly plan', Icons.view_agenda_rounded, 'MY CLASS', roles: ['coordinator', ...officeRoles]),
+  StaffItem('/staff/marks', 'Marks entry', Icons.grading_rounded, 'EXAMS & REPORTS'),
+  StaffItem('/staff/reports', 'Report cards', Icons.assignment_turned_in_rounded, 'EXAMS & REPORTS', roles: ['class_teacher', ...officeRoles]),
+  StaffItem('/staff/exams', 'Exams & portions', Icons.quiz_rounded, 'EXAMS & REPORTS'),
+  StaffItem('/staff/students', 'Students', Icons.people_alt_rounded, 'STUDENTS'),
+  StaffItem('/staff/sections', 'New sections', Icons.view_module_rounded, 'STUDENTS', roles: ['it_admin', 'principal']),
+  StaffItem('/staff/fees', 'Fees desk', Icons.account_balance_wallet_rounded, 'STUDENTS', roles: ['accounts', ...officeRoles]),
+  StaffItem('/staff/transport', 'Transport', Icons.directions_bus_rounded, 'STUDENTS', roles: ['transport_incharge', ...officeRoles]),
+  StaffItem('/staff/toppers', 'Toppers & Hall of Fame', Icons.emoji_events_rounded, 'STUDENTS', roles: officeRoles),
+  StaffItem('/staff/users', 'Staff', Icons.badge_rounded, 'SCHOOL', roles: ['it_admin', 'principal']),
+  StaffItem('/staff/setup', 'Classes & fees', Icons.tune_rounded, 'SCHOOL', roles: ['accounts', ...officeRoles]),
+  StaffItem('/staff/settings', 'School settings', Icons.admin_panel_settings_rounded, 'SCHOOL', roles: ['it_admin'], locked: true),
+  StaffItem('/staff/me', 'My settings', Icons.settings_rounded, 'ME', locked: true),
+  StaffItem('/staff/help', 'Help', Icons.help_outline_rounded, 'ME', locked: true),
 ];
 
-List<StaffItem> visibleMenu(Session s) => staffMenu.where((m) => (m.roles.isEmpty || m.roles.any(s.hasRole)) && (!m.officeOnly || s.isOffice)).toList();
+/// The most a page can be opened to (the database rules decide what each role can actually read).
+List<String> maxRolesOf(StaffItem m) => m.roles.isEmpty ? allStaffRoles : m.roles;
+
+/// What IT has chosen in School settings → "Who can use what" (missing = the normal roles).
+List<String> chosenRolesOf(StaffItem m, Map<String, List<String>> access) =>
+    m.locked || !access.containsKey(m.path) ? maxRolesOf(m) : access[m.path]!.where(maxRolesOf(m).contains).toList();
+
+List<StaffItem> visibleMenu(Session s, [Map<String, String>? settings]) {
+  final access = staffAccessOf(settings);
+  return staffMenu.where((m) => chosenRolesOf(m, access).any(s.hasRole)).toList();
+}
 
 /// Desktop: left sidebar + content. Phone: top bar + "More" drawer with the full menu, bottom bar with the 4 most used.
 class StaffShell extends ConsumerWidget {
@@ -47,7 +67,7 @@ class StaffShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(sessionProvider).value;
     if (s == null || !s.isStaff) return const SizedBox.shrink();
-    final menu = visibleMenu(s);
+    final menu = visibleMenu(s, ref.watch(appSettingsProvider).value);
     final loc = GoRouterState.of(context).matchedLocation;
     final ov = ref.watch(staffOverviewProvider).value ?? const {};
     int badge(String p) => p == '/staff/messages' ? (ov['unread'] ?? 0) : p == '/staff/leave' ? (ov['leaves'] ?? 0) : p == '/staff/feedback' ? (ov['feedback'] ?? 0) : 0;
@@ -70,11 +90,16 @@ class StaffShell extends ConsumerWidget {
             Padding(padding: const EdgeInsets.fromLTRB(18, 18, 18, 10), child: Row(children: [
               Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)), child: Image.asset('assets/images/monogram.png', width: 26)),
               const SizedBox(width: 10),
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Royale Connect', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)), Text('Staff panel · ${AppConfig.academicYearLabel}', style: TextStyle(color: Colors.white.withValues(alpha: .8), fontSize: 11))])),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Royale Connect', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)), Text('Staff panel · ${ref.watch(yearLabelProvider).value ?? AppConfig.academicYearLabel}', style: TextStyle(color: Colors.white.withValues(alpha: .8), fontSize: 11))])),
             ])),
             Container(height: 2, margin: const EdgeInsets.symmetric(horizontal: 18), decoration: const BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, Brand.gold, Colors.transparent]))),
             const SizedBox(height: 8),
-            Expanded(child: ListView(padding: const EdgeInsets.symmetric(horizontal: 10), children: [for (final m in menu) _NavTile(m, selected: loc == m.path || (m.path != '/staff' && loc.startsWith(m.path)), badge: badge(m.path), onTap: () => context.go(m.path))])),
+            Expanded(child: ListView(padding: const EdgeInsets.symmetric(horizontal: 10), children: [
+              for (final (i, m) in menu.indexed) ...[
+                if (i == 0 || menu[i - 1].group != m.group) Padding(padding: const EdgeInsets.fromLTRB(12, 14, 12, 4), child: Text(m.group, style: TextStyle(color: Colors.white.withValues(alpha: .6), fontSize: 10.5, letterSpacing: 1.6, fontWeight: FontWeight.w800))),
+                _NavTile(m, selected: loc == m.path || (m.path != '/staff' && loc.startsWith(m.path)), badge: badge(m.path), onTap: () => m.path == '/staff/me' ? context.push(m.path) : context.go(m.path)),
+              ],
+            ])),
             _MeTile(s, onSignOut: () async { await ref.read(sessionProvider.notifier).signOut(); if (context.mounted) context.go('/login'); }),
           ]))),
           Expanded(child: ColoredBox(color: cs.surfaceContainerHighest.withValues(alpha: .35), child: content)),
@@ -91,7 +116,7 @@ class StaffShell extends ConsumerWidget {
         bottomNavigationBar: NavigationBar(
           selectedIndex: quick.indexWhere((m) => loc == m.path || (m.path != '/staff' && loc.startsWith(m.path))).clamp(0, quick.length - 1),
           onDestinationSelected: (i) => context.go(quick[i].path),
-          destinations: [for (final m in quick) NavigationDestination(icon: badge(m.path) > 0 ? Badge(label: Text('${badge(m.path)}'), child: Icon(m.icon)) : Icon(m.icon), label: const {'Announcements': 'Notices', 'Class diary': 'Diary', 'Leave requests': 'Leave', 'Exams & portions': 'Exams', 'Marks entry': 'Marks'}[m.label] ?? m.label.split(' ').first)],
+          destinations: [for (final m in quick) NavigationDestination(icon: badge(m.path) > 0 ? Badge(label: Text('${badge(m.path)}'), child: Icon(m.icon)) : Icon(m.icon), label: const {'Parent feedback': 'Feedback', 'School calendar': 'Calendar', 'Class diary': 'Diary', 'Leave requests': 'Leave', 'Exams & portions': 'Exams', 'Marks entry': 'Marks'}[m.label] ?? m.label.split(' ').first)],
         ),
       );
     });
@@ -100,9 +125,12 @@ class StaffShell extends ConsumerWidget {
   void _more(BuildContext context, WidgetRef ref, Session s, List<StaffItem> menu, String loc, int Function(String) badge) => showModalBottomSheet(context: context, showDragHandle: true, isScrollControlled: true, builder: (sheet) => ConstrainedBox(
     constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .85),
     child: ListView(padding: const EdgeInsets.fromLTRB(12, 0, 12, 24), shrinkWrap: true, children: [
-      for (final m in menu) ListTile(leading: Icon(m.icon, color: Brand.crimson), title: Text(m.label, style: const TextStyle(fontWeight: FontWeight.w700)),
+      for (final (i, m) in menu.where((m) => m.path != '/staff/me').indexed) ...[
+        if (i == 0 || menu.where((m) => m.path != '/staff/me').elementAt(i - 1).group != m.group) Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 2), child: Text(m.group, style: const TextStyle(fontSize: 11, letterSpacing: 1.4, fontWeight: FontWeight.w800, color: Brand.muted))),
+        ListTile(leading: Icon(m.icon, color: Brand.crimson), title: Text(m.label, style: const TextStyle(fontWeight: FontWeight.w700)),
         trailing: badge(m.path) > 0 ? CircleAvatar(radius: 11, backgroundColor: Brand.crimson, child: Text('${badge(m.path)}', style: const TextStyle(color: Colors.white, fontSize: 11))) : null,
         selected: loc == m.path, onTap: () { Navigator.pop(sheet); context.go(m.path); }),
+      ],
       const Divider(height: 24),
       ListTile(leading: Avatar((s.staff?['name'] ?? '').toString().trim().split(RegExp(r'\s+')).take(2).map((w) => w.isEmpty ? '' : w[0]).join().toUpperCase(), size: 36),
         title: Text('${s.staff?['name'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text(s.roles.map(roleLabel).join(' · '))),
