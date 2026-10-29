@@ -54,14 +54,18 @@ class _ToppersAdminState extends ConsumerState<_ToppersAdmin> {
 
   void _refresh() { ref.invalidate(toppersProvider(widget.boardClass)); ref.invalidate(boardResultsProvider(widget.boardClass)); }
 
+  /// Board results come out in May: a year can be added only from 15 May of that year (no empty future years).
+  static int get latestYear { final d = DateTime.now(); return (d.month > 5 || (d.month == 5 && d.day >= 15)) ? d.year : d.year - 1; }
+
   Future<void> _addYear() async {
-    final c = TextEditingController(text: '${DateTime.now().year}');
+    final c = TextEditingController(text: '$latestYear');
     final y = await showDialog<int>(context: context, builder: (ctx) => AlertDialog(
       title: const Text('Add a year'),
       content: TextField(controller: c, keyboardType: TextInputType.number, autofocus: true, decoration: const InputDecoration(labelText: 'Year of the board exam', hintText: 'e.g. 2019')),
       actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(ctx, int.tryParse(c.text.trim())), child: const Text('Add'))],
     ));
-    if (y == null || y < 1980 || y > 2100) return;
+    if (y == null || y < 1980) return;
+    if (y > latestYear) { if (mounted) toast(context, 'The $y board results come out in May $y. You can add $y from 15 May $y.'); return; }
     setState(() { extraYears.add(y); year = y; });
   }
 
@@ -106,7 +110,8 @@ class _ToppersAdminState extends ConsumerState<_ToppersAdmin> {
             ])),
             Panel(title: '💯 Centums · $y', trailing: OutlinedButton.icon(onPressed: () => _edit(y: y, kind: 'centum'), icon: const Icon(Icons.add_rounded, size: 18), label: const Text('Add a centum')),
               child: Builder(builder: (_) {
-                final c = rows.where((x) => (x['year'] as num).toInt() == y && x['kind'] == 'centum').toList();
+                final c = rows.where((x) => (x['year'] as num).toInt() == y && x['kind'] == 'centum').toList()
+                  ..sort((a, b) { final o = ((a['sort'] ?? 100) as int).compareTo((b['sort'] ?? 100) as int); return o != 0 ? o : '${a['subject']}'.compareTo('${b['subject']}'); });
                 if (c.isEmpty) return Text('Students who scored 100 / 100 in a subject. One line per student per subject.', style: TextStyle(color: cs.onSurfaceVariant));
                 return Column(children: [for (final r in c) ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 4),
@@ -174,6 +179,7 @@ class _TopperEditorState extends ConsumerState<_TopperEditor> {
   late final section = TextEditingController(text: widget.row?['section'] ?? '');
   late final percent = TextEditingController(text: widget.row?['percent']?.toString() ?? '');
   late final subject = TextEditingController(text: widget.row?['subject'] ?? '');
+  late final order = TextEditingController(text: '${widget.row?['sort'] ?? 100}');
   late String? photo = widget.row?['photo_path'];
   bool busy = false;
   bool get centum => widget.kind == 'centum';
@@ -186,7 +192,7 @@ class _TopperEditorState extends ConsumerState<_TopperEditor> {
       final data = {
         'year': widget.year, 'board_class': widget.boardClass, 'kind': widget.kind, 'rank': centum ? null : widget.rank,
         'full_name': name.text.trim(), 'section': section.text.trim().isEmpty ? null : section.text.trim(),
-        'percent': centum ? null : num.tryParse(percent.text.trim()), 'subject': centum ? subject.text.trim() : null, 'photo_path': photo,
+        'percent': centum ? null : num.tryParse(percent.text.trim()), 'subject': centum ? subject.text.trim() : null, 'photo_path': photo, 'sort': int.tryParse(order.text.trim()) ?? 100,
       };
       if (widget.row == null) { await db.from('board_topper').insert(data); } else { await db.from('board_topper').update(data).eq('id', widget.row!['id']); }
       if (mounted) Navigator.pop(context, true);
@@ -216,6 +222,8 @@ class _TopperEditorState extends ConsumerState<_TopperEditor> {
       const SizedBox(height: 10),
       if (centum) ...[
         TextField(controller: subject, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Subject with 100 / 100 *', hintText: 'e.g. Mathematics')),
+        const SizedBox(height: 10),
+        TextField(controller: order, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Subject order (1 = shown first)', helperText: 'Use the same number for every student of a subject, e.g. Social Science 1, English 2, A.I. 3')),
         const SizedBox(height: 10),
       ] else ...[
         TextField(controller: percent, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Percentage', hintText: 'e.g. 98.6')),

@@ -67,6 +67,16 @@ class _ToppersViewState extends ConsumerState<ToppersView> {
         final ofYear = rows.where((r) => (r['year'] as num).toInt() == y).toList();
         final podium = ofYear.where((r) => r['kind'] == 'rank').toList()..sort((a, b) => ((a['rank'] ?? 9) as int).compareTo((b['rank'] ?? 9) as int));
         final centums = ofYear.where((r) => r['kind'] == 'centum').toList();
+        // centums by subject (in the order the school chose), and in each subject the school toppers first
+        int rankOf(Map<String, dynamic> r) => (podium.where((p) => '${p['full_name']}'.toLowerCase() == '${r['full_name']}'.toLowerCase()).firstOrNull?['rank'] ?? 99) as int;
+        int sortOf(Map<String, dynamic> r) => (r['sort'] ?? 100) as int;
+        final bySubject = <String, List<Map<String, dynamic>>>{};
+        for (final r in centums) { bySubject.putIfAbsent('${r['subject'] ?? ''}', () => []).add(r); }
+        for (final l in bySubject.values) {
+          l.sort((a, b) { final x = rankOf(a).compareTo(rankOf(b)); if (x != 0) return x; final y = sortOf(a).compareTo(sortOf(b)); return y != 0 ? y : '${a['full_name']}'.compareTo('${b['full_name']}'); });
+        }
+        int subjectOrder(String s) => bySubject[s]!.map(sortOf).reduce((a, b) => a < b ? a : b);
+        final subjects = bySubject.keys.toList()..sort((a, b) { final x = subjectOrder(a).compareTo(subjectOrder(b)); return x != 0 ? x : a.compareTo(b); });
         final res = results[y];
         final top = podium.isEmpty ? null : podium.first['percent'];
         return RefreshIndicator(
@@ -97,12 +107,14 @@ class _ToppersViewState extends ConsumerState<ToppersView> {
             if (centums.isNotEmpty) ...[
               const SizedBox(height: 22),
               Text('💯  CENTUMS · 100 / 100', style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: .6, fontSize: 12, color: cs.onSurfaceVariant)),
-              const SizedBox(height: 10),
-              LayoutBuilder(builder: (_, c) {
-                final cols = c.maxWidth >= 520 ? 2 : 1;
-                final w = (c.maxWidth - (cols - 1) * 10) / cols;
-                return Wrap(spacing: 10, runSpacing: 10, children: [for (final r in centums) SizedBox(width: w, child: _CentumCard(r))]);
-              }),
+              for (final sub in subjects) ...[
+                Padding(padding: const EdgeInsets.only(top: 14, bottom: 8), child: Text('$sub · ${bySubject[sub]!.length}', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: context.tone(Brand.crimsonDeep)))),
+                LayoutBuilder(builder: (_, c) {
+                  final cols = c.maxWidth >= 520 ? 2 : 1;
+                  final w = (c.maxWidth - (cols - 1) * 10) / cols;
+                  return Wrap(spacing: 10, runSpacing: 10, children: [for (final r in bySubject[sub]!) SizedBox(width: w, child: _CentumCard(r))]);
+                }),
+              ],
             ],
             if (podium.isEmpty && centums.isEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: NoteBox('The names for $y are not added yet.', icon: Icons.hourglass_empty_rounded)),
           ]),

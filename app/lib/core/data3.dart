@@ -61,7 +61,7 @@ final homeworkDueProvider = FutureProvider.autoDispose.family<int, String>((ref,
 // ---------------------------------------------------------------- Board Toppers & Hall of Fame
 /// All toppers of a board class ('X' or 'XII'), newest year first.
 final toppersProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, cls) async {
-  final rows = await db.from('board_topper').select('id,year,board_class,kind,rank,full_name,section,percent,subject,photo_path')
+  final rows = await db.from('board_topper').select('id,year,board_class,kind,rank,full_name,section,percent,subject,photo_path,sort')
       .eq('board_class', cls).order('year', ascending: false).order('rank', ascending: true).order('full_name', ascending: true);
   return List<Map<String, dynamic>>.from(rows);
 });
