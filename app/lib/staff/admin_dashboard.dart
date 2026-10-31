@@ -11,6 +11,7 @@ import '../core/theme.dart';
 import '../widgets/common.dart';
 import 'staff_data.dart';
 import 'staff_shell.dart';
+import '../widgets/royal_extras.dart' show CountUpText, GoldLoading;
 
 /// First screen for the IT admin, Principal and Vice Principal: the whole school at a glance.
 /// Everything comes from one database call (admin_dashboard) and refreshes every minute.
@@ -259,7 +260,7 @@ class _Tile extends StatelessWidget {
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(label.toUpperCase(), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .4, color: cs.onSurfaceVariant)),
           const SizedBox(height: 2),
-          Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: context.tone(color))),
+          CountUpText(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: context.tone(color))),
           Text(sub, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
         ])),
         if (onTap != null) Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
@@ -285,7 +286,7 @@ class _ViewAsFamilyState extends ConsumerState<_ViewAsFamily> {
       TextField(onChanged: (v) => setState(() => q = v), decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: 'Student name or admission number', isDense: true)),
       const SizedBox(height: 6),
       if (q.trim().length >= 2) res.when(
-        loading: () => const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator())),
+        loading: () => const Padding(padding: EdgeInsets.all(12), child: const GoldLoading()),
         error: (e, _) => Text('$e'),
         data: (rows) => rows.isEmpty ? Padding(padding: const EdgeInsets.all(8), child: Text('No student found.', style: TextStyle(color: cs.onSurfaceVariant))) : Column(children: [
           for (final st in rows.take(6)) ListTile(
@@ -321,7 +322,7 @@ class _AdoptionPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     return Panel(title: 'Switching from MCB', child: ref.watch(_adoptionProvider).when(
-      loading: () => const SizedBox(height: 80, child: Center(child: CircularProgressIndicator())),
+      loading: () => const SizedBox(height: 80, child: const GoldLoading()),
       error: (e, _) => Text('$e', style: const TextStyle(color: Brand.crimsonDeep)),
       data: (a) {
         final total = _i(a['total']), using = _i(a['using']);
