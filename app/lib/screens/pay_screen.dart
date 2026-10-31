@@ -13,6 +13,7 @@ import '../core/data.dart';
 import '../core/school_docs.dart' show openReceiptPdf;
 import '../core/theme.dart';
 import '../widgets/common.dart';
+import '../widgets/royal_motion.dart' show StampIn, ConfettiBurst;
 
 /// Choose what to pay → Razorpay → confirm → receipt.
 /// Rules (as agreed with the school): overdue items are always included; a late fee is locked to its instalment;
@@ -171,7 +172,7 @@ class ReceiptScreen extends ConsumerWidget {
           if (m == null) return const Center(child: Text('Receipt not found.'));
           final ok = m['status'] == 'success';
           return ListView(padding: const EdgeInsets.all(20), children: [
-            Container(padding: const EdgeInsets.all(22), decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(22)), child: Column(children: [
+            Stack(clipBehavior: Clip.none, children: [Container(padding: const EdgeInsets.all(22), decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(22)), child: Column(children: [
               Container(width: 64, height: 64, alignment: Alignment.center, decoration: BoxDecoration(color: ok ? Brand.greenTint : Brand.amberTint, shape: BoxShape.circle), child: Icon(ok ? Icons.check_rounded : Icons.hourglass_top_rounded, color: ok ? Brand.green : Brand.amber, size: 34)),
               const SizedBox(height: 14),
               Text(ok ? 'Payment received' : 'Confirming payment…', style: Theme.of(context).textTheme.headlineSmall),
@@ -188,6 +189,9 @@ class ReceiptScreen extends ConsumerWidget {
               const SizedBox(height: 6),
               Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Reference', style: TextStyle(color: cs.onSurfaceVariant)), Text(m['gateway_payment_id'] ?? '—', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12))]),
             ])),
+              if (ok) const Positioned(right: 14, top: 18, child: StampIn('PAID', delayMs: 500)),
+              if (ok) const Positioned(left: 0, right: 0, top: -20, height: 420, child: ConfettiBurst(count: 120, origin: Alignment(0, -.5))),
+            ]),
             const SizedBox(height: 14),
             if (ok) OutlinedButton.icon(onPressed: () => openReceiptPdf(context, m['id'], receiptNo: m['receipt_no']), icon: const Icon(Icons.picture_as_pdf_rounded), label: const Text('Receipt PDF — download, share or print')),
             const SizedBox(height: 10),
