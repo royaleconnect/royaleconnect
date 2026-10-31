@@ -44,7 +44,7 @@ class HomeScreen extends ConsumerWidget {
       Widget card(String title, String link, VoidCallback go, Widget child) => _CardShell(lift: false, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))), TextButton(onPressed: go, child: Text(link))]),
         const SizedBox(height: 4), child]));
-      return Scaffold(body: RefreshIndicator(
+      return Scaffold(body: FestiveSky(child: RefreshIndicator(
         onRefresh: () async { ref.invalidate(calendarProvider); ref.invalidate(feesProvider); ref.invalidate(noticesProvider); ref.invalidate(latestDiaryProvider); },
         child: ListView(padding: const EdgeInsets.fromLTRB(34, 28, 34, 40), children: [
           Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -85,11 +85,11 @@ class HomeScreen extends ConsumerWidget {
                 ])),
               ])))),
           ]),
-        ])));
+        ]))));
     }
 
     return Scaffold(
-      body: RefreshIndicator(
+      body: FestiveSky(child: RefreshIndicator(
         onRefresh: () async { ref.invalidate(calendarProvider); ref.invalidate(feesProvider); ref.invalidate(noticesProvider); ref.invalidate(unreadMessagesProvider); },
         child: CustomScrollView(slivers: [
           SliverToBoxAdapter(child: BrandHeader(padding: const EdgeInsets.fromLTRB(20, 12, 20, 20), hairline: false, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -158,7 +158,7 @@ class HomeScreen extends ConsumerWidget {
             ]),
           ]))),
         ]),
-      ),
+      )),
     );
   }
 }
