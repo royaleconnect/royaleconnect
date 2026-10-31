@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Royale Concorde International School — fees, diary, announcements, messages and bus, in one app.">
+  <meta name="theme-color" content="#FFFDF8">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Royale Connect">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="icon" type="image/png" href="favicon.png"/>
+  <title>Royale Connect</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    /* Shown while the app downloads: ivory page, drifting gold dust and a gold line of light.
+       The app's own opening (gold frame drawing itself, the logo building up) follows straight after. */
+    html, body { margin: 0; height: 100%; background: #FFFDF8; }
+    #rc-loader { position: fixed; inset: 0; z-index: 0; background: radial-gradient(120% 90% at 50% 38%, #FFFDF8 0%, #F3ECE0 100%);
+      display: flex; align-items: center; justify-content: center; overflow: hidden; transition: opacity .5s ease; }
+    #rc-loader.gone { opacity: 0; }
+    #rc-loader .line { position: relative; width: 140px; height: 2px; border-radius: 2px; background: #EDE2CC; overflow: hidden; animation: rc-grow 1.2s cubic-bezier(.2,.8,.2,1) both; }
+    #rc-loader .line::after { content: ""; position: absolute; top: 0; left: -45%; width: 45%; height: 100%;
+      background: linear-gradient(90deg, transparent, #A8822F, #F0D68A, #A8822F, transparent); animation: rc-run 1.3s ease-in-out infinite; }
+    #rc-loader i { position: absolute; bottom: -10px; width: 4px; height: 4px; border-radius: 50%; background: #C9A24A;
+      box-shadow: 0 0 6px 1px rgba(201,162,74,.45); opacity: 0; animation: rc-rise linear infinite; }
+    @keyframes rc-grow { from { width: 0; } }
+    @keyframes rc-run { to { left: 100%; } }
+    @keyframes rc-rise { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: .55; } 85% { opacity: .45; } 100% { transform: translateY(-105vh); opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { #rc-loader * { animation: none !important; } }
+  </style>
+</head>
+<body>
+  <div id="rc-loader" aria-label="Royale Connect is opening"><div class="line"></div></div>
+  <script>
+    (function () {
+      var l = document.getElementById('rc-loader');
+      for (var n = 0; n < 26; n++) {
+        var d = document.createElement('i');
+        d.style.left = (Math.random() * 100) + '%';
+        var s = 2 + Math.random() * 3; d.style.width = d.style.height = s + 'px';
+        d.style.animationDuration = (9 + Math.random() * 9) + 's';
+        d.style.animationDelay = (-Math.random() * 12) + 's';
+        l.appendChild(d);
+      }
+      window.addEventListener('flutter-first-frame', function () {
+        l.classList.add('gone');
+        setTimeout(function () { l.remove(); }, 600);
+      });
+    })();
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>
