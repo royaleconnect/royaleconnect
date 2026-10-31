@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../screens/desk_screen.dart' show DeskGate;
 import '../auth/session.dart';
 import '../core/config.dart';
 import '../core/theme.dart';
@@ -39,7 +40,9 @@ const staffMenu = [
   StaffItem('/staff/sections', 'New sections', Icons.view_module_rounded, 'STUDENTS', roles: ['it_admin', 'principal']),
   StaffItem('/staff/fees', 'Fees desk', Icons.account_balance_wallet_rounded, 'STUDENTS', roles: ['accounts', ...officeRoles]),
   StaffItem('/staff/transport', 'Transport', Icons.directions_bus_rounded, 'STUDENTS', roles: ['transport_incharge', ...officeRoles]),
-  StaffItem('/staff/toppers', 'Toppers & Hall of Fame', Icons.emoji_events_rounded, 'STUDENTS', roles: officeRoles),
+  StaffItem('/staff/toppers', 'Board Toppers & Hall of Fame', Icons.emoji_events_rounded, 'STUDENTS'),
+  StaffItem('/staff/council', 'Student Council', Icons.how_to_vote_rounded, 'STUDENTS'),
+  StaffItem('/staff/desk', "Principal's Desk", Icons.auto_awesome_rounded, 'STUDENTS'),
   StaffItem('/staff/users', 'Staff', Icons.badge_rounded, 'SCHOOL', roles: ['it_admin', 'principal']),
   StaffItem('/staff/setup', 'Classes & fees', Icons.tune_rounded, 'SCHOOL', roles: ['accounts', ...officeRoles]),
   StaffItem('/staff/settings', 'School settings', Icons.admin_panel_settings_rounded, 'SCHOOL', roles: ['it_admin'], locked: true),
@@ -59,6 +62,17 @@ List<StaffItem> visibleMenu(Session s, [Map<String, String>? settings]) {
   return staffMenu.where((m) => chosenRolesOf(m, access).any(s.hasRole)).toList();
 }
 
+/// Inside the staff panel, buttons size to their text (the app-wide theme makes them full width for phone forms).
+/// Full-screen pages opened on top of the panel (student record, grade planner) use this too.
+Widget staffTheme(BuildContext context, Widget child) {
+  final base = Theme.of(context);
+  final cs = base.colorScheme;
+  return Theme(data: base.copyWith(
+    filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(minimumSize: const Size(0, 44), padding: const EdgeInsets.symmetric(horizontal: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800))),
+    outlinedButtonTheme: OutlinedButtonThemeData(style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44), padding: const EdgeInsets.symmetric(horizontal: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), side: BorderSide(color: cs.outline, width: 1.5), foregroundColor: cs.onSurface, textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700))),
+  ), child: child);
+}
+
 /// Desktop: left sidebar + content. Phone: top bar + "More" drawer with the full menu, bottom bar with the 4 most used.
 class StaffShell extends ConsumerWidget {
   final Widget child;
@@ -73,16 +87,11 @@ class StaffShell extends ConsumerWidget {
     int badge(String p) => p == '/staff/messages' ? (ov['unread'] ?? 0) : p == '/staff/leave' ? (ov['leaves'] ?? 0) : p == '/staff/feedback' ? (ov['feedback'] ?? 0) : 0;
     final cs = Theme.of(context).colorScheme;
     // The app-wide button theme is "full width" (right for phone screens). Inside the panel, buttons size to their content.
-    final base = Theme.of(context);
-    final panelTheme = base.copyWith(
-      filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(minimumSize: const Size(0, 44), padding: const EdgeInsets.symmetric(horizontal: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800))),
-      outlinedButtonTheme: OutlinedButtonThemeData(style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44), padding: const EdgeInsets.symmetric(horizontal: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), side: BorderSide(color: cs.outline, width: 1.5), foregroundColor: cs.onSurface, textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700))),
-    );
-    final content = Theme(data: panelTheme, child: child);
+    final content = staffTheme(context, child);
 
     // Help: bottom right of the Overview page
     final help = loc == '/staff' ? HelpFab(onTap: () => context.go('/staff/help')) : null;
-    return LayoutBuilder(builder: (_, c) {
+    return DeskGate(child: LayoutBuilder(builder: (_, c) {
       final wide = c.maxWidth >= 960;
       if (wide) {
         return Scaffold(body: Row(children: [
@@ -119,7 +128,7 @@ class StaffShell extends ConsumerWidget {
           destinations: [for (final m in quick) NavigationDestination(icon: badge(m.path) > 0 ? Badge(label: Text('${badge(m.path)}'), child: Icon(m.icon)) : Icon(m.icon), label: const {'Parent feedback': 'Feedback', 'School calendar': 'Calendar', 'Class diary': 'Diary', 'Leave requests': 'Leave', 'Exams & portions': 'Exams', 'Marks entry': 'Marks'}[m.label] ?? m.label.split(' ').first)],
         ),
       );
-    });
+    }));
   }
 
   void _more(BuildContext context, WidgetRef ref, Session s, List<StaffItem> menu, String loc, int Function(String) badge) => showModalBottomSheet(context: context, showDragHandle: true, isScrollControlled: true, builder: (sheet) => ConstrainedBox(
