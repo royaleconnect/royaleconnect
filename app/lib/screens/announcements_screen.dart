@@ -7,6 +7,7 @@ import '../core/data.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
 import 'family_screens.dart' show StorageImage;
+import '../widgets/royal_extras.dart' show GoldLoading;
 
 class AnnouncementsScreen extends ConsumerStatefulWidget {
   const AnnouncementsScreen({super.key});
@@ -30,7 +31,7 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
         ])),
       ])),
       Expanded(child: notices.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const GoldLoading(),
         error: (e, _) => Center(child: Text('Could not load announcements.\n$e', textAlign: TextAlign.center)),
         data: (list) {
           final rows = filter == 'all' ? list : list.where((n) => n.category == filter).toList();
@@ -88,7 +89,7 @@ class _NoticeScreenState extends ConsumerState<NoticeScreen> {
         const Expanded(child: Text('Announcement', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800))),
       ])),
       Expanded(child: list.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const GoldLoading(),
         error: (e, _) => Center(child: Text('Could not load.\n$e', textAlign: TextAlign.center)),
         data: (rows) {
           final n = rows.where((x) => x.id == widget.id).firstOrNull;
