@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
+import 'royal_extras.dart' show LivingSilk, PressScale;
+import 'royal_motion.dart' show ShineSweep;
 
 /// Red gradient header with the gold hairline, as in the prototype.
 class BrandHeader extends StatelessWidget {
   final Widget child; final EdgeInsets padding; final bool hairline;
   const BrandHeader({super.key, required this.child, this.padding = const EdgeInsets.fromLTRB(20, 12, 20, 24), this.hairline = true});
   @override
-  Widget build(BuildContext context) => Container(
-        decoration: const BoxDecoration(gradient: Brand.headerGradient),
+  Widget build(BuildContext context) => LivingSilk(
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           SafeArea(bottom: false, child: Padding(padding: padding, child: child)),
           if (hairline) Container(height: 3, decoration: const BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, Brand.gold2, Brand.gold, Colors.transparent]))),
@@ -46,7 +47,7 @@ class PrimaryButton extends StatelessWidget {
   final String label; final VoidCallback? onPressed; final IconData? icon; final bool busy;
   const PrimaryButton(this.label, {super.key, this.onPressed, this.icon, this.busy = false});
   @override
-  Widget build(BuildContext context) => DecoratedBox(
+  Widget build(BuildContext context) => PressScale(enabled: onPressed != null && !busy, child: ShineSweep(delay: const Duration(milliseconds: 1200), every: const Duration(milliseconds: 6000), shine: const Color(0x55FFFFFF), child: DecoratedBox(
         decoration: BoxDecoration(gradient: onPressed == null ? null : Brand.buttonGradient, color: onPressed == null ? Brand.muted.withValues(alpha: .4) : null,
             borderRadius: BorderRadius.circular(16), boxShadow: onPressed == null ? null : [BoxShadow(color: Brand.crimsonDeep.withValues(alpha: .28), blurRadius: 18, offset: const Offset(0, 6))]),
         child: FilledButton(
@@ -56,7 +57,7 @@ class PrimaryButton extends StatelessWidget {
               ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white))
               : Row(mainAxisAlignment: MainAxisAlignment.center, children: [if (icon != null) ...[Icon(icon, size: 20), const SizedBox(width: 10)], Text(label)]),
         ),
-      );
+      )));
 }
 
 class NoteBox extends StatelessWidget {
