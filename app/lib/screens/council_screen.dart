@@ -8,6 +8,7 @@ import '../core/theme.dart';
 import '../widgets/common.dart';
 import 'academics_screens.dart' show AppPage;
 import 'toppers_screen.dart' show Face;
+import '../widgets/royal_extras.dart' show GoldLoading;
 
 /// Student Council — this year's council (photos, line by line), earlier councils as year tabs,
 /// and voting when the school opens the elections. One vote per post; nobody can see who voted for whom.
@@ -48,7 +49,7 @@ class _CouncilViewState extends ConsumerState<CouncilView> {
     final cs = Theme.of(context).colorScheme;
     final election = widget.staff ? null : ref.watch(openElectionProvider).value;
     return ref.watch(councilTermsProvider).when(
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => const GoldLoading(),
       error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_msg(e)))),
       data: (all) {
         final terms = all.where((t) => t['published'] == true).toList();
@@ -74,10 +75,9 @@ class _CouncilViewState extends ConsumerState<CouncilView> {
             if (t != null) Padding(padding: const EdgeInsets.only(top: 6, bottom: 10), child: Text('Student Council ${t['label']}', textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: context.tone(Brand.crimsonDeep)))),
             for (final e in (rows.entries.toList()..sort((a, b) => a.key.compareTo(b.key)))) Padding(padding: const EdgeInsets.only(bottom: 12), child: LayoutBuilder(builder: (_, c) {
-              final per = e.value.length >= 3 ? 3 : 2;
-              final w = (c.maxWidth - (per - 1) * 10) / per;
-              final size = e.key == 1 ? 104.0 : e.key == 2 ? 88.0 : 76.0;
-              return Wrap(alignment: WrapAlignment.center, spacing: 10, runSpacing: 10, children: [for (final m in e.value) SizedBox(width: w, child: _MemberCard(m, size: size))]);
+              // every card the same: two per line, same photo size, same height
+              final w = (c.maxWidth - 10) / 2;
+              return Wrap(alignment: WrapAlignment.center, spacing: 10, runSpacing: 10, children: [for (final m in e.value) SizedBox(width: w, height: _MemberCard.height, child: _MemberCard(m))]);
             })),
             if (t != null && rows.isEmpty) Text('Members will appear here soon.', textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant)),
             const SizedBox(height: 8),
@@ -92,19 +92,20 @@ class _CouncilViewState extends ConsumerState<CouncilView> {
 }
 
 class _MemberCard extends StatelessWidget {
-  final Map<String, dynamic> m; final double size;
-  const _MemberCard(this.m, {required this.size});
+  final Map<String, dynamic> m;
+  const _MemberCard(this.m);
+  static const size = 92.0, height = 222.0;
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.fromLTRB(8, 14, 8, 12),
     decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, borderRadius: BorderRadius.circular(18)),
-    child: Column(children: [
+    child: Column(mainAxisAlignment: MainAxisAlignment.start, children: [
       Face(m['full_name'] ?? '', m['photo_path'], size: size),
       const SizedBox(height: 8),
-      Text('${m['post']}'.toUpperCase(), textAlign: TextAlign.center, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: .4, color: context.tone(Brand.crimson))),
+      Text('${m['post']}'.toUpperCase(), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: .4, color: context.tone(Brand.crimson))),
       const SizedBox(height: 2),
-      Text('${m['full_name']}', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w800, fontSize: size > 100 ? 16 : 14.5)),
-      if ((m['class_label'] ?? '').toString().isNotEmpty) Text('${m['class_label']}', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+      Text('${m['full_name']}', textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+      if ((m['class_label'] ?? '').toString().isNotEmpty) Text('${m['class_label']}', maxLines: 1, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
     ]),
   );
 }
@@ -186,7 +187,7 @@ class _VotingScreenState extends ConsumerState<VotingScreen> {
     final p = posts;
     Widget body;
     if (error != null) { body = Center(child: Text(error!)); }
-    else if (p == null) { body = const Center(child: CircularProgressIndicator()); }
+    else if (p == null) { body = const GoldLoading(); }
     else if (p.isEmpty) { body = const Center(child: Text('No candidates yet.')); }
     else if (step >= p.length) {
       // review
