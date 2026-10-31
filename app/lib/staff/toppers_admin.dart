@@ -4,7 +4,9 @@ import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 import '../core/data.dart';
 import '../core/data3.dart';
 import '../core/theme.dart';
-import '../screens/toppers_screen.dart' show Face;
+import 'package:go_router/go_router.dart';
+import '../auth/session.dart';
+import '../screens/toppers_screen.dart' show Face, ToppersView, FameWall;
 import '../widgets/common.dart';
 import 'staff_screens_2.dart' show pickAndUpload;
 import 'staff_shell.dart';
@@ -13,6 +15,36 @@ import 'staff_shell.dart';
 /// Families see them under Home → Toppers. No consent step is needed for topper photos (school decision).
 String _msg(Object e) => e is PostgrestException ? e.message : e.toString().replaceFirst('Exception: ', '');
 const _photoExt = ['jpg', 'jpeg', 'png', 'webp'];
+
+/// What every teacher sees: the same Board Toppers and Hall of Fame as families. The office also gets “Edit”.
+class StaffToppersScreen extends ConsumerStatefulWidget {
+  const StaffToppersScreen({super.key});
+  @override
+  ConsumerState<StaffToppersScreen> createState() => _StaffToppersScreenState();
+}
+
+class _StaffToppersScreenState extends ConsumerState<StaffToppersScreen> {
+  int tab = 0;
+  @override
+  Widget build(BuildContext context) {
+    final s = ref.watch(sessionProvider).value!;
+    final canEdit = s.isOffice;
+    return StaffPage(
+      title: 'Board Toppers & Hall of Fame', scroll: false,
+      subtitle: 'The same page families see in the app.',
+      actions: [if (canEdit) FilledButton.icon(onPressed: () => context.go('/staff/toppers/edit'), icon: const Icon(Icons.edit_rounded, size: 18), label: const Text('Add or change'))],
+      body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final (i, l) in const [(0, 'Class X'), (1, 'Class XII'), (2, 'Hall of Fame')])
+            ChoiceChip(label: Text(l), selected: tab == i, showCheckmark: false, selectedColor: Brand.crimson,
+                labelStyle: TextStyle(fontWeight: FontWeight.w800, color: tab == i ? Colors.white : null), onSelected: (_) => setState(() => tab = i)),
+        ]),
+        const SizedBox(height: 8),
+        Expanded(child: tab == 2 ? const FameWall() : ToppersView(key: ValueKey(tab), boardClass: tab == 0 ? 'X' : 'XII')),
+      ]),
+    );
+  }
+}
 
 class ToppersAdminScreen extends ConsumerStatefulWidget {
   const ToppersAdminScreen({super.key});
@@ -25,7 +57,8 @@ class _ToppersAdminScreenState extends ConsumerState<ToppersAdminScreen> {
   @override
   Widget build(BuildContext context) {
     return StaffPage(
-      title: 'Board Toppers & Hall of Fame',
+      title: 'Board Toppers & Hall of Fame · add or change',
+      actions: [OutlinedButton.icon(onPressed: () => context.go('/staff/toppers'), icon: const Icon(Icons.visibility_rounded, size: 18), label: const Text('See it as families do'))],
       subtitle: 'What families see under Home → Toppers. Add the top 3 and the subject centums for each year, and former students for the Hall of Fame.',
       body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Wrap(spacing: 8, runSpacing: 8, children: [
