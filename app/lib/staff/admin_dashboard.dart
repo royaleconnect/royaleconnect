@@ -11,7 +11,7 @@ import '../core/theme.dart';
 import '../widgets/common.dart';
 import 'staff_data.dart';
 import 'staff_shell.dart';
-import '../widgets/royal_extras.dart' show CountUpText, GoldLoading;
+import '../widgets/royal_extras.dart' show CountUpText, GoldLoading, FestiveBanner, FestiveSky;
 
 /// First screen for the IT admin, Principal and Vice Principal: the whole school at a glance.
 /// Everything comes from one database call (admin_dashboard) and refreshes every minute.
@@ -64,7 +64,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     final cs = Theme.of(context).colorScheme;
     final h = DateTime.now().hour;
     final greet = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
-    return StaffPage(
+    return FestiveSky(child: StaffPage(
       title: '$greet${s.staff?['name'] != null ? ', ${s.staff!['name']}' : ''}',
       subtitle: '${DateFormat('EEEE d MMMM yyyy').format(DateTime.now())} · the whole school at a glance${dash.value?['generated_at'] != null ? ' · updated ${DateFormat('h:mm a').format(DateTime.parse(dash.value!['generated_at']).toLocal())}' : ''}',
       actions: [
@@ -74,9 +74,9 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
       body: dash.when(
         loading: () => const Center(child: Padding(padding: EdgeInsets.all(48), child: CircularProgressIndicator())),
         error: (e, _) => Panel(child: Text('Could not load the dashboard: $e\nIf this says “function admin_dashboard does not exist”, the database step of the update has not been run yet.', style: const TextStyle(color: Brand.crimsonDeep))),
-        data: (d) => _body(context, d, cs),
+        data: (d) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [const FestiveBanner(), _body(context, d, cs)]),
       ),
-    );
+    ));
   }
 
   Future<void> _monthly(BuildContext context) async {
