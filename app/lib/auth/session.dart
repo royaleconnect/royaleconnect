@@ -117,18 +117,6 @@ class SessionController extends AsyncNotifier<Session?> {
     await _save(s.copyWith(mustChangePassword: false));
   }
 
-  Future<String> requestOtp(String phone) async => (await _call('login-otp', {'phone': phone}))['kind'];
-
-  Future<void> loginWithOtp(String phone, String code) async {
-    final j = await _call('login-otp', {'phone': phone, 'code': code, 'device_label': 'app'});
-    if (j['kind'] == 'crew') {
-      await _save(Session(token: j['token'], kind: 'crew', crew: Map<String, dynamic>.from(j['crew'])));
-      return;
-    }
-    final students = (j['students'] as List).map((e) => StudentRef.fromJson(Map<String, dynamic>.from(e))).toList();
-    await _save(Session(token: j['token'], kind: 'student', students: students, activeStudentId: students.length == 1 ? students.first.id : null));
-  }
-
   Future<void> changePassword(String newPassword, {String? current}) async {
     final s = state.value!;
     await _call('password', {'action': 'change', 'student_id': s.active!.id, 'new_password': newPassword, if (current != null) 'current_password': current}, bearer: s.token);
