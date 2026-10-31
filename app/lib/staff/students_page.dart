@@ -29,6 +29,8 @@ final _findProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic
   final r = await db.rpc('find_students', params: {'p_q': q.trim(), 'p_past': past, 'p_limit': 60});
   return [for (final x in r as List) Map<String, dynamic>.from(x)];
 });
+final _certsProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async =>
+    Map<String, dynamic>.from((await db.rpc('certificates_pending')) as Map? ?? const {}));
 final _linksProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async =>
     [for (final x in (await db.rpc('link_list')) as List) Map<String, dynamic>.from(x)]);
 
@@ -98,6 +100,16 @@ class _StudentsPageState extends ConsumerState<StudentsPage> {
       subtitle: 'Current and past students in one place. Open a student for their details, fees, marks, attendance, documents and bus.',
       actions: [FilledButton.icon(onPressed: _admit, icon: const Icon(Icons.person_add_alt_1_rounded, size: 18), label: const Text('New admission'))],
       body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (past) Builder(builder: (_) {
+          final c = ref.watch(_certsProvider).value;
+          final pending = List<Map<String, dynamic>>.from(c?['pending'] ?? const []);
+          if (pending.isEmpty) return const SizedBox.shrink();
+          return Panel(padding: const EdgeInsets.all(14), child: CardRow(children: [
+            const Icon(Icons.assignment_late_rounded, color: Brand.amber), const SizedBox(width: 12),
+            Expanded(child: Text('${pending.length} student${pending.length == 1 ? '' : 's'} still waiting for a TC or conduct certificate.', style: const TextStyle(fontWeight: FontWeight.w700))),
+            FilledButton(onPressed: () async { await showDialog(context: context, builder: (_) => const _CertsDialog()); ref.invalidate(_certsProvider); ref.invalidate(_findProvider); }, child: const Text('See the list')),
+          ]));
+        }),
         if (toCheck > 0 || autoLinked > 0) Panel(padding: const EdgeInsets.all(14), child: CardRow(children: [
           const Icon(Icons.link_rounded, color: Brand.amber), const SizedBox(width: 12),
           Expanded(child: Text(toCheck > 0
@@ -130,7 +142,7 @@ String _initials(String n) => n.trim().split(RegExp(r'\s+')).where((w) => w.isNo
 
 /// Opens the full record of one student (current or past) as a full screen page.
 Future<void> openStudentRecord(BuildContext context, String id) =>
-    Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => StudentRecordScreen(studentId: id)));
+    Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (c) => staffTheme(c, StudentRecordScreen(studentId: id))));
 
 // ================================================================== re-admission links
 class _LinkReview extends ConsumerWidget {
@@ -275,6 +287,14 @@ class _DetailsTab extends ConsumerWidget {
         kv('Phones', phones.map((p) => '${p['phone']}${p['label'] != null ? ' (${p['label']})' : ''}').join(', ')),
         kv('Address', r['address']), kv('Blood group', r['blood_group']), kv('House', r['house']), kv('Admission type', r['admission_type']),
         kv('Left on', r['left_on'] == null ? null : _dmy(r['left_on'])), kv('Reason', r['leaving_reason']), kv('TC issued', r['tc_issued_on'] == null ? null : _dmy(r['tc_issued_on'])),
+      ])),
+      if (active) Panel(title: 'Leaving the school', child: CardRow(children: [
+        Expanded(child: Text('For a student leaving during the year: upload the signed TC and conduct certificate, and the student moves to Past students. Nothing is deleted.', style: TextStyle(color: cs.onSurfaceVariant))),
+        const SizedBox(width: 10),
+        FilledButton.icon(onPressed: () async {
+          final done = await showDialog<bool>(context: context, barrierDismissible: false, builder: (_) => LeavingDialog(student: r));
+          if (done == true) { ref.invalidate(_recordProvider(r['id'])); ref.invalidate(_docsProvider); ref.invalidate(_findProvider); ref.invalidate(_certsProvider); }
+        }, icon: const Icon(Icons.logout_rounded, size: 18), label: const Text('Student is leaving')),
       ])),
       Panel(title: 'Sign-in', child: Wrap(spacing: 8, runSpacing: 8, children: [
         if (active) OutlinedButton.icon(onPressed: () => _reset(context, ref), icon: const Icon(Icons.key_rounded, size: 18), label: const Text('New password slip')),
@@ -575,5 +595,136 @@ class _BusTab extends ConsumerWidget {
               Text('Stop: ${t['stop']?['name'] ?? ''}'),
             ])),
     ]);
+  }
+}
+
+
+// ================================================================== a student leaves during the year
+class LeavingDialog extends ConsumerStatefulWidget {
+  final Map<String, dynamic> student;
+  const LeavingDialog({super.key, required this.student});
+  @override
+  ConsumerState<LeavingDialog> createState() => _LeavingDialogState();
+}
+
+class _LeavingDialogState extends ConsumerState<LeavingDialog> {
+  DateTime day = DateTime.now();
+  String reason = 'Transfer (TC)';
+  final other = TextEditingController();
+  final files = <String, String>{};        // kind → uploaded path
+  bool busy = false;
+  String get sid => widget.student['id'];
+
+  Future<void> _pick(String kind) async {
+    setState(() => busy = true);
+    try {
+      final p = await pickAndUpload(context, 'documents/$sid', ext: const ['pdf', 'jpg', 'jpeg', 'png', 'webp']);
+      if (p != null) setState(() => files[kind] = p);
+    } catch (e) { if (mounted) toast(context, _msg(e)); }
+    if (mounted) setState(() => busy = false);
+  }
+
+  Future<void> _confirm() async {
+    if (reason == 'Other' && other.text.trim().isEmpty) { toast(context, 'Please write the reason.'); return; }
+    setState(() => busy = true);
+    try {
+      final me = myId(ref);
+      const titles = {'tc': 'Transfer Certificate (TC)', 'conduct': 'Conduct certificate', 'other': 'Leaving document'};
+      for (final e in files.entries) {
+        final row = await db.from('student_document').insert({'student_id': sid, 'kind': e.key, 'title': titles[e.key], 'file_path': e.value,
+          'file_name': e.value.split('/').last.replaceFirst(RegExp(r'^\d+_'), ''), 'uploaded_by': me}).select('id').single();
+        await _log(ref, row['id'], 'upload');
+      }
+      await db.rpc('student_leave', params: {'p_student': sid, 'p_date': DateFormat('yyyy-MM-dd').format(day), 'p_reason': reason == 'Other' ? other.text.trim() : reason});
+      try { await callFunction(ref, 'password', {'action': 'signout_all', 'student_id': sid}); } catch (_) {}
+      if (!mounted) return;
+      Navigator.pop(context, true);
+      toast(context, '${widget.student['full_name']} moved to Past students.${files.containsKey('tc') ? '' : ' Upload the TC later from Documents.'}');
+    } catch (e) { if (mounted) { toast(context, _msg(e)); setState(() => busy = false); } }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    Widget slot(String kind, String label) => Padding(padding: const EdgeInsets.only(bottom: 8), child: OutlinedButton.icon(
+      onPressed: busy ? null : () => _pick(kind),
+      icon: Icon(files.containsKey(kind) ? Icons.check_circle_rounded : Icons.upload_file_rounded, size: 18, color: files.containsKey(kind) ? Brand.green : null),
+      label: Align(alignment: Alignment.centerLeft, child: Text(files.containsKey(kind) ? '$label ✓ ${files[kind]!.split('/').last.replaceFirst(RegExp(r'^\d+_'), '')}' : label, overflow: TextOverflow.ellipsis)),
+    ));
+    return AlertDialog(
+      title: Text('${widget.student['full_name']} is leaving'),
+      content: SizedBox(width: 480, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('${widget.student['admission_no']} · records are kept for ever', style: const TextStyle(color: Brand.muted)),
+        const SizedBox(height: 14),
+        const Text('LAST DAY', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, letterSpacing: .6)),
+        const SizedBox(height: 6),
+        Align(alignment: Alignment.centerLeft, child: OutlinedButton.icon(onPressed: () async {
+          final d = await showDatePicker(context: context, initialDate: day, firstDate: DateTime.now().subtract(const Duration(days: 365)), lastDate: DateTime.now().add(const Duration(days: 90)));
+          if (d != null) setState(() => day = d);
+        }, icon: const Icon(Icons.event_rounded, size: 18), label: Text(DateFormat('EEE d MMMM yyyy').format(day)))),
+        const SizedBox(height: 12),
+        const Text('REASON', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, letterSpacing: .6)),
+        const SizedBox(height: 6),
+        Wrap(spacing: 6, runSpacing: 6, children: [for (final x in const ['Transfer (TC)', 'Moving city', 'Other']) ChoiceChip(label: Text(x), selected: reason == x, onSelected: (_) => setState(() => reason = x))]),
+        if (reason == 'Other') Padding(padding: const EdgeInsets.only(top: 8), child: TextField(controller: other, decoration: const InputDecoration(labelText: 'Reason'))),
+        const SizedBox(height: 12),
+        const Text('CERTIFICATES (signed and scanned — PDF or photo)', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, letterSpacing: .6)),
+        const SizedBox(height: 6),
+        slot('tc', 'Transfer Certificate (TC)'),
+        slot('conduct', 'Conduct certificate'),
+        slot('other', 'Another document (optional)'),
+        const NoteBox('After confirming: the student moves to Past students and the family is signed out. Fees, marks, report cards and documents stay. Certificates can also be uploaded later.'),
+      ]))),
+      actions: [
+        TextButton(onPressed: busy ? null : () => Navigator.pop(context, false), child: const Text('Cancel')),
+        FilledButton(onPressed: busy ? null : _confirm, child: Text(busy ? 'Please wait…' : 'Confirm — student has left')),
+      ],
+    );
+  }
+}
+
+class _CertsDialog extends ConsumerWidget {
+  const _CertsDialog();
+
+  Future<void> _upload(BuildContext context, WidgetRef ref, Map<String, dynamic> st, String kind) async {
+    try {
+      final p = await pickAndUpload(context, 'documents/${st['id']}', ext: const ['pdf', 'jpg', 'jpeg', 'png', 'webp']);
+      if (p == null) return;
+      final row = await db.from('student_document').insert({'student_id': st['id'], 'kind': kind, 'title': docKinds[kind], 'file_path': p,
+        'file_name': p.split('/').last.replaceFirst(RegExp(r'^\d+_'), ''), 'uploaded_by': myId(ref)}).select('id').single();
+      await _log(ref, row['id'], 'upload');
+      ref.invalidate(_certsProvider);
+    } catch (e) { if (context.mounted) toast(context, _msg(e)); }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    final c = ref.watch(_certsProvider);
+    return AlertDialog(
+      title: const Text('Certificates still to give'),
+      content: SizedBox(width: 620, child: c.when(
+        loading: () => const SizedBox(height: 120, child: Center(child: CircularProgressIndicator())),
+        error: (e, _) => Text(_msg(e)),
+        data: (m) {
+          final rows = List<Map<String, dynamic>>.from(m['pending'] ?? const []);
+          if (rows.isEmpty) return Text('All done — every student who left has a TC and conduct certificate. (${m['done'] ?? 0} this year.)');
+          return SingleChildScrollView(child: Column(children: [
+            for (final st in rows) Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: CardRow(children: [
+              Avatar(_initials(st['full_name'] ?? ''), size: 38),
+              const SizedBox(width: 10),
+              Expanded(child: InkWell(onTap: () => openStudentRecord(context, st['id']), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${st['full_name']}', style: const TextStyle(fontWeight: FontWeight.w800)),
+                Text([st['admission_no'], if (st['class'] != null) st['class'], 'left ${_dmy(st['left_on'])}', if (st['leaving_reason'] != null) st['leaving_reason']].join(' · '), style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+              ]))),
+              if (st['has_tc'] != true) FilledButton(onPressed: () => _upload(context, ref, st, 'tc'), child: const Text('Upload TC')),
+              if (st['has_conduct'] != true) OutlinedButton(onPressed: () => _upload(context, ref, st, 'conduct'), child: const Text('Upload conduct')),
+            ])),
+            const SizedBox(height: 8),
+            Text('${m['done'] ?? 0} done in the last two years.', style: TextStyle(color: cs.onSurfaceVariant)),
+          ]));
+        },
+      )),
+      actions: [FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done'))],
+    );
   }
 }
