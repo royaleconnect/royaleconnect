@@ -112,6 +112,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
         decoration: const BoxDecoration(gradient: RadialGradient(center: Alignment(0, -.25), radius: 1.1, colors: [Color(0xFFFFFDF8), Color(0xFFF3ECE0)])),
         child: Stack(children: [
           const Positioned.fill(child: GoldParticles(count: 46, color: Color(0xFFC9A24A), maxRadius: 1.8, speed: .8)),
+          const Positioned(left: 0, bottom: 0, child: Opacity(opacity: .01, child: Text('🎃🦇👻🍬🪔✨🎆🌼🏹🌙⭐🐑🎄🎁❄️🇮🇳🕊️👓❤️💐📚🍎💖🎈🌹🎉🎂', style: TextStyle(fontSize: 6)))),
           Column(children: [
             Expanded(child: SafeArea(bottom: false, child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
               frame,
