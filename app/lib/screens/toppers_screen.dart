@@ -5,6 +5,7 @@ import '../core/theme.dart';
 import '../widgets/common.dart';
 import 'academics_screens.dart' show AppPage;
 import 'family_screens.dart' show StorageImage;
+import '../widgets/royal_motion.dart' show CountUp;
 
 /// Board Toppers (Class X · Class XII) and the Hall of Fame — one page with three tabs.
 /// Toppers: pick a year → the top 3 on a podium, then every subject centum (100 / 100).
@@ -160,7 +161,7 @@ class _Podium extends StatelessWidget {
         const SizedBox(height: 8),
         Text(r['full_name'] ?? '', textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w800, fontSize: first ? 15.5 : 14)),
         if ((r['section'] ?? '').toString().isNotEmpty) Text('${r['section']}', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-        if (r['percent'] != null) Text('${_n(r['percent'])}%', style: TextStyle(fontWeight: FontWeight.w800, fontSize: first ? 18 : 16, color: context.tone(Brand.green))),
+        if (r['percent'] != null) CountUp((r['percent'] as num).toDouble(), decimals: _n(r['percent']).contains('.') ? 1 : 0, suffix: '%', style: TextStyle(fontWeight: FontWeight.w800, fontSize: first ? 18 : 16, color: context.tone(Brand.green))),
         const SizedBox(height: 6),
         Container(height: first ? 54 : rank == 2 ? 38 : 28, alignment: Alignment.center,
           decoration: BoxDecoration(color: first ? Brand.gold : cs.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(12))),
