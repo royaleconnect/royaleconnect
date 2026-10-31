@@ -14,6 +14,7 @@ import 'staff_data.dart';
 import 'staff_shell.dart';
 import '../screens/desk_screen.dart' show DeskHomeCard;
 import '../widgets/royal_motion.dart' show FadeRise;
+import '../widgets/royal_extras.dart' show FestiveBanner;
 
 /// "Today" — the first page every teacher sees: what is waiting for them, with the button to do it right there.
 /// IT, the Principal and the Vice Principal keep the whole-school dashboard.
@@ -125,6 +126,7 @@ class TodayScreen extends ConsumerWidget {
       title: '${hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'}, ${s.staff?['name'] ?? ''}',
       subtitle: [DateFormat('EEEE, d MMMM').format(now), if (myClass != null) sectionLabel(myClass), if (myClass != null) '${today?['students'] ?? 0} students'].join(' · '),
       body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const FestiveBanner(),
         const FadeRise(delayMs: 120, child: DeskHomeCard(staff: true)),
         if (((today?['birthdays'] as List?) ?? const []).isNotEmpty) Container(
           margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(14),
