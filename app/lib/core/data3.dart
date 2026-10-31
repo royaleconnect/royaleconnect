@@ -27,6 +27,7 @@ bool featureOn(Map<String, String>? settings, String key) => featuresOf(settings
 const featureList = [
   ('toppers', 'Board Toppers', 'Class X and XII toppers with photos, and subject centums.'),
   ('fame', 'Hall of Fame', 'Former students and where they are today.'),
+  ('council', 'Student Council', 'This year’s council with photos, past councils, and voting in the elections.'),
   ('bus', 'School bus tracking', 'Live bus on the map and “bus is near” alerts.'),
   ('messages', 'Messages to teachers', 'Private chat between families and teachers.'),
   ('gallery', 'Gallery & class moments', 'School albums and class photos.'),
@@ -82,3 +83,28 @@ const fameCategories = ['Academics', 'Medicine', 'Engineering', 'Commerce', 'Abr
 const fameIcons = {'Academics': '🎓', 'Medicine': '🩺', 'Engineering': '⚙️', 'Commerce': '💼', 'Abroad': '✈️', 'Business': '🚀', 'Sports': '🏅', 'Arts': '🎨', 'Service': '🤝'};
 
 String initialsOf(String name) => name.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).take(2).map((w) => w[0].toUpperCase()).join();
+
+
+// ---------------------------------------------------------------- parents' consent (asked once)
+/// true when every child on this sign-in already has the family's consent saved (or an admin is only viewing).
+final consentGivenProvider = FutureProvider.autoDispose<bool>((ref) async {
+  final s = ref.watch(sessionProvider).value;
+  if (s == null || s.kind != 'student' || s.viewOnly || s.students.isEmpty) return true;
+  final ids = [for (final x in s.students) x.id];
+  try {
+    final rows = await db.from('family_consent').select('student_id').inFilter('student_id', ids);
+    return rows.length >= ids.length;
+  } catch (_) {
+    return true;   // never lock a family out because of a network problem
+  }
+});
+
+/// Is today the active child's birthday? (from the profile)
+bool isBirthday(String? dobIso) {
+  if (dobIso == null || dobIso.length < 10) return false;
+  final d = DateTime.tryParse(dobIso); if (d == null) return false;
+  final n = DateTime.now();
+  if (d.month == n.month && d.day == n.day) return true;
+  // 29 February birthdays are celebrated on 28 February in other years
+  return d.month == 2 && d.day == 29 && n.month == 2 && n.day == 28 && DateTime(n.year, 2, 29).month != 2;
+}
