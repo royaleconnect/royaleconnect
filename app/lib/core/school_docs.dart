@@ -473,3 +473,51 @@ void openReceiptPdf(BuildContext context, String paymentId, {String? receiptNo})
 void openReportCardPdf(BuildContext context, String reportCardId, {String? name}) => Navigator.of(context).push(MaterialPageRoute(
   builder: (_) => PdfDocScreen(title: 'Report card', fileName: 'RCIS-report-card-${_safe(name ?? reportCardId)}.pdf', make: () => buildReportCardPdf(reportCardId)),
 ));
+
+// ---------------------------------------------------------------- MONTHLY REPORT (for the Principal / management)
+Future<Uint8List> buildMonthlyReportPdf(DateTime month, String highlights) async {
+  final k = await _kit();
+  final d = Map<String, dynamic>.from(await db.rpc('monthly_report', params: {'p_month': DateFormat('yyyy-MM-dd').format(month)}) as Map);
+  int i(String key) => (d[key] as num?)?.toInt() ?? 0;
+  String pct(String key) => d[key] == null ? '—' : '${(d[key] as num).round()}%';
+  String money0(num n) => '${k.rupee ? '₹' : 'Rs. '}${NumberFormat('#,##,##0', 'en_IN').format(n)}';
+  final total = i('families_total'), using = i('families_using');
+  pw.Widget head(String t) => pw.Padding(padding: const pw.EdgeInsets.only(top: 14, bottom: 4),
+      child: pw.Text(t.toUpperCase(), style: pw.TextStyle(font: k.bold, fontSize: 9, letterSpacing: 1, color: _crimson)));
+  pw.Widget row(String a, String b) => pw.Container(
+      padding: const pw.EdgeInsets.symmetric(vertical: 5),
+      decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(color: _line, width: .6))),
+      child: pw.Row(children: [pw.Expanded(child: pw.Text(a, style: pw.TextStyle(font: k.base, fontSize: 10))), pw.Text(b, style: pw.TextStyle(font: k.bold, fontSize: 10))]));
+  final events = List<String>.from(d['events'] ?? const []);
+  final doc = pw.Document();
+  doc.addPage(pw.Page(pageFormat: PdfPageFormat.a4, margin: const pw.EdgeInsets.fromLTRB(36, 30, 36, 30), build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
+    _header(k),
+    pw.SizedBox(height: 10),
+    pw.Text('Monthly report · ${d['month']}', style: pw.TextStyle(font: k.serif, fontSize: 17, color: _ink)),
+    pw.Text('Prepared by Royale Connect on ${DateFormat('d MMMM yyyy').format(DateTime.now())}', style: const pw.TextStyle(fontSize: 8.5, color: _muted)),
+    head('Fees'),
+    row('Collected this month', '${money0(d['fees_collected'] ?? 0)} · ${i('receipts')} receipts'),
+    row('Still due (overdue today)', '${money0(d['overdue_amount'] ?? 0)} · ${i('overdue_students')} students'),
+    head('Families & teachers'),
+    row('Families using the app', '$using of $total${total > 0 ? ' (${(using * 100 / total).round()}%)' : ''}'),
+    row('Notices sent · read on average', '${i('notices')} · ${pct('notices_read_pct')}'),
+    row('Messages from families · answered within 24 hours', '${i('messages_from_families')} · ${pct('answered_24h_pct')}'),
+    row('Homework and diary posts by teachers', '${i('homework_posts')}'),
+    row('School bus trips tracked live', '${i('bus_trips')}'),
+    head('Students'),
+    row('New admissions · students who left', '${i('admissions')} · ${i('left')}'),
+    row('Parent feedback (appreciations · concerns · all)', '${i('appreciations')} · ${i('concerns')} · ${i('feedback_total')}'),
+    if (events.isNotEmpty || highlights.trim().isNotEmpty) ...[
+      head('Highlights'),
+      if (highlights.trim().isNotEmpty) pw.Text(highlights.trim(), style: pw.TextStyle(font: k.base, fontSize: 10, lineSpacing: 3)),
+      if (events.isNotEmpty) pw.Padding(padding: const pw.EdgeInsets.only(top: 4), child: pw.Text('Events: ${events.join(' · ')}', style: pw.TextStyle(font: k.base, fontSize: 10, color: _muted))),
+    ],
+    pw.Spacer(),
+    pw.Text('Private chats between parents and teachers are never read — only counts are shown.', style: const pw.TextStyle(fontSize: 7.5, color: _muted)),
+  ])));
+  return doc.save();
+}
+
+void openMonthlyReport(BuildContext context, DateTime month, String highlights) => Navigator.of(context).push(MaterialPageRoute(
+  builder: (_) => PdfDocScreen(title: 'Monthly report', fileName: 'RCIS-monthly-report-${DateFormat('yyyy-MM').format(month)}.pdf', make: () => buildMonthlyReportPdf(month, highlights)),
+));
