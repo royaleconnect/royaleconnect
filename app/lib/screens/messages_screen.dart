@@ -11,6 +11,7 @@ import '../core/data.dart';
 import '../core/data2.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
+import '../widgets/royal_extras.dart' show GoldLoading;
 
 /// Private 1:1 messages with the teachers who teach this student (+ coordinator / VP). Student side can only start
 /// a chat with those contacts; nothing can be deleted; files are PDF or images.
@@ -35,7 +36,7 @@ class MessagesScreen extends ConsumerWidget {
         ],
         Eyebrow('Your teachers', color: cs.onSurfaceVariant), const SizedBox(height: 8),
         contacts.when(
-          loading: () => const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
+          loading: () => const Padding(padding: EdgeInsets.all(24), child: const GoldLoading()),
           error: (e, _) => Text('$e'),
           data: (list) => Column(children: [for (final k in list) _tile(context, cs, name: k.name, sub: k.subject ?? '', onTap: () async {
             final s = ref.read(sessionProvider).value!.active!;
@@ -111,7 +112,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         Expanded(child: Text(widget.title ?? 'Chat', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800))),
       ])),
       Expanded(child: msgs.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const GoldLoading(),
         error: (e, _) => Center(child: Text('$e')),
         data: (list) {
           WidgetsBinding.instance.addPostFrameCallback((_) { if (scroll.hasClients) scroll.jumpTo(scroll.position.maxScrollExtent); });
