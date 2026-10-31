@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'theme.dart';
+import '../widgets/royal_extras.dart' show PulseRing;
 
 /// Live bus map used by the driver / bus assistant and by parents.
 /// Free street map (OpenStreetMap — no account, no card, no key), drawn by flutter_map on Android, iPhone and the website alike.
@@ -86,9 +87,9 @@ class _BusMapState extends State<BusMap> with SingleTickerProviderStateMixin {
       final mine = s['id'] == widget.myStopId;
       final done = widget.running && (next == null || i < next);
       if (mine) {
-        return Tooltip(message: '${s['name']} · your stop', child: Container(
+        return Tooltip(message: '${s['name']} · your stop', child: PulseRing(color: Brand.crimson, child: Container(
           decoration: BoxDecoration(color: Brand.crimson, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 3), boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)]),
-          child: const Icon(Icons.home_rounded, color: Colors.white, size: 18)));
+          child: const Icon(Icons.home_rounded, color: Colors.white, size: 18))));
       }
       return Tooltip(message: '${s['name']}', child: Container(
         decoration: BoxDecoration(color: done ? const Color(0xFF9A9A9A) : Colors.white, shape: BoxShape.circle, border: Border.all(color: done ? Colors.white : Brand.crimson, width: 3))));
