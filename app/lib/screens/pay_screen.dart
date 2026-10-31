@@ -14,6 +14,7 @@ import '../core/school_docs.dart' show openReceiptPdf;
 import '../core/theme.dart';
 import '../widgets/common.dart';
 import '../widgets/royal_motion.dart' show StampIn, ConfettiBurst;
+import '../widgets/royal_extras.dart' show GoldLoading;
 
 /// Choose what to pay → Razorpay → confirm → receipt.
 /// Rules (as agreed with the school): overdue items are always included; a late fee is locked to its instalment;
@@ -95,7 +96,7 @@ class _PayScreenState extends ConsumerState<PayScreen> {
         const Text('Pay fees', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
       ])),
       Expanded(child: fees.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const GoldLoading(),
         error: (e, _) => Center(child: Text('$e')),
         data: (f) {
           // overdue always in; late fees follow their instalment
@@ -166,7 +167,7 @@ class ReceiptScreen extends ConsumerWidget {
         const Text('Receipt', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
       ])),
       Expanded(child: p.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const GoldLoading(),
         error: (e, _) => Center(child: Text('$e')),
         data: (m) {
           if (m == null) return const Center(child: Text('Receipt not found.'));
@@ -214,7 +215,7 @@ class ReceiptsScreen extends ConsumerWidget {
         const Text('Payments & receipts', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
       ])),
       Expanded(child: list.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const GoldLoading(),
         error: (e, _) => Center(child: Text('$e')),
         data: (rows) => rows.isEmpty ? const Center(child: Text('No payments yet.')) : ListView.separated(padding: const EdgeInsets.all(20), itemCount: rows.length, separatorBuilder: (_, __) => const SizedBox(height: 8), itemBuilder: (_, i) {
           final m = rows[i];
