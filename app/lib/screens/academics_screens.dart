@@ -8,6 +8,9 @@ import '../core/school_docs.dart' show openReportCardPdf;
 import '../core/theme.dart';
 import '../widgets/common.dart';
 import 'family_screens.dart' show StorageImage;
+import '../widgets/royal_extras.dart' show GoldLoading;
+import '../widgets/royal_extras.dart' show Spotlight, EnvelopeReveal;
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Shared page frame: red header with back + title, body below.
 class AppPage extends StatelessWidget {
@@ -27,7 +30,7 @@ class AppPage extends StatelessWidget {
       ]));
 }
 
-Widget _loading() => const Center(child: CircularProgressIndicator());
+Widget _loading() => const GoldLoading();
 Widget _empty(BuildContext c, String t) => Center(child: Padding(padding: const EdgeInsets.all(32), child: Text(t, textAlign: TextAlign.center, style: TextStyle(color: Theme.of(c).colorScheme.onSurfaceVariant, height: 1.5))));
 Widget _card(BuildContext c, Widget child, {EdgeInsets padding = const EdgeInsets.all(14)}) => Container(margin: const EdgeInsets.only(bottom: 10), padding: padding, decoration: BoxDecoration(color: Theme.of(c).colorScheme.surface, borderRadius: BorderRadius.circular(18)), child: child);
 
@@ -162,7 +165,7 @@ class StarScreen extends ConsumerWidget {
           const Icon(Icons.star_rounded, color: Brand.gold, size: 30),
           Text(DateFormat('MMMM yyyy').format(DateTime.parse(top['month'])).toUpperCase(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: Brand.amber)),
           const SizedBox(height: 12),
-          photo(top, 112),
+          Spotlight(child: photo(top, 112)),
           const SizedBox(height: 12),
           Text(top['student']?['full_name'] ?? '', style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Brand.ink)),
           const SizedBox(height: 6),
@@ -276,7 +279,9 @@ class ReportsScreen extends ConsumerWidget {
     return Scaffold(body: Column(children: [
       const BrandHeader(padding: EdgeInsets.fromLTRB(20, 14, 20, 16), child: Text('Report card', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800))),
       Expanded(child: rc.when(loading: _loading, error: (e, _) => _empty(context, '$e'), data: (list) => list.isEmpty ? _empty(context, 'Report cards appear here the moment the school publishes them — no one sees a draft.') :
-        ListView(padding: const EdgeInsets.all(20), children: [for (final r in list) _card(context, Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        ListView(padding: const EdgeInsets.all(20), children: [
+          _NewReportEnvelope(list.first),
+          for (final r in list) _card(context, Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [Pill(r['academic_year']?['label'] ?? '', fg: Brand.crimsonDeep, bg: Brand.crimsonTint), const Spacer(), Text('Published ${DateFormat('d MMM yyyy').format(DateTime.parse(r['published_at']).toLocal())}', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant))]),
           const SizedBox(height: 8),
           Text(r['term'], style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
@@ -285,6 +290,39 @@ class ReportsScreen extends ConsumerWidget {
           const SizedBox(height: 12),
           PrimaryButton('Open report card (PDF)', icon: Icons.picture_as_pdf_rounded, onPressed: () => openReportCardPdf(context, r['id'], name: r['term'])),
         ]))]))),
+    ]));
+  }
+}
+
+
+/// The newest report card, the first time: a sealed envelope — tap, the seal breaks, the card slides out and opens.
+class _NewReportEnvelope extends StatefulWidget {
+  final Map<String, dynamic> r;
+  const _NewReportEnvelope(this.r);
+  @override
+  State<_NewReportEnvelope> createState() => _NewReportEnvelopeState();
+}
+
+class _NewReportEnvelopeState extends State<_NewReportEnvelope> {
+  bool? opened;
+  String get _key => 'rc_report_opened_${widget.r['id']}';
+  @override
+  void initState() { super.initState(); SharedPreferences.getInstance().then((p) { if (mounted) setState(() => opened = p.getBool(_key) ?? false); }); }
+  @override
+  Widget build(BuildContext context) {
+    if (opened != false) return const SizedBox.shrink();
+    return Padding(padding: const EdgeInsets.only(bottom: 18), child: Column(children: [
+      Text('Your report card is ready', style: Theme.of(context).textTheme.headlineSmall),
+      const SizedBox(height: 12),
+      ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420), child: EnvelopeReveal(
+        title: '${widget.r['term']}', subtitle: '${widget.r['academic_year']?['label'] ?? ''} · Royale Concorde International School',
+        onOpen: () async {
+          (await SharedPreferences.getInstance()).setBool(_key, true);
+          if (!context.mounted) return;
+          openReportCardPdf(context, widget.r['id'], name: widget.r['term']);
+          if (mounted) setState(() => opened = true);
+        },
+      )),
     ]));
   }
 }
