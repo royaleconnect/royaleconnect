@@ -79,7 +79,7 @@ ThemeData buildTheme(Brightness b) {
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: scheme.outline, width: 1.5)),
       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: scheme.outline, width: 1.5)),
-      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: scheme.primary, width: 1.5)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Brand.gold, width: 2)),
       labelStyle: TextStyle(color: scheme.onSurfaceVariant, fontWeight: FontWeight.w700, fontSize: 12),
     ),
     filledButtonTheme: FilledButtonThemeData(style: FilledButton.styleFrom(
@@ -92,13 +92,14 @@ ThemeData buildTheme(Brightness b) {
       textStyle: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w800),
     )),
     navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: scheme.surface, indicatorColor: Colors.transparent, height: 68,
+      backgroundColor: scheme.surface, indicatorColor: Brand.gold.withValues(alpha: dark ? .22 : .2), indicatorShape: const StadiumBorder(), height: 68,
       labelTextStyle: WidgetStateProperty.resolveWith((s) => GoogleFonts.manrope(
         fontSize: 10, fontWeight: s.contains(WidgetState.selected) ? FontWeight.w800 : FontWeight.w700,
         color: s.contains(WidgetState.selected) ? scheme.primary : scheme.onSurfaceVariant)),
       iconTheme: WidgetStateProperty.resolveWith((s) => IconThemeData(color: s.contains(WidgetState.selected) ? scheme.primary : scheme.onSurfaceVariant)),
     ),
     dividerColor: scheme.outline,
+    progressIndicatorTheme: ProgressIndicatorThemeData(color: Brand.gold, refreshBackgroundColor: dark ? Brand.dSurface2 : Colors.white, linearTrackColor: Brand.gold.withValues(alpha: .2)),
     // smooth "zoom and fade" between pages on Android, web and laptops; the usual slide on iPhones
     pageTransitionsTheme: const PageTransitionsTheme(builders: {
       TargetPlatform.android: ZoomPageTransitionsBuilder(), TargetPlatform.fuchsia: ZoomPageTransitionsBuilder(),
