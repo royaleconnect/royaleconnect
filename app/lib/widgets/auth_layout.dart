@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../core/config.dart';
 import '../core/theme.dart';
 import 'common.dart';
+import 'royal_motion.dart' show staggered, GoldParticles;
+import 'royal_extras.dart' show LivingSilk;
 
 /// Frame for the sign-in pages (parents, staff, set-password). Always fills the whole screen:
 ///   • laptop / wide tablet (900 px+): red school panel on the left, the form centred on the right
@@ -32,7 +34,7 @@ class AuthLayout extends StatelessWidget {
           if (formSubtitle != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text(formSubtitle!, style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant))),
           const SizedBox(height: 26),
         ],
-        ...children,
+        ...staggered(children, startMs: 200, stepMs: 70),
       ]);
 
       if (split) {
@@ -77,10 +79,9 @@ class _BrandPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     Widget ring(double size, Color c) => Container(width: size, height: size, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: c)));
-    return Container(
-      decoration: const BoxDecoration(gradient: Brand.headerGradient),
-      clipBehavior: Clip.hardEdge,
+    return ClipRect(child: LivingSilk(
       child: Stack(children: [
+        const Positioned.fill(child: GoldParticles(count: 40, maxRadius: 1.8, speed: .7)),
         Positioned(right: -180, bottom: -180, child: ring(560, Colors.white.withValues(alpha: .13))),
         Positioned(right: -120, bottom: -120, child: ring(440, Brand.gold2.withValues(alpha: .22))),
         SafeArea(child: LayoutBuilder(builder: (context, c) => Padding(
@@ -105,6 +106,6 @@ class _BrandPanel extends StatelessWidget {
           ]),
         ))),
       ]),
-    );
+    ));
   }
 }
