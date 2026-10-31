@@ -5,7 +5,8 @@ import '../core/theme.dart';
 import '../widgets/common.dart';
 import 'academics_screens.dart' show AppPage;
 import 'family_screens.dart' show StorageImage;
-import '../widgets/royal_motion.dart' show CountUp;
+import '../widgets/royal_extras.dart' show GoldLoading;
+import '../widgets/royal_motion.dart' show CountUp, FadeRise, ShineSweep;
 
 /// Board Toppers (Class X · Class XII) and the Hall of Fame — one page with three tabs.
 /// Toppers: pick a year → the top 3 on a podium, then every subject centum (100 / 100).
@@ -57,7 +58,7 @@ class _ToppersViewState extends ConsumerState<ToppersView> {
     final all = ref.watch(toppersProvider(widget.boardClass));
     final results = ref.watch(boardResultsProvider(widget.boardClass)).value ?? const {};
     return all.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => const GoldLoading(),
       error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('Could not load: $e'))),
       data: (rows) {
         final years = {for (final r in rows) (r['year'] as num).toInt(), ...results.keys}.toList()..sort((a, b) => b.compareTo(a));
@@ -157,15 +158,18 @@ class _Podium extends StatelessWidget {
       if (r == null) return const Expanded(child: SizedBox());
       final first = rank == 1;
       return Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
-        Face(r['full_name'] ?? '', r['photo_path'], size: first ? 96 : 74, ring: first ? Brand.gold : rank == 2 ? const Color(0xFFB9BEC6) : const Color(0xFFC58B5A)),
+        FadeRise(delayMs: rank == 1 ? 900 : rank == 2 ? 600 : 300, dy: 30, child: first
+            ? ShineSweep(delay: const Duration(milliseconds: 1600), every: const Duration(milliseconds: 4000), child: Face(r['full_name'] ?? '', r['photo_path'], size: 96, ring: Brand.gold))
+            : Face(r['full_name'] ?? '', r['photo_path'], size: 74, ring: rank == 2 ? const Color(0xFFB9BEC6) : const Color(0xFFC58B5A))),
         const SizedBox(height: 8),
         Text(r['full_name'] ?? '', textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w800, fontSize: first ? 15.5 : 14)),
         if ((r['section'] ?? '').toString().isNotEmpty) Text('${r['section']}', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
         if (r['percent'] != null) CountUp((r['percent'] as num).toDouble(), decimals: _n(r['percent']).contains('.') ? 1 : 0, suffix: '%', style: TextStyle(fontWeight: FontWeight.w800, fontSize: first ? 18 : 16, color: context.tone(Brand.green))),
         const SizedBox(height: 6),
-        Container(height: first ? 54 : rank == 2 ? 38 : 28, alignment: Alignment.center,
+        TweenAnimationBuilder<double>(tween: Tween(begin: 0, end: 1), duration: Duration(milliseconds: 900 + rank * 150), curve: Curves.easeOutBack, builder: (_, v, child) => Container(height: (first ? 54 : rank == 2 ? 38 : 28) * v.clamp(0.0, 1.2), alignment: Alignment.center, clipBehavior: Clip.hardEdge, decoration: BoxDecoration(color: first ? Brand.gold : cs.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(12))), child: child),
+          child: Container(alignment: Alignment.center,
           decoration: BoxDecoration(color: first ? Brand.gold : cs.surface, borderRadius: const BorderRadius.vertical(top: Radius.circular(12))),
-          child: Text('$rank', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: first ? Colors.white : context.tone(Brand.crimsonDeep)))),
+          child: Text('$rank', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: first ? Colors.white : context.tone(Brand.crimsonDeep))))),
       ]));
     }
     return Row(crossAxisAlignment: CrossAxisAlignment.end, children: [place(at(2), 2), const SizedBox(width: 8), place(at(1), 1), const SizedBox(width: 8), place(at(3), 3)]);
@@ -203,7 +207,7 @@ class _FameWallState extends ConsumerState<FameWall> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return ref.watch(hallOfFameProvider).when(
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => const GoldLoading(),
       error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('Could not load: $e'))),
       data: (all) {
         if (all.isEmpty) return ListView(padding: const EdgeInsets.all(20), children: const [NoteBox('Our Hall of Fame will appear here once the school adds former students.', icon: Icons.star_outline_rounded, iconColor: Brand.gold)]);
