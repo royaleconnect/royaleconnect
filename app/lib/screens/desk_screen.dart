@@ -14,6 +14,7 @@ import '../core/signature_data.dart';
 import '../core/theme.dart';
 import '../widgets/royal_motion.dart';
 import 'family_screens.dart' show StorageImage;
+import '../widgets/royal_extras.dart' show GoldLoading;
 
 /// From the Principal's Desk.
 /// • The Principal's welcome shows full screen the first time anyone opens the app (one for families, one for staff).
@@ -192,12 +193,15 @@ class _DeskShowScreenState extends ConsumerState<DeskShowScreen> {
     final size = MediaQuery.sizeOf(context);
     final artH = math.min(size.height * .42, 380.0);
     final serif = GoogleFonts.cormorantGaramond(fontWeight: FontWeight.w700, color: Colors.white);
-    final bodyStyle = GoogleFonts.manrope(fontSize: 15, height: 1.7, color: th.text, fontWeight: FontWeight.w500);
+    // bigger on laptops and tablets, comfortable on phones
+    final k = size.width >= 900 ? 1.22 : size.width >= 600 ? 1.1 : 1.0;
+    final bodyStyle = GoogleFonts.manrope(fontSize: 16.5 * k, height: 1.75, color: th.text, fontWeight: FontWeight.w500);
+    final sigW = math.min(size.width * .72, 330 * k);
 
     Widget reveal(bool on, Widget child) => AnimatedOpacity(opacity: on ? 1 : 0, duration: const Duration(milliseconds: 900), curve: Curves.easeOut,
         child: AnimatedSlide(offset: on ? Offset.zero : const Offset(0, .12), duration: const Duration(milliseconds: 900), curve: Curves.easeOutCubic, child: child));
 
-    final sig = SizedBox(width: math.min(size.width * .68, 300), child: AnimatedSignature(
+    final sig = SizedBox(width: sigW, child: AnimatedSignature(
       paths: signaturePaths, color: th.ink, start: step >= _sigStep, ms: event ? 2300 : 3200,
       bounds: Rect.fromLTWH(signatureBounds.left, signatureBounds.top, signatureBounds.width, signatureBounds.height),
       onDone: () { if (mounted) setState(() => sigDone = true); },
@@ -208,38 +212,38 @@ class _DeskShowScreenState extends ConsumerState<DeskShowScreen> {
 
     final content = Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
       if (!event) ...[
-        reveal(step >= 1, Text('ROYALE CONCORDE INTERNATIONAL SCHOOL', textAlign: TextAlign.center, style: GoogleFonts.manrope(fontSize: 10, letterSpacing: 3, fontWeight: FontWeight.w800, color: th.accent))),
+        reveal(step >= 1, Text('ROYALE CONCORDE INTERNATIONAL SCHOOL', textAlign: TextAlign.center, style: GoogleFonts.manrope(fontSize: 11.5 * k, letterSpacing: 3.2, fontWeight: FontWeight.w800, color: th.accent))),
         const SizedBox(height: 6),
-        reveal(step >= 1, GoldText("From the Principal's Desk", style: GoogleFonts.cormorantGaramond(fontSize: 33, fontStyle: FontStyle.italic, fontWeight: FontWeight.w600, height: 1.1))),
-        const SizedBox(height: 20),
-        reveal(step >= 2, PrincipalPortrait(name: info.name, photo: info.photo, size: 138, shine: true)),
+        reveal(step >= 1, GoldText("From the Principal's Desk", style: GoogleFonts.greatVibes(fontSize: 50 * k, height: 1.25))),
+        const SizedBox(height: 22),
+        reveal(step >= 2, PrincipalPortrait(name: info.name, photo: info.photo, size: 140 * k, shine: true)),
         const SizedBox(height: 18),
-        reveal(step >= 3, Text(_greeting(sess), textAlign: TextAlign.center, style: serif.copyWith(fontSize: 23, color: const Color(0xFFFFF3DC)))),
+        reveal(step >= 3, Text(_greeting(sess), textAlign: TextAlign.center, style: serif.copyWith(fontSize: 28 * k, color: const Color(0xFFFFF3DC)))),
       ] else ...[
-        reveal(step >= 1, Text("FROM THE PRINCIPAL'S DESK", textAlign: TextAlign.center, style: GoogleFonts.manrope(fontSize: 10.5, letterSpacing: 3.2, fontWeight: FontWeight.w800, color: th.accent))),
+        reveal(step >= 1, Text("FROM THE PRINCIPAL'S DESK", textAlign: TextAlign.center, style: GoogleFonts.manrope(fontSize: 12 * k, letterSpacing: 3.2, fontWeight: FontWeight.w800, color: th.accent))),
         const SizedBox(height: 8),
-        reveal(step >= 2, Text(m.title, textAlign: TextAlign.center, style: serif.copyWith(fontSize: 34, height: 1.08))),
+        reveal(step >= 2, Text(m.title, textAlign: TextAlign.center, style: serif.copyWith(fontSize: 40 * k, height: 1.08))),
         const SizedBox(height: 10),
-        reveal(step >= 3, Text(_greeting(sess), textAlign: TextAlign.center, style: serif.copyWith(fontSize: 19, color: th.text))),
+        reveal(step >= 3, Text(_greeting(sess), textAlign: TextAlign.center, style: serif.copyWith(fontSize: 24 * k, color: th.text))),
       ],
       const SizedBox(height: 6),
       for (var i = 0; i < paras.length; i++) Padding(padding: const EdgeInsets.only(top: 12), child: reveal(step >= 4 + i, Text(paras[i], textAlign: TextAlign.center, style: bodyStyle))),
       if (m.picturePath != null) Padding(padding: const EdgeInsets.only(top: 18), child: reveal(step >= _sigStep, ClipRRect(borderRadius: BorderRadius.circular(16),
           child: ConstrainedBox(constraints: const BoxConstraints(maxHeight: 320), child: StorageImage(m.picturePath!, fit: BoxFit.cover))))),
       const SizedBox(height: 14),
-      if (step >= _sigStep) sig else SizedBox(width: math.min(size.width * .68, 300), height: math.min(size.width * .68, 300) / (signatureBounds.width / signatureBounds.height)),
+      if (step >= _sigStep) sig else SizedBox(width: sigW, height: sigW / (signatureBounds.width / signatureBounds.height)),
       AnimatedOpacity(opacity: finished ? 1 : 0, duration: const Duration(milliseconds: 800), child: Column(children: [
         if (event) Padding(padding: const EdgeInsets.only(bottom: 8), child: PrincipalPortrait(name: info.name, photo: info.photo, size: 46)),
-        Text(info.name, style: serif.copyWith(fontSize: 20, color: th.accent)),
+        Text(info.name, style: serif.copyWith(fontSize: 25 * k, color: th.accent)),
         const SizedBox(height: 2),
-        Text('Principal · Royale Concorde International School, Kalyan Nagar', textAlign: TextAlign.center, style: GoogleFonts.manrope(fontSize: 11.5, color: th.text.withValues(alpha: .75))),
+        Text('Principal · Royale Concorde International School, Kalyan Nagar', textAlign: TextAlign.center, style: GoogleFonts.manrope(fontSize: 13 * k, color: th.text.withValues(alpha: .75))),
         const SizedBox(height: 22),
         if (m.linkUrl != null) Padding(padding: const EdgeInsets.only(bottom: 10), child: OutlinedButton.icon(
           onPressed: finished ? () => launchUrl(Uri.parse(m.linkUrl!), mode: LaunchMode.externalApplication) : null,
           style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48), side: BorderSide(color: th.accent), foregroundColor: th.accent, shape: const StadiumBorder(), padding: const EdgeInsets.symmetric(horizontal: 26)),
           icon: const Icon(Icons.open_in_new_rounded, size: 18), label: Text((m.linkLabel ?? '').isEmpty ? 'Know more' : m.linkLabel!),
         )),
-        _GoldButton(label: widget.onDone == null ? 'Close' : 'Continue  →', onTap: finished ? _continue : null, tech: th == DeskTheme.tech),
+        _GoldButton(label: widget.onDone == null ? 'Close' : 'Continue  →', onTap: finished ? _continue : null, tech: th == DeskTheme.tech, scale: k),
         const SizedBox(height: 30),
       ])),
     ]);
@@ -253,7 +257,7 @@ class _DeskShowScreenState extends ConsumerState<DeskShowScreen> {
           Positioned.fill(child: GoldParticles(count: 55, color: th.dust, speed: th == DeskTheme.sports ? 1.6 : 1)),
           if (event) Positioned(top: 0, left: 0, right: 0, height: artH, child: _EventArt(th, title: m.title)),
           SafeArea(child: SingleChildScrollView(controller: sc, padding: EdgeInsets.fromLTRB(26, event ? artH - 40 : 30, 26, 20),
-              child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 540), child: content)))),
+              child: Center(child: ConstrainedBox(constraints: BoxConstraints(maxWidth: 560 * k), child: content)))),
           SafeArea(child: Align(alignment: Alignment.topRight, child: Padding(padding: const EdgeInsets.all(10), child: AnimatedOpacity(
             opacity: canSkip && !finished || widget.onDone == null ? 1 : 0, duration: const Duration(milliseconds: 500),
             child: widget.onDone == null
@@ -268,17 +272,26 @@ class _DeskShowScreenState extends ConsumerState<DeskShowScreen> {
 }
 
 class _GoldButton extends StatelessWidget {
-  final String label; final VoidCallback? onTap; final bool tech;
-  const _GoldButton({required this.label, this.onTap, this.tech = false});
+  final String label; final VoidCallback? onTap; final bool tech; final double scale;
+  const _GoldButton({required this.label, this.onTap, this.tech = false, this.scale = 1});
   @override
-  Widget build(BuildContext context) => Material(color: Colors.transparent, child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(99), child: Ink(
-        padding: const EdgeInsets.symmetric(horizontal: 44, vertical: 15),
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(99),
-            gradient: tech ? const LinearGradient(colors: [Color(0xFF7FEBFF), Color(0xFF28D7FF)]) : const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFFF6E2A6), Color(0xFFC9A24A), Color(0xFFE8C97A)], stops: [0, .55, 1]),
-            boxShadow: [BoxShadow(color: (tech ? const Color(0xFF28D7FF) : const Color(0xFFC9A24A)).withValues(alpha: .4), blurRadius: 26, offset: const Offset(0, 8))]),
-        child: ShineSweep(delay: const Duration(milliseconds: 900), every: const Duration(milliseconds: 2600), shine: const Color(0xAAFFFFFF),
-            child: Text(label, style: GoogleFonts.manrope(fontSize: 15, fontWeight: FontWeight.w800, letterSpacing: .8, color: const Color(0xFF2B1608)))),
-      )));
+  Widget build(BuildContext context) {
+    final glow = tech ? const Color(0xFF28D7FF) : const Color(0xFFC9A24A);
+    // a true pill: the gold, the light sweep and the tap ripple are all clipped to the same rounded shape
+    return DecoratedBox(
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(999), boxShadow: [BoxShadow(color: glow.withValues(alpha: .38), blurRadius: 28, offset: const Offset(0, 8))]),
+      child: ClipRRect(borderRadius: BorderRadius.circular(999), child: Material(
+        color: Colors.transparent,
+        child: Ink(
+          decoration: BoxDecoration(gradient: tech ? const LinearGradient(colors: [Color(0xFF7FEBFF), Color(0xFF28D7FF)])
+              : const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFFF6E2A6), Color(0xFFC9A24A), Color(0xFFE8C97A)], stops: [0, .55, 1])),
+          child: InkWell(onTap: onTap, child: ShineSweep(delay: const Duration(milliseconds: 900), every: const Duration(milliseconds: 2800), shine: const Color(0x99FFFFFF),
+            child: Padding(padding: EdgeInsets.symmetric(horizontal: 52 * scale, vertical: 16 * scale),
+              child: Text(label, style: GoogleFonts.manrope(fontSize: 16 * scale, fontWeight: FontWeight.w800, letterSpacing: 1, color: const Color(0xFF2B1608)))))),
+        ),
+      )),
+    );
+  }
 }
 
 /// The Principal in a gold oval frame; her initials until a photo is added.
@@ -479,9 +492,7 @@ class DeskListScreen extends ConsumerWidget {
     final info = principalInfo(ref.watch(appSettingsProvider).value);
     final list = ref.watch(deskMessagesProvider);
     final cs = Theme.of(context).colorScheme;
-    void show(DeskMessage m) => Navigator.of(context, rootNavigator: true).push(PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 500), pageBuilder: (_, __, ___) => DeskShowScreen(message: m),
-        transitionsBuilder: (_, a, __, child) => FadeTransition(opacity: a, child: child)));
+    void show(DeskMessage m) => openDeskMessage(context, m);
 
     final header = Container(
       padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
@@ -490,7 +501,7 @@ class DeskListScreen extends ConsumerWidget {
         PrincipalPortrait(name: info.name, photo: info.photo, size: 64, shine: true),
         const SizedBox(width: 16),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          GoldText("From the Principal's Desk", align: TextAlign.left, style: GoogleFonts.cormorantGaramond(fontSize: 24, fontStyle: FontStyle.italic, fontWeight: FontWeight.w700)),
+          GoldText("From the Principal's Desk", align: TextAlign.left, style: GoogleFonts.greatVibes(fontSize: 34, height: 1.3)),
           const SizedBox(height: 2),
           Text(info.name, style: const TextStyle(color: Color(0xFFF3E2C4), fontWeight: FontWeight.w800)),
           Text('Principal · Royale Concorde International School', style: TextStyle(color: const Color(0xFFF3E2C4).withValues(alpha: .7), fontSize: 12)),
@@ -504,7 +515,7 @@ class DeskListScreen extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: () async => ref.invalidate(deskMessagesProvider),
         child: list.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => const GoldLoading(),
           error: (e, _) => ListView(padding: const EdgeInsets.all(20), children: [header, const SizedBox(height: 16), Text('Could not load the messages. Pull down to try again.', style: TextStyle(color: cs.onSurfaceVariant))]),
           data: (all) {
             final mine = all.where((m) => admin || (m.active && m.forMe(staff))).toList();
@@ -581,6 +592,12 @@ class _AdminBar extends ConsumerWidget {
 }
 
 
+/// Opens one message full screen (it fades in), e.g. from the Home card or the list.
+Future<void> openDeskMessage(BuildContext context, DeskMessage m) => Navigator.of(context, rootNavigator: true).push(PageRouteBuilder(
+    transitionDuration: const Duration(milliseconds: 600), reverseTransitionDuration: const Duration(milliseconds: 400),
+    pageBuilder: (_, __, ___) => DeskShowScreen(message: m),
+    transitionsBuilder: (_, a, __, child) => FadeTransition(opacity: CurvedAnimation(parent: a, curve: Curves.easeOut), child: child)));
+
 // ================================================================== Home card
 /// "From the Principal's Desk" on Home: the newest message (or her welcome), tap to open the list.
 class DeskHomeCard extends ConsumerWidget {
@@ -597,7 +614,7 @@ class DeskHomeCard extends ConsumerWidget {
     final info = principalInfo(ref.watch(appSettingsProvider).value);
     final isNew = recent.isNotEmpty && DateTime.now().difference(m.createdAt).inDays <= 3;
     return Padding(padding: const EdgeInsets.only(bottom: 14), child: Material(color: Colors.transparent, child: InkWell(
-      onTap: () => context.push(staff ? '/staff/desk' : '/desk'), borderRadius: BorderRadius.circular(20),
+      onTap: () => openDeskMessage(context, m), borderRadius: BorderRadius.circular(20),
       child: Ink(padding: const EdgeInsets.all(14), decoration: BoxDecoration(borderRadius: BorderRadius.circular(20),
           gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF4A0910), Color(0xFF240609)]),
           border: Border.all(color: const Color(0xFFE8C97A).withValues(alpha: .35))),
@@ -606,15 +623,16 @@ class DeskHomeCard extends ConsumerWidget {
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Text("FROM THE PRINCIPAL'S DESK", style: GoogleFonts.manrope(fontSize: 10, letterSpacing: 1.6, fontWeight: FontWeight.w800, color: const Color(0xFFE8C97A))),
+              GoldText("From the Principal's Desk", align: TextAlign.left, style: GoogleFonts.greatVibes(fontSize: 22, height: 1.2)),
               if (isNew) Container(margin: const EdgeInsets.only(left: 6), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: const Color(0xFFE8C97A), borderRadius: BorderRadius.circular(6)),
                   child: const Text('NEW', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Color(0xFF2B1608)))),
             ]),
             const SizedBox(height: 3),
-            Text(m.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)),
-            Text(info.name, style: TextStyle(color: Colors.white.withValues(alpha: .7), fontSize: 12)),
+            Text(m.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16.5)),
+            Text(info.name, style: TextStyle(color: Colors.white.withValues(alpha: .75), fontSize: 13)),
           ])),
-          const Icon(Icons.chevron_right_rounded, color: Color(0xFFE8C97A)),
+          if (mine.length > 1) TextButton(onPressed: () => context.push(staff ? '/staff/desk' : '/desk'), style: TextButton.styleFrom(foregroundColor: const Color(0xFFE8C97A)), child: Text('All ${mine.length} ›', style: const TextStyle(fontWeight: FontWeight.w800)))
+          else const Icon(Icons.play_circle_outline_rounded, color: Color(0xFFE8C97A)),
         ]),
       ),
     )));
