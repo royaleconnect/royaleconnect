@@ -23,6 +23,8 @@ import 'staff/staff_reports.dart';
 import 'staff/school_setup.dart';
 import 'screens/help_screen.dart';
 import 'screens/toppers_screen.dart';
+import 'screens/council_screen.dart';
+import 'staff/council_admin.dart';
 import 'staff/staff_shell.dart';
 import 'staff/today_screen.dart';
 import 'staff/students_page.dart';
@@ -30,6 +32,8 @@ import 'staff/new_sections.dart';
 import 'staff/school_settings.dart';
 import 'staff/toppers_admin.dart';
 import 'staff/merged_pages.dart';
+import 'screens/desk_screen.dart';
+import 'staff/desk_admin.dart';
 
 /// Makes go_router re-run `redirect` whenever the session changes.
 class _SessionListenable extends ChangeNotifier {
@@ -101,11 +105,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         GoRoute(path: '/staff/students', builder: (_, __) => const StudentsPage()),
         GoRoute(path: '/staff/sections', builder: (_, __) => const NewSectionsScreen()),
         GoRoute(path: '/staff/settings', builder: (_, __) => const SchoolSettingsScreen()),
-        GoRoute(path: '/staff/toppers', builder: (_, __) => const ToppersAdminScreen()),
+        GoRoute(path: '/staff/toppers', builder: (_, __) => const StaffToppersScreen()),
+        GoRoute(path: '/staff/toppers/edit', builder: (_, __) => const ToppersAdminScreen()),
+        GoRoute(path: '/staff/council', builder: (_, __) => const StaffCouncilScreen()),
+        GoRoute(path: '/staff/council/manage', builder: (_, __) => const CouncilAdminScreen()),
         GoRoute(path: '/staff/users', builder: (_, __) => const StaffPeopleScreen()),
         GoRoute(path: '/staff/setup', builder: (_, __) => const SchoolSetupScreen()),
         GoRoute(path: '/staff/help', builder: (_, __) => const HelpScreen(staff: true)),
         GoRoute(path: '/staff/me', builder: (_, __) => const StaffMeScreen()),
+        GoRoute(path: '/staff/desk', builder: (_, __) => const StaffDeskScreen()),
       ]),
       GoRoute(path: '/students', builder: (_, __) => const StudentsScreen()),
       GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
@@ -126,6 +134,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/help', builder: (_, __) => const HelpScreen(staff: false)),
       GoRoute(path: '/toppers', builder: (_, __) => const ToppersScreen()),
       GoRoute(path: '/fame', builder: (_, __) => const ToppersScreen(tab: 2)),
+      GoRoute(path: '/council', builder: (_, __) => const CouncilScreen()),
+      GoRoute(path: '/desk', builder: (_, __) => const DeskListScreen()),
       GoRoute(path: '/pay', builder: (_, __) => const PayScreen(), routes: [
         GoRoute(path: 'done', builder: (_, st) => ReceiptScreen(paymentId: st.uri.queryParameters['payment_id'] ?? '')),   // return URL of the web payment link
       ]),
