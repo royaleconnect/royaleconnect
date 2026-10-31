@@ -153,12 +153,15 @@ class _NavTile extends StatelessWidget {
   final StaffItem m; final bool selected; final int badge; final VoidCallback onTap;
   const _NavTile(this.m, {required this.selected, required this.badge, required this.onTap});
   @override
-  Widget build(BuildContext context) => Padding(padding: const EdgeInsets.only(bottom: 2), child: Material(color: selected ? Colors.white.withValues(alpha: .16) : Colors.transparent, borderRadius: BorderRadius.circular(12),
+  Widget build(BuildContext context) => Padding(padding: const EdgeInsets.only(bottom: 2), child: AnimatedContainer(duration: const Duration(milliseconds: 280), curve: Curves.easeOutCubic,
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), color: selected ? Colors.white.withValues(alpha: .16) : Colors.transparent,
+          border: Border(left: BorderSide(color: selected ? Brand.gold2 : Colors.transparent, width: 3))),
+      child: Material(color: Colors.transparent, borderRadius: BorderRadius.circular(12),
       child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(12), child: Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10), child: Row(children: [
         Icon(m.icon, size: 20, color: selected ? Brand.gold2 : Colors.white.withValues(alpha: .85)), const SizedBox(width: 12),
         Expanded(child: Text(m.label, style: TextStyle(color: Colors.white, fontWeight: selected ? FontWeight.w800 : FontWeight.w600, fontSize: 13.5))),
         if (badge > 0) Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: Brand.gold, borderRadius: BorderRadius.circular(999)), child: Text('$badge', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Brand.ink))),
-      ])))));
+      ]))))));
 }
 
 class _MeTile extends StatelessWidget {
