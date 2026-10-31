@@ -6,8 +6,11 @@ import '../auth/session.dart';
 import '../core/data.dart';
 import '../core/data2.dart';
 import '../core/data3.dart';
+import 'consent_screen.dart' show BirthdayCard;
 import '../core/theme.dart';
 import '../widgets/common.dart';
+import '../widgets/royal_motion.dart';
+import 'desk_screen.dart' show DeskHomeCard;
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -27,6 +30,7 @@ class HomeScreen extends ConsumerWidget {
     final cls = gradeCode == null ? st.cls : (shownSection(enrol?['section']) == null ? '$gradeCode · section to be announced' : '$gradeCode-${shownSection(enrol?['section'])}');
     final settings = ref.watch(appSettingsProvider).value;
     bool on(String k) => featureOn(settings, k);
+    final birthday = isBirthday(ref.watch(profileProvider).value?['dob'] as String?);
     final cs = Theme.of(context).colorScheme;
     final t = Theme.of(context).textTheme;
     final now = DateTime.now();
@@ -50,6 +54,8 @@ class HomeScreen extends ConsumerWidget {
             Text('${st.fullName} · $cls', style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w700)),
           ]),
           const SizedBox(height: 18),
+          if (birthday) BirthdayCard(st.fullName),
+          const FadeRise(delayMs: 150, child: DeskHomeCard()),
           ...?notices.value?.where((n) => n.urgent && !n.read).map((n) => Padding(padding: const EdgeInsets.only(bottom: 14), child: Material(color: Brand.crimson, borderRadius: BorderRadius.circular(16),
               child: ListTile(onTap: () => context.push('/notice/${n.id}'), leading: const Icon(Icons.warning_amber_rounded, color: Colors.white), title: Text(n.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)), trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white))))),
           IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -111,6 +117,8 @@ class HomeScreen extends ConsumerWidget {
           ]))),
           SliverPadding(padding: const EdgeInsets.fromLTRB(20, 16, 20, 24), sliver: SliverList(delegate: SliverChildListDelegate([
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              if (birthday) BirthdayCard(st.fullName),
+              const FadeRise(delayMs: 150, child: DeskHomeCard()),
               // urgent banner(s)
               ...?notices.value?.where((n) => n.urgent && !n.read).map((n) => Padding(padding: const EdgeInsets.only(bottom: 14), child: Material(color: Brand.crimson, borderRadius: BorderRadius.circular(16),
                   child: InkWell(onTap: () => context.push('/notice/${n.id}'), borderRadius: BorderRadius.circular(16), child: Padding(padding: const EdgeInsets.all(14), child: Row(children: [
@@ -119,14 +127,14 @@ class HomeScreen extends ConsumerWidget {
                     const Icon(Icons.chevron_right_rounded, color: Colors.white),
                   ])))))),
               // fee card
-              fees.when(
+              FadeRise(delayMs: 260, child: fees.when(
                 loading: () => const _CardShell(child: SizedBox(height: 90, child: Center(child: CircularProgressIndicator()))),
                 error: (e, _) => _CardShell(child: Text('Could not load fees. Pull to refresh.', style: TextStyle(color: cs.onSurfaceVariant))),
                 data: (f) => _FeeCard(f),
-              ),
+              )),
               const SizedBox(height: 18),
               // tiles
-              GridView.count(crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: .98, children: [
+              FadeRise(delayMs: 380, child: GridView.count(crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: .98, children: [
                 _Tile('Timetable', Icons.grid_view_rounded, Brand.blue, Brand.blueTint, () => context.push('/timetable')),
                 if (on('star')) _Tile('Star of the month', Icons.star_border_rounded, Brand.violet, Brand.violetTint, () => context.push('/star')),
                 if (on('gallery')) _Tile('Gallery', Icons.image_outlined, Brand.green, Brand.greenTint, () => context.push('/gallery')),
@@ -136,9 +144,10 @@ class HomeScreen extends ConsumerWidget {
                 _Tile('Exams', Icons.fact_check_outlined, Brand.crimsonDeep, Brand.crimsonTint, () => context.push('/exams')),
                 _Tile('Calendar', Icons.calendar_month_outlined, Brand.green, Brand.greenTint, () => context.push('/calendar')),
                 // Toppers takes the old Messages place (Messages stays one tap away in the top bar)
+                if (on('council')) _Tile('Student Council', Icons.how_to_vote_outlined, Brand.violet, Brand.violetTint, () => context.push('/council')),
                 if (on('toppers') || on('fame')) _Tile(on('toppers') ? 'Toppers' : 'Hall of Fame', Icons.emoji_events_outlined, Brand.amber, Brand.amberTint, () => context.push(on('toppers') ? '/toppers' : '/fame'))
                 else if (on('messages')) _Tile('Messages', Icons.chat_bubble_outline_rounded, Brand.amber, Brand.amberTint, () => context.push('/messages'), badge: unread),
-              ]),
+              ])),
               const SizedBox(height: 18),
               Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text("What's new", style: t.titleLarge?.copyWith(fontSize: 16)), TextButton(onPressed: () => context.go('/announcements'), child: const Text('See all'))]),
               ...?notices.value?.where((n) => !n.urgent).take(2).map((n) => Padding(padding: const EdgeInsets.only(bottom: 10), child: _NoticeRow(n, () => context.push('/notice/${n.id}')))),
