@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../core/data.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
+import '../widgets/royal_extras.dart' show GoldLoading;
 
 class DiaryScreen extends ConsumerStatefulWidget {
   const DiaryScreen({super.key});
@@ -37,7 +38,7 @@ class _DiaryScreenState extends ConsumerState<DiaryScreen> {
           })),
       ])),
       Expanded(child: entries.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const GoldLoading(),
         error: (e, _) => Center(child: Text('Could not load the diary.\n$e', textAlign: TextAlign.center)),
         data: (list) => list.isEmpty
             ? Center(child: Padding(padding: const EdgeInsets.all(32), child: Text('Nothing posted on ${DateFormat('EEEE, d MMMM').format(day)}.', textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant))))
