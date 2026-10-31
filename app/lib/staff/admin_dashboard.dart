@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../auth/session.dart';
 import '../core/data.dart';
+import '../core/school_docs.dart' show openMonthlyReport;
 import '../core/theme.dart';
 import '../widgets/common.dart';
 import 'staff_data.dart';
@@ -65,13 +66,38 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     return StaffPage(
       title: '$greet${s.staff?['name'] != null ? ', ${s.staff!['name']}' : ''}',
       subtitle: '${DateFormat('EEEE d MMMM yyyy').format(DateTime.now())} · the whole school at a glance${dash.value?['generated_at'] != null ? ' · updated ${DateFormat('h:mm a').format(DateTime.parse(dash.value!['generated_at']).toLocal())}' : ''}',
-      actions: [OutlinedButton.icon(onPressed: () => ref.invalidate(adminDashProvider), icon: const Icon(Icons.refresh_rounded, size: 18), label: const Text('Refresh'))],
+      actions: [
+        FilledButton.icon(onPressed: () => _monthly(context), icon: const Icon(Icons.picture_as_pdf_rounded, size: 18), label: const Text('Monthly report')),
+        OutlinedButton.icon(onPressed: () { ref.invalidate(adminDashProvider); ref.invalidate(_adoptionProvider); }, icon: const Icon(Icons.refresh_rounded, size: 18), label: const Text('Refresh')),
+      ],
       body: dash.when(
         loading: () => const Center(child: Padding(padding: EdgeInsets.all(48), child: CircularProgressIndicator())),
         error: (e, _) => Panel(child: Text('Could not load the dashboard: $e\nIf this says “function admin_dashboard does not exist”, the database step of the update has not been run yet.', style: const TextStyle(color: Brand.crimsonDeep))),
         data: (d) => _body(context, d, cs),
       ),
     );
+  }
+
+  Future<void> _monthly(BuildContext context) async {
+    final now = DateTime.now();
+    var month = DateTime(now.year, now.month, 1);
+    final hl = TextEditingController();
+    final go = await showDialog<bool>(context: context, builder: (c) => StatefulBuilder(builder: (c, set) => AlertDialog(
+      title: const Text('Monthly report'),
+      content: SizedBox(width: 460, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (var k = 0; k < 4; k++) Builder(builder: (_) {
+            final m = DateTime(now.year, now.month - k, 1);
+            return ChoiceChip(label: Text(DateFormat('MMMM yyyy').format(m)), selected: m == month, onSelected: (_) => set(() => month = m));
+          }),
+        ]),
+        const SizedBox(height: 14),
+        TextField(controller: hl, minLines: 2, maxLines: 4, textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(labelText: 'Highlights of the month (optional)', hintText: 'e.g. Science expo · Inter-school football winners')),
+      ])),
+      actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Make the PDF'))],
+    )));
+    if (go == true && context.mounted) openMonthlyReport(context, month, hl.text);
   }
 
   Widget _body(BuildContext context, Map<String, dynamic> d, ColorScheme cs) {
@@ -112,6 +138,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
         Wrap(spacing: 12, runSpacing: 12, children: [for (final t in tiles) SizedBox(width: tileW, child: t)]),
         const SizedBox(height: 14),
         Wrap(spacing: 14, children: [
+          panel(const _AdoptionPanel()),
           panel(_notices(context, d, cs)),
           panel(_teaching(context, tch, cs)),
           panel(_today(context, d, running, idle, cs)),
@@ -280,5 +307,45 @@ class _ViewAsFamilyState extends ConsumerState<_ViewAsFamily> {
       ),
       Padding(padding: const EdgeInsets.only(top: 6), child: Text('Opens the parent app for that child, read-only, for 2 hours. Nothing can be sent, changed or paid, and it does not count as the family reading notices. Every use is recorded.', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant))),
     ]));
+  }
+}
+
+
+// ------------------------------------------------------------------ switching from MyClassBoard
+final _adoptionProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async =>
+    Map<String, dynamic>.from((await db.rpc('app_adoption')) as Map? ?? const {}));
+
+class _AdoptionPanel extends ConsumerWidget {
+  const _AdoptionPanel();
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    return Panel(title: 'Switching from MCB', child: ref.watch(_adoptionProvider).when(
+      loading: () => const SizedBox(height: 80, child: Center(child: CircularProgressIndicator())),
+      error: (e, _) => Text('$e', style: const TextStyle(color: Brand.crimsonDeep)),
+      data: (a) {
+        final total = _i(a['total']), using = _i(a['using']);
+        final pct = total == 0 ? 0.0 : using / total;
+        final grades = List<Map<String, dynamic>>.from(a['grades'] ?? const []);
+        Widget bar(double v, {double h = 10}) => ClipRRect(borderRadius: BorderRadius.circular(9), child: LinearProgressIndicator(value: v, minHeight: h,
+            backgroundColor: cs.surfaceContainerHighest, color: v < .6 ? Brand.amber : Brand.green));
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text('Families using Royale Connect', style: TextStyle(color: cs.onSurfaceVariant)),
+          const SizedBox(height: 8), bar(pct, h: 14), const SizedBox(height: 6),
+          Text('$using of $total · ${(pct * 100).round()}%', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+          const SizedBox(height: 10),
+          for (final g in grades) Builder(builder: (_) {
+            final t = _i(g['total']), u = _i(g['using']); final v = t == 0 ? 0.0 : u / t;
+            return Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Row(children: [
+              SizedBox(width: 48, child: Text('${g['code']}', style: const TextStyle(fontWeight: FontWeight.w800))),
+              Expanded(child: bar(v)),
+              SizedBox(width: 120, child: Text('  ${(v * 100).round()}% · $u/$t${v < .6 ? ' · needs a push' : ''}', style: TextStyle(fontSize: 12, color: v < .6 ? context.tone(Brand.crimsonDeep) : cs.onSurfaceVariant, fontWeight: v < .6 ? FontWeight.w800 : FontWeight.w500))),
+            ]));
+          }),
+          const SizedBox(height: 6),
+          Text('Class teachers see the families not using the app yet on their Today page.', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+        ]);
+      },
+    ));
   }
 }
