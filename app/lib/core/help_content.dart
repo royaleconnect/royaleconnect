@@ -168,6 +168,20 @@ const familyHelp = <HelpItem>[
     'Choose Class X or Class XII and a year to see the top 3 and the subject centums.',
     'Tap Hall of Fame to see former students and where they are today.',
   ], keywords: 'toppers topper board results rank centum 100 hall of fame alumni old students', route: '/toppers', button: 'Open Toppers'),
+  HelpItem('m-council', 'School', 'Where is the Student Council? How do I vote?', [
+    'On Home, tap Student Council to see this year’s council. Earlier years are the tabs at the top.',
+    'When the elections open you get a notification and a red “Vote now” box appears there.',
+    'Choose one candidate for each post, check your choices and tap “Submit my vote”. Your vote is secret and cannot be changed.',
+  ], keywords: 'student council head boy head girl captain election vote voting candidates'),
+  HelpItem('m-desk', 'School', 'What is “From the Principal’s Desk”?', [
+    'Messages from our Principal — her welcome, and her notes about RoMUN, the RoAI Hackathon, Annual Day, Sports Day and other events.',
+    'A new message opens full screen once, the next time you open the app. Tap Continue to go on.',
+    'To read any of them again: Home → the “From the Principal’s Desk” card (or the menu → Principal’s Desk), then tap a message.',
+  ], keywords: 'principal message welcome desk event romun hackathon annual day sports day', route: '/desk', button: "Open Principal's Desk"),
+  HelpItem('m-sunday', 'School', 'What is the Sunday message?', [
+    'Every Sunday at 6 pm you get one message about the week ahead: homework due, tests, holidays and any fee due.',
+    'Nothing to do — it is a reminder so nothing is missed.',
+  ], keywords: 'sunday summary week ahead weekly reminder notification'),
   HelpItem('m-newclass', 'School', 'It says “section to be announced”', [
     'Your child has moved up to the new class. The school is now making the new sections.',
     'When the school publishes them you get a notification with the section and class teacher.',
@@ -264,8 +278,9 @@ const staffHelp = <HelpItem>[
     'A student who studied here before (for example Grade X → re-admission in XI) is linked to the old admission by itself.',
   ], keywords: 'new admission add student join readmission', route: '/staff/students', button: 'Open Students', popular: true),
   HelpItem('s-left', 'Setup', 'A student has left the school', [
-    'Open Students → find the student → Edit details.',
-    'Switch off “Studying here” and add the TC date. Their old receipts and report cards are kept for ever under Past students.',
+    'Open Students → find the student → tap “Student is leaving”.',
+    'Choose the last day and the reason, upload the signed TC and conduct certificate, then Confirm.',
+    'The student moves to Past students; fees, marks and documents are kept for ever. Students → Past students shows anyone still waiting for a certificate.',
   ], keywords: 'left tc transfer certificate remove student', route: '/staff/students', button: 'Open Students'),
   HelpItem('s-docs', 'Setup', 'How do I keep a TC, marksheet or certificate?', [
     'Open Students → search the name or admission number (choose Past students for old students).',
@@ -288,10 +303,27 @@ const staffHelp = <HelpItem>[
     'It happens by itself. IT and the Principal get a reminder a week before. IT can change the dates in School settings → Year dates.',
   ], keywords: 'move up promotion new year 1 march 15 may past students year end'),
   HelpItem('s-toppers', 'Setup', 'How do I add Board Toppers or Hall of Fame?', [
-    'Open Toppers & Hall of Fame.',
+    'Open Board Toppers & Hall of Fame → Add or change (office, IT, Principal).',
     'Choose Class X or XII, add the year, then the top 3 (with photos) and the subject centums.',
     'For the Hall of Fame, tap “Add a person”.',
-  ], keywords: 'toppers board results centum hall of fame alumni photo', route: '/staff/toppers', button: 'Open Toppers'),
+  ], keywords: 'toppers board results centum hall of fame alumni photo', route: '/staff/toppers/edit', button: 'Open Toppers'),
+  HelpItem('s-report', 'Office', 'How do I get the monthly report?', [
+    'Principal / IT: on Today (the whole-school page), tap “Monthly report”.',
+    'Choose the month, type the month’s highlights if you like, and tap “Make the PDF” — then Print or Share.',
+  ], keywords: 'monthly report pdf management meeting summary principal'),
+  HelpItem('s-desk', 'Setup', 'How does the Principal send a message to everyone?', [
+    'IT / Principal: Principal’s Desk → New message. Write a title and the message (leave an empty line between paragraphs).',
+    'The design is chosen from the title by itself: Annual Day (stage curtains), Sports Day (running track), Hackathon / RoAI (glowing circuits), MUN (globe); anything else gets the royal gold design.',
+    'Optional: a picture or poster, and a link (e.g. a registration form) with its button text. Tap Preview to see it exactly as everyone will.',
+    'Send: everyone gets a notification, and it opens full screen once on their next opening. Remove it from the list any time (⋮ → Remove).',
+    'The welcome messages (one for families, one for staff), the Principal’s name and her photo are changed on the same page.',
+  ], keywords: 'principal message desk welcome event full screen photo signature name', route: '/staff/desk', button: "Open Principal's Desk"),
+  HelpItem('s-council', 'Setup', 'How do I run the Student Council elections?', [
+    'IT / Principal: Student Council → Members & elections → New year (the posts are copied from last year).',
+    'Elections → Start preparing → choose who can vote and when voting closes → Add candidate for each post (photo, class, one line).',
+    'Open voting — students are told. Watch the totals; close voting; then Publish the new council. In a tie you choose the winner.',
+    'The new council becomes the main tab; earlier councils stay as year tabs.',
+  ], keywords: 'student council election vote candidates head boy head girl publish results', route: '/staff/council/manage', button: 'Open Student Council'),
   HelpItem('s-settings', 'Setup', 'How do I switch a feature off or change who sees a page?', [
     'IT: open School settings.',
     '“Who can use what” — tick the roles that see each page. “Features” — switch features on or off for families.',
