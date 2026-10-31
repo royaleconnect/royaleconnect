@@ -6,6 +6,7 @@ import '../auth/session.dart';
 import '../core/data.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
+import '../widgets/royal_extras.dart' show GoldLoading;
 
 class FeesScreen extends ConsumerWidget {
   const FeesScreen({super.key});
@@ -27,7 +28,7 @@ class FeesScreen extends ConsumerWidget {
           Row(children: [Avatar(st.initials, bg: Colors.white, fg: Brand.crimsonDeep, size: 32), const SizedBox(width: 10), Text('${st.fullName} · ${st.cls}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))]),
         ])),
         Expanded(child: fees.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => const GoldLoading(),
           error: (e, _) => Center(child: Text('Could not load fees.\n$e', textAlign: TextAlign.center)),
           data: (f) => RefreshIndicator(onRefresh: () async => ref.invalidate(feesProvider), child: ListView(padding: const EdgeInsets.fromLTRB(20, 16, 20, 110), children: [
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
