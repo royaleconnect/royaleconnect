@@ -228,8 +228,8 @@ class _PulseRingState extends State<PulseRing> with SingleTickerProviderStateMix
 // ================================================================== report card envelope
 /// A sealed envelope: tap it, the wax seal breaks, the flap opens and the card slides out; then [onOpen] runs.
 class EnvelopeReveal extends StatefulWidget {
-  final String title; final String subtitle; final VoidCallback onOpen;
-  const EnvelopeReveal({super.key, required this.title, required this.subtitle, required this.onOpen});
+  final String title; final String subtitle; final VoidCallback onOpen; final bool autoOpen;
+  const EnvelopeReveal({super.key, required this.title, required this.subtitle, required this.onOpen, this.autoOpen = false});
   @override
   State<EnvelopeReveal> createState() => _EnvelopeRevealState();
 }
@@ -237,6 +237,8 @@ class EnvelopeReveal extends StatefulWidget {
 class _EnvelopeRevealState extends State<EnvelopeReveal> with SingleTickerProviderStateMixin {
   late final AnimationController c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1900));
   bool opened = false;
+  @override
+  void initState() { super.initState(); if (widget.autoOpen) Timer(const Duration(milliseconds: 700), () { if (mounted) _open(); }); }
   @override
   void dispose() { c.dispose(); super.dispose(); }
   Future<void> _open() async {
@@ -307,16 +309,25 @@ class EmojiDrift extends StatefulWidget {
 class _EmojiDriftState extends State<EmojiDrift> with SingleTickerProviderStateMixin {
   late final AnimationController c = AnimationController(vsync: this, duration: const Duration(seconds: 30))..repeat();
   late final List<List<double>> p;
-  late final List<TextPainter> glyphs;
+  final List<TextPainter> glyphs = [];
+  final _timers = <Timer>[];
   @override
   void initState() {
     super.initState();
     final r = math.Random();
     p = [for (var i = 0; i < widget.count; i++) [r.nextDouble(), r.nextDouble(), .04 + r.nextDouble() * .06, r.nextDouble() * 6.28, .7 + r.nextDouble() * .6, (r.nextDouble() * 1000).floorToDouble()]];
-    glyphs = [for (final e in widget.emojis) TextPainter(text: TextSpan(text: e, style: TextStyle(fontSize: widget.size)), textDirection: TextDirection.ltr)..layout()];
+    _glyphs();
+    // On the website the colour-emoji font arrives a moment after the page opens: draw the emoji again once it is
+    // there (otherwise they show as empty boxes).
+    PaintingBinding.instance.systemFonts.addListener(_glyphs);
+    for (final s in [1, 2, 4, 7, 12]) { _timers.add(Timer(Duration(seconds: s), _glyphs)); }
+  }
+  void _glyphs() {
+    if (!mounted) return;
+    glyphs..clear()..addAll([for (final e in widget.emojis) TextPainter(text: TextSpan(text: e, style: TextStyle(fontSize: widget.size)), textDirection: TextDirection.ltr)..layout()]);
   }
   @override
-  void dispose() { c.dispose(); super.dispose(); }
+  void dispose() { PaintingBinding.instance.systemFonts.removeListener(_glyphs); for (final t in _timers) { t.cancel(); } c.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) {
     if (reduceMotion(context)) return const SizedBox.shrink();
@@ -346,6 +357,7 @@ class _DriftPainter extends CustomPainter {
         canvas.drawRect(const Rect.fromLTWH(-5, -2.5, 10, 5), Paint()..color = confetti[q[5].toInt() % confetti.length]); canvas.restore();
         continue;
       }
+      if (g.isEmpty) continue;
       final glyph = g[q[5].toInt() % g.length];
       canvas.save();
       canvas.translate(x, y);
@@ -407,62 +419,49 @@ Festival? festivalToday([DateTime? now]) {
   return festivals.firstWhere((f) => f.key == best!.$1);
 }
 
-/// On Home (families) and Today (staff): a festive banner for the week, and the first time it is seen in a session
-/// the whole screen fills with the festival's animation for a few seconds.
-class FestiveBanner extends StatefulWidget {
+/// The festive banner on Home (families) and Today (all staff), for the festival day and the 6 days after.
+class FestiveBanner extends StatelessWidget {
   const FestiveBanner({super.key});
   @override
-  State<FestiveBanner> createState() => _FestiveBannerState();
+  Widget build(BuildContext context) {
+    final fest = festivalToday();
+    if (fest == null) return const SizedBox.shrink();
+    return Padding(padding: const EdgeInsets.only(bottom: 14), child: Container(
+      height: 92, clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: fest.colors),
+          boxShadow: [BoxShadow(color: fest.colors.first.withValues(alpha: .35), blurRadius: 18, offset: const Offset(0, 6))]),
+      child: Stack(children: [
+        Positioned.fill(child: EmojiDrift(emojis: fest.emojis, mode: fest.mode == DriftMode.walk ? DriftMode.walk : DriftMode.float, count: 8, size: 18, confetti: fest.confetti, snow: fest.snow)),
+        ShineSweep(delay: const Duration(milliseconds: 800), every: const Duration(milliseconds: 5000), shine: const Color(0x44FFFFFF), child: Padding(padding: const EdgeInsets.symmetric(horizontal: 18), child: Row(children: [
+          _Bob(child: Text(fest.mark, style: const TextStyle(fontSize: 44))),
+          const SizedBox(width: 14),
+          Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(fest.greeting, style: GoogleFonts.greatVibes(fontSize: 30, color: Colors.white, height: 1.1, shadows: const [Shadow(color: Colors.black38, blurRadius: 6)])),
+            Text(fest.line, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withValues(alpha: .92), fontSize: 13, fontWeight: FontWeight.w600)),
+          ])),
+        ]))),
+      ]),
+    ));
+  }
 }
 
-class _FestiveBannerState extends State<FestiveBanner> {
-  static final _played = <String>{};
-  OverlayEntry? _entry;
-  late final Festival? f = festivalToday();
-
-  @override
-  void initState() {
-    super.initState();
-    if (f != null && !_played.contains(f!.key)) {
-      _played.add(f!.key);
-      WidgetsBinding.instance.addPostFrameCallback((_) => _celebrate());
-    }
-  }
-
-  void _celebrate() {
-    if (!mounted || f == null || reduceMotion(context)) return;
-    final overlay = Overlay.maybeOf(context, rootOverlay: true);
-    if (overlay == null) return;
-    _entry = OverlayEntry(builder: (_) => _FadingLayer(festival: f!, onGone: () { _entry?.remove(); _entry = null; }));
-    overlay.insert(_entry!);
-  }
-
-  @override
-  void dispose() { _entry?.remove(); _entry = null; super.dispose(); }
-
+/// The festival's animation over the whole page (Home / Today), all the time while the page is open during the
+/// festival week. Touches pass straight through to the page.
+class FestiveSky extends StatelessWidget {
+  final Widget child;
+  const FestiveSky({super.key, required this.child});
   @override
   Widget build(BuildContext context) {
-    final fest = f;
-    if (fest == null) return const SizedBox.shrink();
-    return Padding(padding: const EdgeInsets.only(bottom: 14), child: GestureDetector(
-      onTap: _entry == null ? _celebrate : null,
-      child: Container(
-        height: 92, clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: fest.colors),
-            boxShadow: [BoxShadow(color: fest.colors.first.withValues(alpha: .35), blurRadius: 18, offset: const Offset(0, 6))]),
-        child: Stack(children: [
-          Positioned.fill(child: EmojiDrift(emojis: fest.emojis, mode: fest.mode == DriftMode.walk ? DriftMode.walk : DriftMode.float, count: 8, size: 18, confetti: fest.confetti, snow: fest.snow)),
-          Padding(padding: const EdgeInsets.symmetric(horizontal: 18), child: Row(children: [
-            _Bob(child: Text(fest.mark, style: const TextStyle(fontSize: 44))),
-            const SizedBox(width: 14),
-            Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(fest.greeting, style: GoogleFonts.greatVibes(fontSize: 30, color: Colors.white, height: 1.1, shadows: const [Shadow(color: Colors.black38, blurRadius: 6)])),
-              Text(fest.line, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withValues(alpha: .92), fontSize: 13, fontWeight: FontWeight.w600)),
-            ])),
-          ])),
-        ]),
-      ),
-    ));
+    final f = festivalToday();
+    if (f == null) return child;
+    return Stack(children: [
+      child,
+      Positioned.fill(child: IgnorePointer(child: Stack(children: [
+        Positioned.fill(child: EmojiDrift(emojis: f.emojis, mode: f.mode, count: f.mode == DriftMode.walk ? 9 : 22, size: f.mode == DriftMode.walk ? 40 : 30, confetti: f.confetti, snow: f.snow)),
+        if (f.key == 'diwali') const Positioned(left: 0, right: 0, bottom: 0, height: 70, child: _DiyaRow()),
+        if (f.key == 'eid' || f.key == 'bakrid') Positioned(right: 24, top: 70, child: Text('🌙', style: TextStyle(fontSize: 64, shadows: [Shadow(color: Colors.amber.withValues(alpha: .7), blurRadius: 30)]))),
+      ]))),
+    ]);
   }
 }
 
@@ -479,35 +478,6 @@ class _BobState extends State<_Bob> with SingleTickerProviderStateMixin {
   @override
   Widget build(BuildContext context) => AnimatedBuilder(animation: c, child: widget.child,
       builder: (_, child) => Transform.translate(offset: Offset(0, -4 * Curves.easeInOut.transform(c.value)), child: Transform.rotate(angle: (c.value - .5) * .12, child: child)));
-}
-
-/// The whole-screen festival animation: fades in, plays ~7 seconds, fades out (touches pass through).
-class _FadingLayer extends StatefulWidget {
-  final Festival festival; final VoidCallback onGone;
-  const _FadingLayer({required this.festival, required this.onGone});
-  @override
-  State<_FadingLayer> createState() => _FadingLayerState();
-}
-
-class _FadingLayerState extends State<_FadingLayer> {
-  double o = 0; Timer? _a, _b;
-  @override
-  void initState() {
-    super.initState();
-    _a = Timer(const Duration(milliseconds: 50), () { if (mounted) setState(() => o = 1); });
-    _b = Timer(const Duration(milliseconds: 7000), () { if (mounted) setState(() => o = 0); Timer(const Duration(milliseconds: 900), widget.onGone); });
-  }
-  @override
-  void dispose() { _a?.cancel(); _b?.cancel(); super.dispose(); }
-  @override
-  Widget build(BuildContext context) {
-    final f = widget.festival;
-    return IgnorePointer(child: AnimatedOpacity(opacity: o, duration: const Duration(milliseconds: 800), child: Stack(children: [
-      Positioned.fill(child: EmojiDrift(emojis: f.emojis, mode: f.mode, count: f.mode == DriftMode.walk ? 9 : 28, size: f.mode == DriftMode.walk ? 40 : 32, confetti: f.confetti, snow: f.snow)),
-      if (f.key == 'diwali') const Positioned(left: 0, right: 0, bottom: 0, height: 70, child: _DiyaRow()),
-      if (f.key == 'eid' || f.key == 'bakrid') Positioned(right: 24, top: 70, child: Text('🌙', style: TextStyle(fontSize: 64, shadows: [Shadow(color: Colors.amber.withValues(alpha: .7), blurRadius: 30)]))),
-    ])));
-  }
 }
 
 /// A row of flickering diyas along the bottom (Diwali).
@@ -633,4 +603,18 @@ class CountUpText extends StatelessWidget {
           return Text('${m.group(1) ?? ''}$txt${m.group(3)}', style: style);
         });
   }
+}
+
+
+/// Every time a report card is opened: a sealed envelope appears, the seal breaks, the card slides out — then it opens.
+Future<void> openWithEnvelope(BuildContext context, {required String title, required String subtitle, required VoidCallback open}) async {
+  if (reduceMotion(context)) { open(); return; }
+  await showGeneralDialog(context: context, barrierDismissible: false, barrierColor: Colors.black.withValues(alpha: .7),
+    transitionDuration: const Duration(milliseconds: 350),
+    transitionBuilder: (_, a, __, child) => FadeTransition(opacity: a, child: ScaleTransition(scale: Tween(begin: .9, end: 1.0).animate(CurvedAnimation(parent: a, curve: Curves.easeOutBack)), child: child)),
+    pageBuilder: (dialogContext, _, __) => Center(child: Padding(padding: const EdgeInsets.all(24), child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 440),
+      child: Material(color: Colors.transparent, child: EnvelopeReveal(title: title, subtitle: subtitle, autoOpen: true, onOpen: () {
+        Timer(const Duration(milliseconds: 250), () { if (Navigator.of(dialogContext).canPop()) Navigator.of(dialogContext).pop(); open(); });
+      }))))),
+  );
 }
