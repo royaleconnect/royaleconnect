@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -74,10 +75,13 @@ class _CouncilViewState extends ConsumerState<CouncilView> {
             if (t == null) const NoteBox('The Student Council will appear here once the school adds it.', icon: Icons.groups_rounded),
             if (t != null) Padding(padding: const EdgeInsets.only(top: 6, bottom: 10), child: Text('Student Council ${t['label']}', textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: context.tone(Brand.crimsonDeep)))),
-            for (final e in (rows.entries.toList()..sort((a, b) => a.key.compareTo(b.key)))) Padding(padding: const EdgeInsets.only(bottom: 12), child: LayoutBuilder(builder: (_, c) {
-              // every card the same: two per line, same photo size, same height
-              final w = (c.maxWidth - 10) / 2;
-              return Wrap(alignment: WrapAlignment.center, spacing: 10, runSpacing: 10, children: [for (final m in e.value) SizedBox(width: w, height: _MemberCard.height, child: _MemberCard(m))]);
+            for (final e in (rows.entries.toList()..sort((a, b) => a.key.compareTo(b.key)))) Padding(padding: const EdgeInsets.only(bottom: 0), child: LayoutBuilder(builder: (_, c) {
+              // every card the same: two per line, same photo size; the two of a line share one height (no empty space)
+              final pairs = [for (var i = 0; i < e.value.length; i += 2) e.value.sublist(i, math.min(i + 2, e.value.length))];
+              return Column(children: [for (final pr in pairs) Padding(padding: const EdgeInsets.only(bottom: 10), child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                for (final (i, m) in pr.indexed) ...[if (i > 0) const SizedBox(width: 10), Expanded(child: _MemberCard(m))],
+                if (pr.length == 1) const Expanded(child: SizedBox()),
+              ])))]);
             })),
             if (t != null && rows.isEmpty) Text('Members will appear here soon.', textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant)),
             const SizedBox(height: 8),
@@ -94,10 +98,10 @@ class _CouncilViewState extends ConsumerState<CouncilView> {
 class _MemberCard extends StatelessWidget {
   final Map<String, dynamic> m;
   const _MemberCard(this.m);
-  static const size = 92.0, height = 222.0;
+  static const size = 88.0;
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.fromLTRB(8, 14, 8, 12),
+    padding: const EdgeInsets.fromLTRB(8, 12, 8, 10),
     decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, borderRadius: BorderRadius.circular(18)),
     child: Column(mainAxisAlignment: MainAxisAlignment.start, children: [
       Face(m['full_name'] ?? '', m['photo_path'], size: size),
