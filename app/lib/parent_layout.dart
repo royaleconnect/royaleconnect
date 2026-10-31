@@ -15,9 +15,9 @@ class ParentFrame extends ConsumerWidget {
   const ParentFrame({super.key, required this.child});
 
   static const _groups = <(String, List<(String, String, IconData)>)>[
-    ('DAILY', [('/', 'Home', Icons.home_rounded), ('/diary', 'Class diary', Icons.menu_book_rounded), ('/announcements', 'Announcements', Icons.campaign_rounded), ('/messages', 'Messages', Icons.chat_bubble_rounded)]),
+    ('DAILY', [('/', 'Home', Icons.home_rounded), ('/desk', "Principal's Desk", Icons.auto_awesome_rounded), ('/diary', 'Class diary', Icons.menu_book_rounded), ('/announcements', 'Announcements', Icons.campaign_rounded), ('/messages', 'Messages', Icons.chat_bubble_rounded)]),
     ('STUDIES', [('/calendar', 'Calendar', Icons.calendar_month_rounded), ('/timetable', 'Timetable', Icons.grid_view_rounded), ('/exams', 'Exams & portions', Icons.fact_check_rounded), ('/plan', 'Monthly plan', Icons.format_list_bulleted_rounded), ('/worksheets', 'Worksheets', Icons.task_rounded), ('/reports', 'Report cards', Icons.school_rounded)]),
-    ('SCHOOL', [('/fees', 'Fees & receipts', Icons.account_balance_wallet_rounded), ('/bus', 'Bus', Icons.directions_bus_rounded), ('/gallery', 'Moments & albums', Icons.photo_library_rounded), ('/star', 'Star of the month', Icons.star_rounded), ('/leave', 'Leave', Icons.event_available_rounded), ('/toppers', 'Board Toppers', Icons.emoji_events_rounded), ('/fame', 'Hall of Fame', Icons.workspace_premium_rounded), ('/feedback', 'Feedback', Icons.rate_review_rounded), ('/help', 'Help', Icons.help_outline_rounded)]),
+    ('SCHOOL', [('/fees', 'Fees & receipts', Icons.account_balance_wallet_rounded), ('/bus', 'Bus', Icons.directions_bus_rounded), ('/gallery', 'Moments & albums', Icons.photo_library_rounded), ('/star', 'Star of the month', Icons.star_rounded), ('/leave', 'Leave', Icons.event_available_rounded), ('/toppers', 'Board Toppers', Icons.emoji_events_rounded), ('/fame', 'Hall of Fame', Icons.workspace_premium_rounded), ('/council', 'Student Council', Icons.how_to_vote_rounded), ('/feedback', 'Feedback', Icons.rate_review_rounded), ('/help', 'Help', Icons.help_outline_rounded)]),
   ];
 
   @override
@@ -30,7 +30,7 @@ class ParentFrame extends ConsumerWidget {
     final unreadNotices = ref.watch(noticesProvider).value?.where((n) => !n.read).length ?? 0;
     final settings = ref.watch(appSettingsProvider).value;
     // pages IT has switched off are not shown
-    const switches = {'/messages': 'messages', '/bus': 'bus', '/gallery': 'gallery', '/star': 'star', '/worksheets': 'worksheets', '/plan': 'plan', '/leave': 'leave', '/toppers': 'toppers', '/fame': 'fame'};
+    const switches = {'/messages': 'messages', '/bus': 'bus', '/gallery': 'gallery', '/star': 'star', '/worksheets': 'worksheets', '/plan': 'plan', '/leave': 'leave', '/toppers': 'toppers', '/fame': 'fame', '/council': 'council'};
     bool allowed(String p) => switches[p] == null || featureOn(settings, switches[p]!);
     return AnimatedBuilder(animation: router.routerDelegate, builder: (context, _) {
       final loc = router.routerDelegate.currentConfiguration.uri.path;
