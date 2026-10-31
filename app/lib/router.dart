@@ -115,33 +115,33 @@ final routerProvider = Provider<GoRouter>((ref) {
         GoRoute(path: '/staff/me', builder: (_, __) => const StaffMeScreen()),
         GoRoute(path: '/staff/desk', builder: (_, __) => const StaffDeskScreen()),
       ]),
-      GoRoute(path: '/students', builder: (_, __) => const StudentsScreen()),
-      GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
-      GoRoute(path: '/driver', builder: (_, __) => const DriverScreen()),
+      GoRoute(path: '/students', pageBuilder: (_, st) => _grow(st, const StudentsScreen())),
+      GoRoute(path: '/settings', pageBuilder: (_, st) => _grow(st, const SettingsScreen())),
+      GoRoute(path: '/driver', pageBuilder: (_, st) => _grow(st, const DriverScreen())),
       // tiles & secondary pages
-      GoRoute(path: '/timetable', builder: (_, __) => const TimetableScreen()),
-      GoRoute(path: '/star', builder: (_, __) => const StarScreen()),
-      GoRoute(path: '/gallery', builder: (_, __) => const GalleryScreen()),
-      GoRoute(path: '/leave', builder: (_, __) => const LeaveScreen()),
-      GoRoute(path: '/plan', builder: (_, __) => const MonthlyPlanScreen()),
-      GoRoute(path: '/worksheets', builder: (_, __) => const WorksheetsScreen()),
-      GoRoute(path: '/exams', builder: (_, __) => const ExamsScreen()),
-      GoRoute(path: '/calendar', builder: (_, __) => const CalendarScreen()),
-      GoRoute(path: '/messages', builder: (_, __) => const MessagesScreen()),
-      GoRoute(path: '/chat/:id', builder: (_, st) => ChatScreen(conversationId: st.pathParameters['id']!, title: st.extra as String?)),
-      GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
-      GoRoute(path: '/feedback', builder: (_, __) => const FeedbackScreen()),
-      GoRoute(path: '/help', builder: (_, __) => const HelpScreen(staff: false)),
-      GoRoute(path: '/toppers', builder: (_, __) => const ToppersScreen()),
-      GoRoute(path: '/fame', builder: (_, __) => const ToppersScreen(tab: 2)),
-      GoRoute(path: '/council', builder: (_, __) => const CouncilScreen()),
-      GoRoute(path: '/desk', builder: (_, __) => const DeskListScreen()),
-      GoRoute(path: '/pay', builder: (_, __) => const PayScreen(), routes: [
-        GoRoute(path: 'done', builder: (_, st) => ReceiptScreen(paymentId: st.uri.queryParameters['payment_id'] ?? '')),   // return URL of the web payment link
+      GoRoute(path: '/timetable', pageBuilder: (_, st) => _grow(st, const TimetableScreen())),
+      GoRoute(path: '/star', pageBuilder: (_, st) => _grow(st, const StarScreen())),
+      GoRoute(path: '/gallery', pageBuilder: (_, st) => _grow(st, const GalleryScreen())),
+      GoRoute(path: '/leave', pageBuilder: (_, st) => _grow(st, const LeaveScreen())),
+      GoRoute(path: '/plan', pageBuilder: (_, st) => _grow(st, const MonthlyPlanScreen())),
+      GoRoute(path: '/worksheets', pageBuilder: (_, st) => _grow(st, const WorksheetsScreen())),
+      GoRoute(path: '/exams', pageBuilder: (_, st) => _grow(st, const ExamsScreen())),
+      GoRoute(path: '/calendar', pageBuilder: (_, st) => _grow(st, const CalendarScreen())),
+      GoRoute(path: '/messages', pageBuilder: (_, st) => _grow(st, const MessagesScreen())),
+      GoRoute(path: '/chat/:id', pageBuilder: (_, st) => _grow(st, ChatScreen(conversationId: st.pathParameters['id']!, title: st.extra as String?))),
+      GoRoute(path: '/profile', pageBuilder: (_, st) => _grow(st, const ProfileScreen())),
+      GoRoute(path: '/feedback', pageBuilder: (_, st) => _grow(st, const FeedbackScreen())),
+      GoRoute(path: '/help', pageBuilder: (_, st) => _grow(st, const HelpScreen(staff: false))),
+      GoRoute(path: '/toppers', pageBuilder: (_, st) => _grow(st, const ToppersScreen())),
+      GoRoute(path: '/fame', pageBuilder: (_, st) => _grow(st, const ToppersScreen(tab: 2))),
+      GoRoute(path: '/council', pageBuilder: (_, st) => _grow(st, const CouncilScreen())),
+      GoRoute(path: '/desk', pageBuilder: (_, st) => _grow(st, const DeskListScreen())),
+      GoRoute(path: '/pay', pageBuilder: (_, st) => _grow(st, const PayScreen()), routes: [
+        GoRoute(path: 'done', pageBuilder: (_, st) => _grow(st, ReceiptScreen(paymentId: st.uri.queryParameters['payment_id'] ?? ''))),   // return URL of the web payment link
       ]),
-      GoRoute(path: '/receipts', builder: (_, __) => const ReceiptsScreen()),
-      GoRoute(path: '/notice/:id', builder: (_, st) => NoticeScreen(id: st.pathParameters['id']!)),
-      GoRoute(path: '/receipt/:id', builder: (_, st) => ReceiptScreen(paymentId: st.pathParameters['id']!)),
+      GoRoute(path: '/receipts', pageBuilder: (_, st) => _grow(st, const ReceiptsScreen())),
+      GoRoute(path: '/notice/:id', pageBuilder: (_, st) => _grow(st, NoticeScreen(id: st.pathParameters['id']!))),
+      GoRoute(path: '/receipt/:id', pageBuilder: (_, st) => _grow(st, ReceiptScreen(paymentId: st.pathParameters['id']!))),
       // main shell with bottom tabs
       StatefulShellRoute.indexedStack(
         builder: (_, __, shell) => AppShell(shell: shell),
@@ -157,3 +157,15 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+
+/// Secondary pages grow gently into place (and shrink back): a soft zoom with a fade.
+Page<void> _grow(GoRouterState st, Widget child) => CustomTransitionPage<void>(
+      key: st.pageKey, child: child,
+      transitionDuration: const Duration(milliseconds: 420), reverseTransitionDuration: const Duration(milliseconds: 320),
+      transitionsBuilder: (context, a, b, child) {
+        final c = CurvedAnimation(parent: a, curve: Curves.easeOutCubic, reverseCurve: Curves.easeInCubic);
+        return FadeTransition(opacity: c, child: ScaleTransition(scale: Tween(begin: .94, end: 1.0).animate(c),
+            child: SlideTransition(position: Tween(begin: const Offset(0, .025), end: Offset.zero).animate(c), child: child)));
+      },
+    );
