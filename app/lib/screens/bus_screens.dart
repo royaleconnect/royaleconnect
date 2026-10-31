@@ -11,8 +11,9 @@ import '../core/data2.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
 import 'family_screens.dart' show callNumber;
+import '../widgets/royal_extras.dart' show GoldLoading;
 
-Widget _loading() => const Center(child: CircularProgressIndicator());
+Widget _loading() => const GoldLoading();
 
 /// Parent / student side — only reachable when the student has a transport enrolment.
 class BusScreen extends ConsumerStatefulWidget {
