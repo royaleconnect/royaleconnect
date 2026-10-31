@@ -11,6 +11,7 @@ import '../core/theme.dart';
 import '../widgets/common.dart';
 import '../widgets/royal_motion.dart';
 import 'desk_screen.dart' show DeskHomeCard;
+import '../widgets/royal_extras.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -49,19 +50,20 @@ class HomeScreen extends ConsumerWidget {
           Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(DateFormat('EEEE, d MMMM').format(now), style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
-              Text(greet, style: t.headlineMedium),
+              Row(children: [Text(greet, style: t.headlineMedium), const SizedBox(width: 10), const TimeOfDayIcon(size: 34)]),
             ])),
             Text('${st.fullName} · $cls', style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w700)),
           ]),
           const SizedBox(height: 18),
           if (birthday) BirthdayCard(st.fullName),
+          const FestiveBanner(),
           const FadeRise(delayMs: 150, child: DeskHomeCard()),
           ...?notices.value?.where((n) => n.urgent && !n.read).map((n) => Padding(padding: const EdgeInsets.only(bottom: 14), child: Material(color: Brand.crimson, borderRadius: BorderRadius.circular(16),
               child: ListTile(onTap: () => context.push('/notice/${n.id}'), leading: const Icon(Icons.warning_amber_rounded, color: Colors.white), title: Text(n.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)), trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white))))),
           IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Expanded(flex: 5, child: _MorningCard(fees: fees.value, transport: transport, cls: cls, calendar: calendar, grade: gradeCode)),
             const SizedBox(width: 18),
-            Expanded(flex: 4, child: fees.when(loading: () => const _CardShell(child: Center(child: CircularProgressIndicator())), error: (e, _) => _CardShell(child: Text('Could not load fees.', style: TextStyle(color: cs.onSurfaceVariant))), data: (f) => _FeeCard(f))),
+            Expanded(flex: 4, child: fees.when(loading: () => const _CardShell(child: const GoldLoading()), error: (e, _) => _CardShell(child: Text('Could not load fees.', style: TextStyle(color: cs.onSurfaceVariant))), data: (f) => _FeeCard(f))),
           ])),
           const SizedBox(height: 18),
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -70,7 +72,7 @@ class HomeScreen extends ConsumerWidget {
               if (notices.value?.isEmpty ?? false) Text('No announcements yet.', style: TextStyle(color: cs.onSurfaceVariant)),
             ]))),
             const SizedBox(width: 18),
-            Expanded(child: diary.when(loading: () => const _CardShell(child: SizedBox(height: 120, child: Center(child: CircularProgressIndicator()))), error: (e, _) => _CardShell(child: Text('$e')), data: (d) => card(
+            Expanded(child: diary.when(loading: () => const _CardShell(child: SizedBox(height: 120, child: const GoldLoading())), error: (e, _) => _CardShell(child: Text('$e')), data: (d) => card(
               d.$1 == null ? 'Class diary' : 'Class diary · ${d.$1 == DateFormat('yyyy-MM-dd').format(now) ? 'today' : DateFormat('EEE d MMM').format(DateTime.parse(d.$1!))}', 'Open diary', () => context.go('/diary'),
               Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 if (d.$2.isEmpty) Text('Nothing posted recently.', style: TextStyle(color: cs.onSurfaceVariant)),
@@ -110,7 +112,7 @@ class HomeScreen extends ConsumerWidget {
             ]),
             const SizedBox(height: 18),
             Text(DateFormat('EEEE, d MMMM').format(now), style: TextStyle(color: Colors.white.withValues(alpha: .85), fontSize: 13)),
-            Text(greet, style: t.headlineMedium?.copyWith(color: Colors.white)),
+            Row(children: [Text(greet, style: t.headlineMedium?.copyWith(color: Colors.white)), const SizedBox(width: 10), const TimeOfDayIcon(size: 30)]),
             const SizedBox(height: 16),
             // morning card — sits inside the header
             _MorningCard(fees: fees.value, transport: transport, cls: cls, calendar: calendar, grade: gradeCode),
@@ -118,6 +120,7 @@ class HomeScreen extends ConsumerWidget {
           SliverPadding(padding: const EdgeInsets.fromLTRB(20, 16, 20, 24), sliver: SliverList(delegate: SliverChildListDelegate([
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               if (birthday) BirthdayCard(st.fullName),
+              const FestiveBanner(),
               const FadeRise(delayMs: 150, child: DeskHomeCard()),
               // urgent banner(s)
               ...?notices.value?.where((n) => n.urgent && !n.read).map((n) => Padding(padding: const EdgeInsets.only(bottom: 14), child: Material(color: Brand.crimson, borderRadius: BorderRadius.circular(16),
@@ -128,7 +131,7 @@ class HomeScreen extends ConsumerWidget {
                   ])))))),
               // fee card
               FadeRise(delayMs: 260, child: fees.when(
-                loading: () => const _CardShell(child: SizedBox(height: 90, child: Center(child: CircularProgressIndicator()))),
+                loading: () => const _CardShell(child: SizedBox(height: 90, child: const GoldLoading())),
                 error: (e, _) => _CardShell(child: Text('Could not load fees. Pull to refresh.', style: TextStyle(color: cs.onSurfaceVariant))),
                 data: (f) => _FeeCard(f),
               )),
@@ -245,10 +248,10 @@ class _MorningCard extends ConsumerWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Eyebrow('Your day · ${DateFormat('EEEE').format(now)}', color: Brand.gold), Text(cls, style: TextStyle(color: Colors.white.withValues(alpha: .7), fontSize: 11))]),
           const SizedBox(height: 10),
-          for (final (a, b, c) in items) Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          for (final (i, (a, b, c)) in items.indexed) FadeRise(delayMs: 350 + i * 140, dy: 14, child: Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Container(width: 8, height: 8, margin: const EdgeInsets.only(top: 6), decoration: BoxDecoration(color: c, shape: BoxShape.circle)), const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(a, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)), Text(b, style: TextStyle(color: Colors.white.withValues(alpha: .75), fontSize: 11))])),
-          ])),
+          ]))),
         ]));
   }
 }
@@ -271,7 +274,7 @@ class _FeeCard extends StatelessWidget {
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Eyebrow(od.isNotEmpty ? 'Overdue · since ${DateFormat('d MMM').format(DateTime.parse(head.dueOn))}' : 'Due ${DateFormat('d MMM').format(DateTime.parse(head.dueOn))} · ${head.daysUntil()} days left', color: od.isNotEmpty ? (dark ? const Color(0xFFFF6B6B) : Brand.crimsonDeep) : (dark ? const Color(0xFFF2B84B) : Brand.amber)),
-          Text(inr(od.isNotEmpty ? odAmt : head.amount), style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -.5)),
+          CountUpText(inr(od.isNotEmpty ? odAmt : head.amount), style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -.5)),
           Text(od.isNotEmpty && od.any((r) => r.isLate) ? '${head.title} incl. late fee' : head.title, style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
         ])),
         Container(height: 44, padding: const EdgeInsets.symmetric(horizontal: 18), alignment: Alignment.center, decoration: BoxDecoration(gradient: Brand.buttonGradient, borderRadius: BorderRadius.circular(12)),
@@ -280,7 +283,7 @@ class _FeeCard extends StatelessWidget {
       const SizedBox(height: 14), Divider(height: 1, color: cs.outline), const SizedBox(height: 12),
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
         Expanded(child: Text(od.isNotEmpty && next != null ? 'Next: ${next.title.split(' — ').first} · ${inr(next.amount)} due ${DateFormat('d MMM').format(DateTime.parse(next.dueOn))}' : 'Balance for the year ${inr(f.balance)}', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant))),
-        Text('${f.pct}% of year paid', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: context.tone(Brand.green))),
+        Row(mainAxisSize: MainAxisSize.min, children: [Text('of year paid  ', style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)), GoldRing(f.pct.toDouble(), size: 46)]),
       ]),
     ])));
   }
