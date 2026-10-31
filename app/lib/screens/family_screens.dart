@@ -8,8 +8,9 @@ import '../core/data2.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
 import 'academics_screens.dart' show AppPage;
+import '../widgets/royal_extras.dart' show GoldLoading;
 
-Widget _loading() => const Center(child: CircularProgressIndicator());
+Widget _loading() => const GoldLoading();
 Widget _empty(BuildContext c, String t) => Center(child: Padding(padding: const EdgeInsets.all(32), child: Text(t, textAlign: TextAlign.center, style: TextStyle(color: Theme.of(c).colorScheme.onSurfaceVariant, height: 1.5))));
 
 /// Image from the private bucket via a signed URL.
@@ -71,12 +72,13 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
       ListView(padding: const EdgeInsets.all(20), children: [for (final al in list) ...[
         Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [Expanded(child: Text(al['title'], style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17))), if (al['event_date'] != null) Text(DateFormat('d MMM yyyy').format(DateTime.parse(al['event_date'])), style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant))])),
         Builder(builder: (_) { final photos = (List<Map<String, dynamic>>.from(al['album_photo'] ?? [])..sort((x, y) => (x['sort_order'] as int).compareTo(y['sort_order'] as int))).map((p) => p['path'] as String).toList();
-          return GridView.count(crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 6, crossAxisSpacing: 6, children: [for (final (i, p) in photos.indexed) GestureDetector(onTap: () => _view(photos, i), child: StorageImage(p, radius: BorderRadius.circular(12)))]); }),
+          return GridView.count(crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 6, crossAxisSpacing: 6, children: [for (final (i, p) in photos.indexed) GestureDetector(onTap: () => _view(photos, i), child: Hero(tag: 'ph$p', child: StorageImage(p, radius: BorderRadius.circular(12))))]); }),
         const SizedBox(height: 20),
       ]]));
   }
 
-  void _view(List<String> paths, int start) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => _Viewer(paths, start)));
+  void _view(List<String> paths, int start) => Navigator.of(context).push(PageRouteBuilder(transitionDuration: const Duration(milliseconds: 450), pageBuilder: (_, __, ___) => _Viewer(paths, start),
+      transitionsBuilder: (_, a, __, child) => FadeTransition(opacity: a, child: child)));
 }
 
 class _Viewer extends StatelessWidget {
@@ -84,7 +86,7 @@ class _Viewer extends StatelessWidget {
   const _Viewer(this.paths, this.start);
   @override
   Widget build(BuildContext context) => Scaffold(backgroundColor: Colors.black, appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white),
-      body: PageView(controller: PageController(initialPage: start), children: [for (final p in paths) InteractiveViewer(child: Center(child: StorageImage(p, fit: BoxFit.contain)))]));
+      body: PageView(controller: PageController(initialPage: start), children: [for (final p in paths) InteractiveViewer(child: Center(child: Hero(tag: 'ph$p', child: _SlowDrift(child: StorageImage(p, fit: BoxFit.contain)))))]));
 }
 
 // ---------------------------------------------------------------- leave
@@ -208,3 +210,21 @@ class _FeedbackScreenState extends ConsumerState<FeedbackScreen> {
 }
 
 Future<void> callNumber(String? n) async { if (n != null && n.isNotEmpty) await launchUrl(Uri.parse('tel:$n')); }
+
+
+/// A slow, film-like zoom while a photo is open.
+class _SlowDrift extends StatefulWidget {
+  final Widget child;
+  const _SlowDrift({required this.child});
+  @override
+  State<_SlowDrift> createState() => _SlowDriftState();
+}
+
+class _SlowDriftState extends State<_SlowDrift> with SingleTickerProviderStateMixin {
+  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(seconds: 14))..repeat(reverse: true);
+  @override
+  void dispose() { c.dispose(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) => MediaQuery.disableAnimationsOf(context) ? widget.child
+      : AnimatedBuilder(animation: c, child: widget.child, builder: (_, child) => Transform.scale(scale: 1 + .06 * Curves.easeInOut.transform(c.value), child: child));
+}
