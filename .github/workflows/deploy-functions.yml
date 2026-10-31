@@ -50,7 +50,7 @@ jobs:
 
       - name: Deploy
         run: |
-          for f in login-student login-staff login-otp password nightly-fees send-notifications razorpay-order razorpay-webhook; do
+          for f in login-student login-staff password nightly-fees send-notifications razorpay-order razorpay-webhook; do
             supabase functions deploy "$f" --project-ref "$PROJECT_REF" --no-verify-jwt
           done
 
