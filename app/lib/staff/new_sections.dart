@@ -77,7 +77,7 @@ class _NewSectionsScreenState extends ConsumerState<NewSectionsScreen> {
                 final shown = allGrades || busy.isEmpty ? grades : busy;
                 return Panel(title: 'Grades', trailing: TextButton(onPressed: () => setState(() => allGrades = !allGrades), child: Text(allGrades ? 'Show grades with students' : 'Show all grades')),
                   child: Column(children: [for (final g in shown) _GradeTile(g: g, onTap: () async {
-                    await Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => GradePlanner(yearId: y['id'], yearLabel: y['label'], grade: g)));
+                    await Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (c) => staffTheme(c, GradePlanner(yearId: y['id'], yearLabel: y['label'], grade: g))));
                     ref.invalidate(_overviewProvider(y['id']));
                   })]));
               },
