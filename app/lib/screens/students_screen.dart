@@ -5,7 +5,7 @@ import '../auth/session.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
 
-/// "Who are we looking at?" — shown after OTP login with several children, and from Home to switch.
+/// "Who are we looking at?" — shown after signing in when the family has several children, and from Home to switch.
 class StudentsScreen extends ConsumerWidget {
   const StudentsScreen({super.key});
   @override
