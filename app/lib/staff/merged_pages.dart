@@ -5,6 +5,7 @@ import '../core/theme.dart';
 import 'school_setup.dart' show StaffTab, TransportTab;
 import 'staff_screens_2.dart' show StaffTransportScreen;
 import 'staff_shell.dart';
+import '../widgets/hub_tabs.dart';
 
 /// Pages that used to exist twice (once in "School setup") — now one page each.
 
@@ -13,7 +14,7 @@ class StaffPeopleScreen extends StatelessWidget {
   const StaffPeopleScreen({super.key});
   @override
   Widget build(BuildContext context) => const StaffPage(
-    title: 'Staff',
+    title: 'Staff', hub: Hub.schoolSetup,
     subtitle: 'Add teachers and office staff, choose their roles, and give a one-time password when someone forgets theirs.',
     body: StaffTab(),
   );
