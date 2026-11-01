@@ -12,6 +12,13 @@ import '../widgets/common.dart';
 import '../widgets/royal_motion.dart';
 import 'desk_screen.dart' show DeskHomeCard;
 import '../widgets/royal_extras.dart';
+import '../widgets/hub_tabs.dart';
+import 'attendance_screen.dart' show StreakCard, attendanceSummaryProvider;
+import 'my_list.dart' show MyListHomeSummary, myListProvider;
+import 'thanks_screen.dart' show ThanksHomeBanner;
+import 'year_review_screen.dart' show YearReviewHomeCard;
+import '../widgets/r_refresh.dart';
+import 'now_next.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -44,7 +51,7 @@ class HomeScreen extends ConsumerWidget {
       Widget card(String title, String link, VoidCallback go, Widget child) => _CardShell(lift: false, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))), TextButton(onPressed: go, child: Text(link))]),
         const SizedBox(height: 4), child]));
-      return Scaffold(body: FestiveSky(child: RefreshIndicator(
+      return Scaffold(body: FestiveSky(child: RRefresh(
         onRefresh: () async { ref.invalidate(calendarProvider); ref.invalidate(feesProvider); ref.invalidate(noticesProvider); ref.invalidate(latestDiaryProvider); },
         child: ListView(padding: const EdgeInsets.fromLTRB(34, 28, 34, 40), children: [
           Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -55,9 +62,18 @@ class HomeScreen extends ConsumerWidget {
             Text('${st.fullName} · $cls', style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w700)),
           ]),
           const SizedBox(height: 18),
-          if (birthday) BirthdayCard(st.fullName),
+          if (birthday && on('birthdays')) BirthdayCard(st.fullName),
           const FestiveBanner(),
+          const NowNextLine(), const ExamCountdownChip(),
           const FadeRise(delayMs: 150, child: DeskHomeCard()),
+          const ThanksHomeBanner(),
+          const YearReviewHomeCard(),
+          FadeRise(delayMs: 200, child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(child: NeedsToday(fees: fees.value, unreadNotices: unreadNotices)),
+            const SizedBox(width: 18),
+            const Expanded(child: HomeStreak()),
+          ])),
+          const FadeRise(delayMs: 220, child: MyListHomeSummary()),
           ...?notices.value?.where((n) => n.urgent && !n.read).map((n) => Padding(padding: const EdgeInsets.only(bottom: 14), child: Material(color: Brand.crimson, borderRadius: BorderRadius.circular(16),
               child: ListTile(onTap: () => context.push('/notice/${n.id}'), leading: const Icon(Icons.warning_amber_rounded, color: Colors.white), title: Text(n.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)), trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white))))),
           IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -89,8 +105,8 @@ class HomeScreen extends ConsumerWidget {
     }
 
     return Scaffold(
-      body: FestiveSky(child: RefreshIndicator(
-        onRefresh: () async { ref.invalidate(calendarProvider); ref.invalidate(feesProvider); ref.invalidate(noticesProvider); ref.invalidate(unreadMessagesProvider); },
+      body: FestiveSky(child: RRefresh(
+        onRefresh: () async { ref.invalidate(calendarProvider); ref.invalidate(feesProvider); ref.invalidate(noticesProvider); ref.invalidate(unreadMessagesProvider); ref.invalidate(myListProvider); },
         child: CustomScrollView(slivers: [
           SliverToBoxAdapter(child: BrandHeader(padding: const EdgeInsets.fromLTRB(20, 12, 20, 20), hairline: false, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
@@ -119,9 +135,15 @@ class HomeScreen extends ConsumerWidget {
           ]))),
           SliverPadding(padding: const EdgeInsets.fromLTRB(20, 16, 20, 24), sliver: SliverList(delegate: SliverChildListDelegate([
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              if (birthday) BirthdayCard(st.fullName),
+              if (birthday && on('birthdays')) BirthdayCard(st.fullName),
               const FestiveBanner(),
+              const NowNextLine(), const ExamCountdownChip(),
               const FadeRise(delayMs: 150, child: DeskHomeCard()),
+              const ThanksHomeBanner(),
+              const YearReviewHomeCard(),
+              FadeRise(delayMs: 200, child: NeedsToday(fees: fees.value, unreadNotices: unreadNotices)),
+              const FadeRise(delayMs: 230, child: HomeStreak()),
+              const FadeRise(delayMs: 245, child: MyListHomeSummary()),
               // urgent banner(s)
               ...?notices.value?.where((n) => n.urgent && !n.read).map((n) => Padding(padding: const EdgeInsets.only(bottom: 14), child: Material(color: Brand.crimson, borderRadius: BorderRadius.circular(16),
                   child: InkWell(onTap: () => context.push('/notice/${n.id}'), borderRadius: BorderRadius.circular(16), child: Padding(padding: const EdgeInsets.all(14), child: Row(children: [
@@ -137,19 +159,17 @@ class HomeScreen extends ConsumerWidget {
               )),
               const SizedBox(height: 18),
               // tiles
+              // 3 × 3 tiles: the main places, one tap each (the rest sits inside them as tabs)
               FadeRise(delayMs: 380, child: GridView.count(crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: .98, children: [
-                _Tile('Timetable', Icons.grid_view_rounded, Brand.blue, Brand.blueTint, () => context.push('/timetable')),
-                if (on('star')) _Tile('Star of the month', Icons.star_border_rounded, Brand.violet, Brand.violetTint, () => context.push('/star')),
-                if (on('gallery')) _Tile('Gallery', Icons.image_outlined, Brand.green, Brand.greenTint, () => context.push('/gallery')),
-                if (on('leave')) _Tile('Leave', Icons.event_available_outlined, Brand.crimsonDeep, Brand.crimsonTint, () => context.push('/leave')),
-                if (on('plan')) _Tile('Monthly plan', Icons.format_list_bulleted_rounded, Brand.amber, Brand.amberTint, () => context.push('/plan')),
-                if (on('worksheets')) _Tile('Worksheets', Icons.task_outlined, Brand.blue, Brand.blueTint, () => context.push('/worksheets')),
-                _Tile('Exams', Icons.fact_check_outlined, Brand.crimsonDeep, Brand.crimsonTint, () => context.push('/exams')),
+                _Tile('Diary', Icons.menu_book_outlined, Brand.blue, Brand.blueTint, () => context.go('/diary')),
+                _Tile('Notices', Icons.campaign_outlined, Brand.crimsonDeep, Brand.crimsonTint, () => context.go('/announcements'), badge: unreadNotices),
+                if (on('messages')) _Tile('Messages', Icons.chat_bubble_outline_rounded, Brand.amber, Brand.amberTint, () => context.push('/messages'), badge: unread),
                 _Tile('Calendar', Icons.calendar_month_outlined, Brand.green, Brand.greenTint, () => context.push('/calendar')),
-                // Toppers takes the old Messages place (Messages stays one tap away in the top bar)
-                if (on('council')) _Tile('Student Council', Icons.how_to_vote_outlined, Brand.violet, Brand.violetTint, () => context.push('/council')),
-                if (on('toppers') || on('fame')) _Tile(on('toppers') ? 'Toppers' : 'Hall of Fame', Icons.emoji_events_outlined, Brand.amber, Brand.amberTint, () => context.push(on('toppers') ? '/toppers' : '/fame'))
-                else if (on('messages')) _Tile('Messages', Icons.chat_bubble_outline_rounded, Brand.amber, Brand.amberTint, () => context.push('/messages'), badge: unread),
+                _Tile('Attendance', Icons.event_available_outlined, Brand.violet, Brand.violetTint, () => context.push('/attendance')),
+                _Tile('Reports', Icons.school_outlined, Brand.crimsonDeep, Brand.crimsonTint, () => context.go('/reports')),
+                _Tile('Fees', Icons.account_balance_wallet_outlined, Brand.green, Brand.greenTint, () => context.go('/fees')),
+                if (on('gallery')) _Tile('Gallery', Icons.image_outlined, Brand.blue, Brand.blueTint, () => context.push('/gallery')),
+                if (const ['star', 'toppers', 'fame', 'council', 'houses'].any(on)) _Tile('Honours', Icons.emoji_events_outlined, Brand.amber, Brand.amberTint, () => context.push(hubStart(Hub.honours, settings))),
               ])),
               const SizedBox(height: 18),
               Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text("What's new", style: t.titleLarge?.copyWith(fontSize: 16)), TextButton(onPressed: () => context.go('/announcements'), child: const Text('See all'))]),
@@ -319,5 +339,65 @@ class _NoticeRow extends StatelessWidget {
         Text('${n.by} · ${DateFormat('d MMM, h:mm a').format(DateTime.parse(n.when).toLocal())}', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
       ])),
     ]))));
+  }
+}
+
+/// "Needs you today": only the things that need the family to do something. When there is nothing: "All done ✓".
+class NeedsToday extends ConsumerWidget {
+  final FeeSummary? fees; final int unreadNotices;
+  const NeedsToday({super.key, required this.fees, required this.unreadNotices});
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final tomorrow = DateFormat('yyyy-MM-dd').format(DateTime.now().add(const Duration(days: 1)));
+    final hw = ref.watch(homeworkDueProvider(tomorrow)).value ?? 0;
+    final items = <(String, String, VoidCallback)>[];
+    final over = fees?.overdue ?? const <FeeRow>[];
+    final soon = [for (final r in fees?.dueSoon ?? const <FeeRow>[]) if (r.daysUntil() <= 7) r];
+    if (over.isNotEmpty) {
+      items.add(('${over.length == 1 ? over.first.title : '${over.length} fees'} overdue', 'Pay', () => context.go('/fees')));
+    } else if (soon.isNotEmpty) {
+      final d = soon.first.daysUntil();
+      items.add(('${soon.first.title} due ${d == 0 ? 'today' : d == 1 ? 'tomorrow' : DateFormat('EEEE').format(DateTime.parse(soon.first.dueOn))}', 'Pay', () => context.go('/fees')));
+    }
+    if (unreadNotices > 0) items.add(('$unreadNotices notice${unreadNotices > 1 ? 's' : ''} unread', 'Read', () => context.go('/announcements')));
+    if (hw > 0) items.add(('$hw homework due tomorrow', 'Open', () => context.go('/diary')));
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14), padding: const EdgeInsets.fromLTRB(14, 10, 8, 6),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(18),
+          gradient: LinearGradient(colors: dark ? [const Color(0xFF2A2017), const Color(0xFF221B14)] : [const Color(0xFFFFF8E8), const Color(0xFFFCEFD2)]),
+          border: Border.all(color: dark ? const Color(0xFF4A3A22) : const Color(0xFFEFD9A6))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('NEEDS YOU TODAY', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.2, color: dark ? Brand.gold2 : const Color(0xFFA8822F))),
+        if (items.isEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Row(children: [
+          const Icon(Icons.check_circle_rounded, color: Brand.green, size: 20), const SizedBox(width: 8),
+          Text('All done for today', style: TextStyle(fontWeight: FontWeight.w800, color: cs.onSurface)),
+        ])),
+        for (final (i, it) in items.indexed) Container(
+          decoration: BoxDecoration(border: i == items.length - 1 ? null : Border(bottom: BorderSide(color: dark ? const Color(0xFF3A2E1E) : const Color(0xFFEBD9AE)))),
+          child: Row(children: [
+            Expanded(child: Text(it.$1, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5))),
+            TextButton(onPressed: it.$3, child: Text('${it.$2} ›', style: const TextStyle(color: Brand.crimson, fontWeight: FontWeight.w800))),
+          ])),
+      ]),
+    );
+  }
+}
+
+/// The attendance streak on Home (only once the class teacher marks attendance in the app).
+/// Reaching 30 or 60 days shows a short gold celebration once.
+class HomeStreak extends ConsumerWidget {
+  const HomeStreak({super.key});
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final d = ref.watch(attendanceSummaryProvider(DateFormat('yyyy-MM-01').format(DateTime.now()))).value;
+    if (d == null || (d['year_days'] ?? 0) == 0) return const SizedBox.shrink();
+    final streak = (d['streak'] ?? 0) as int;
+    return Padding(padding: const EdgeInsets.only(bottom: 14), child: InkWell(borderRadius: BorderRadius.circular(20), onTap: () => context.push('/attendance'),
+      child: Stack(clipBehavior: Clip.none, children: [
+        StreakCard(streak: streak, best: (d['best'] ?? 0) as int, compact: true),
+        if (streak == 30 || streak == 60) const Positioned.fill(child: IgnorePointer(child: ConfettiBurst(count: 70, origin: Alignment(-.6, -.2)))),
+      ])));
   }
 }
