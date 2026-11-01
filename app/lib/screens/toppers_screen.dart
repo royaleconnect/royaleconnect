@@ -7,6 +7,8 @@ import 'academics_screens.dart' show AppPage;
 import 'family_screens.dart' show StorageImage;
 import '../widgets/royal_extras.dart' show GoldLoading;
 import '../widgets/royal_motion.dart' show CountUp, FadeRise, ShineSweep;
+import '../widgets/hub_tabs.dart';
+import '../widgets/r_refresh.dart';
 
 /// Board Toppers (Class X · Class XII) and the Hall of Fame — one page with three tabs.
 /// Toppers: pick a year → the top 3 on a podium, then every subject centum (100 / 100).
@@ -27,9 +29,9 @@ class _ToppersScreenState extends ConsumerState<ToppersScreen> {
     final tabs = [if (showToppers) (0, 'Class X'), if (showToppers) (1, 'Class XII'), if (showFame) (2, 'Hall of Fame')];
     if (tabs.isNotEmpty && !tabs.any((t) => t.$1 == tab)) tab = tabs.first.$1;
     return AppPage(
-      title: tab == 2 ? 'Hall of Fame' : 'Board Toppers',
-      headerExtra: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
-        for (final (i, l) in tabs) HeaderChip(l, selected: tab == i, onTap: () => setState(() => tab = i)),
+      title: tab == 2 ? 'Hall of Fame' : 'Board Toppers', hub: Hub.honours,
+      headerExtra: tab == 2 ? null : SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+        for (final (i, l) in tabs) if (i != 2) HeaderChip(l, selected: tab == i, onTap: () => setState(() => tab = i)),
       ])),
       body: tabs.isEmpty
           ? const Center(child: Padding(padding: EdgeInsets.all(32), child: Text('This page is switched off by the school.')))
@@ -81,7 +83,7 @@ class _ToppersViewState extends ConsumerState<ToppersView> {
         final subjects = bySubject.keys.toList()..sort((a, b) { final x = subjectOrder(a).compareTo(subjectOrder(b)); return x != 0 ? x : a.compareTo(b); });
         final res = results[y];
         final top = podium.isEmpty ? null : podium.first['percent'];
-        return RefreshIndicator(
+        return RRefresh(
           onRefresh: () async { ref.invalidate(toppersProvider(widget.boardClass)); ref.invalidate(boardResultsProvider(widget.boardClass)); },
           child: ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 32), children: [
             // years
@@ -218,7 +220,7 @@ class _FameWallState extends ConsumerState<FameWall> {
         Widget chip(String l, bool sel, VoidCallback onTap) => Padding(padding: const EdgeInsets.only(right: 8), child: ChoiceChip(
             label: Text(l), selected: sel, showCheckmark: false, selectedColor: Brand.crimson,
             labelStyle: TextStyle(fontWeight: FontWeight.w700, color: sel ? Colors.white : null), onSelected: (_) => onTap()));
-        return RefreshIndicator(onRefresh: () async => ref.invalidate(hallOfFameProvider), child: ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 32), children: [
+        return RRefresh(onRefresh: () async => ref.invalidate(hallOfFameProvider), child: ListView(padding: const EdgeInsets.fromLTRB(16, 16, 16, 32), children: [
           for (final s in spot.take(2)) Padding(padding: const EdgeInsets.only(bottom: 14), child: Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(gradient: Brand.headerGradient, borderRadius: BorderRadius.circular(20)),
