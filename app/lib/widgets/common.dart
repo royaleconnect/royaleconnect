@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/theme.dart';
 import 'royal_extras.dart' show LivingSilk, PressScale;
 import 'royal_motion.dart' show ShineSweep;
+import '../core/data.dart' show db;
 
 /// Red gradient header with the gold hairline, as in the prototype.
 class BrandHeader extends StatelessWidget {
@@ -104,4 +105,18 @@ class HeaderChip extends StatelessWidget {
           child: Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: selected ? Brand.crimsonDeep : Colors.white)),
         )),
       ));
+}
+
+/// After something is deleted: a bar at the bottom with "Undo" for 6 seconds. Undo brings it straight back.
+/// (IT and the Principal can also bring anything back from the Bin for 30 days.)
+void showUndo(BuildContext context, String what, VoidCallback refresh) {
+  final m = ScaffoldMessenger.maybeOf(context);
+  if (m == null) return;
+  m.hideCurrentSnackBar();
+  m.showSnackBar(SnackBar(duration: const Duration(seconds: 6), behavior: SnackBarBehavior.floating,
+    content: Text('$what deleted'),
+    action: SnackBarAction(label: 'Undo', onPressed: () async {
+      try { await db.rpc('bin_undo_last'); refresh(); m.showSnackBar(const SnackBar(content: Text('Brought back ✓'), behavior: SnackBarBehavior.floating)); }
+      catch (e) { m.showSnackBar(SnackBar(content: Text('$e'.replaceAll(RegExp(r'^.*?message: |, code.*\$'), '')), behavior: SnackBarBehavior.floating)); }
+    })));
 }
