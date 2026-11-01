@@ -8,10 +8,13 @@ import '../core/data2.dart';
 import '../core/theme.dart';
 import '../widgets/auth_layout.dart';
 import '../widgets/common.dart';
+import '../widgets/empty_state.dart';
 import 'staff_data.dart';
 import 'staff_shell.dart';
 import 'staff_screens_2.dart' show pickAndUploadMany;
 import 'admin_dashboard.dart';
+import '../widgets/chat_bubble.dart';
+import '../widgets/paper_plane.dart';
 
 String _d(DateTime d) => DateFormat('yyyy-MM-dd').format(d);
 String _dm(String? iso) => iso == null ? '' : DateFormat('d MMM').format(DateTime.parse(iso).toLocal());
@@ -142,7 +145,7 @@ class _StaffMessagesScreenState extends ConsumerState<StaffMessagesScreen> {
         final shown = rows.where((r) => filter == 'all' || (filter == 'open' ? r['staff_done'] != true : r['staff_done'] == true)).toList();
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 8), child: SegmentedButton<String>(segments: const [ButtonSegment(value: 'open', label: Text('Open')), ButtonSegment(value: 'done', label: Text('Done')), ButtonSegment(value: 'all', label: Text('All'))], selected: {filter}, onSelectionChanged: (v) => setState(() => filter = v.first))),
-          if (shown.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Text('Nothing here.', style: TextStyle(color: cs.onSurfaceVariant))),
+          if (shown.isEmpty) filter == 'open' ? const EmptyState(kind: EmptyKind.messages, title: 'No new messages', line: 'You’re all caught up.', compact: true) : Padding(padding: const EdgeInsets.all(24), child: Text('Nothing here.', style: TextStyle(color: cs.onSurfaceVariant))),
           for (final r in shown) ListTile(
             selected: open == r['id'], selectedTileColor: Brand.crimson.withValues(alpha: .14), selectedColor: cs.onSurface,
             leading: Avatar((r['student']?['full_name'] ?? '?').toString().split(' ').take(2).map((w) => w[0]).join(), size: 40),
@@ -211,14 +214,8 @@ class _ThreadState extends ConsumerState<_Thread> {
         TextButton.icon(onPressed: () async { await markDone(widget.conversationId, !done); ref.invalidate(inboxProvider); ref.invalidate(staffOverviewProvider); }, icon: Icon(done ? Icons.undo_rounded : Icons.check_rounded, size: 18), label: Text(done ? 'Reopen' : 'Mark done')),
       ])),
       const Divider(height: 1),
-      Expanded(child: msgs.when(loading: _loading, error: (e, _) => _err(e), data: (list) => ListView(padding: const EdgeInsets.all(16), children: [for (final m in list) Align(alignment: m['sender_kind'] == 'staff' ? Alignment.centerRight : Alignment.centerLeft, child: Container(
-        constraints: const BoxConstraints(maxWidth: 420), margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
-        decoration: BoxDecoration(color: m['sender_kind'] == 'staff' ? Brand.crimson : cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(14)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          if (m['attachment_path'] != null) InkWell(onTap: () => openStorageFile(m['attachment_path']), child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.attach_file_rounded, size: 16, color: m['sender_kind'] == 'staff' ? Colors.white : cs.onSurface), Flexible(child: Text(m['attachment_name'] ?? 'file', style: TextStyle(decoration: TextDecoration.underline, color: m['sender_kind'] == 'staff' ? Colors.white : cs.onSurface)))])),
-          if (m['body'] != null) Align(alignment: Alignment.centerLeft, child: SelectableText(m['body'], style: TextStyle(color: m['sender_kind'] == 'staff' ? Colors.white : cs.onSurface, height: 1.4))),
-          Text(_dmt(m['created_at']), style: TextStyle(fontSize: 10, color: m['sender_kind'] == 'staff' ? Colors.white70 : cs.onSurfaceVariant)),
-        ])))]))),
+      Expanded(child: msgs.when(loading: _loading, error: (e, _) => _err(e), data: (list) => ListView(padding: const EdgeInsets.all(16), children: [for (final m in list)
+        ChatBubble(m: m, mine: m['sender_kind'] == 'staff', maxWidth: 420, time: _dmt, onChanged: () { ref.invalidate(messagesProvider(widget.conversationId)); ref.invalidate(inboxProvider); })]))),
       const Divider(height: 1),
       Padding(padding: const EdgeInsets.fromLTRB(12, 8, 12, 4), child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [for (final s in _StaffMessagesScreenState.saved) Padding(padding: const EdgeInsets.only(right: 6), child: ActionChip(label: Text(s, style: const TextStyle(fontSize: 12)), onPressed: () => text.text = s))]))),
       Padding(padding: const EdgeInsets.fromLTRB(12, 4, 12, 12), child: Row(children: [
@@ -245,7 +242,7 @@ class StaffAnnouncementsScreen extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     return StaffPage(title: 'Announcements', subtitle: s.isOffice ? 'Whole school, grades or sections. Urgent bypasses quiet hours — use only when necessary.' : 'To your own sections. School-wide notices go through the office.',
       actions: [FilledButton.icon(onPressed: () => _compose(context, ref, s), icon: const Icon(Icons.add_rounded), label: const Text('New announcement'))],
-      body: list.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty ? Panel(child: Text('Nothing sent yet.', style: TextStyle(color: cs.onSurfaceVariant))) : Column(children: [for (final a in rows) Panel(padding: const EdgeInsets.all(14), child: CardRow(children: [
+      body: list.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty ? const Panel(child: EmptyState(kind: EmptyKind.notices, title: 'No notices sent yet', line: 'Notices you send appear here with who has read them.', compact: true)) : Column(children: [for (final a in rows) Panel(padding: const EdgeInsets.all(14), child: CardRow(children: [
         Pill(cats[a['category']] ?? a['category'], fg: a['category'] == 'urgent' ? Colors.white : Brand.crimsonDeep, bg: a['category'] == 'urgent' ? Brand.crimson : Brand.crimsonTint), const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(a['title'], style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
@@ -254,11 +251,13 @@ class StaffAnnouncementsScreen extends ConsumerWidget {
           Text('${a['author']?['display_name'] ?? ''} · ${a['audience_all'] == true ? 'Whole school' : '${(a['audience_grade_ids'] as List).length + (a['audience_section_ids'] as List).length} group(s)'} · ${a['sent_at'] != null ? 'Sent ${_dmt(a['sent_at'])}' : 'Scheduled ${_dmt(a['scheduled_for'])}'}${(a['attachments'] as List?)?.isNotEmpty == true ? ' · 📎 ${(a['attachments'] as List).length}' : ''}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
           if (a['sent_at'] != null && a['audience'] != null) _SeenBar(a: a, canRemind: s.isOffice || a['author_id'] == s.staff?['id']),
         ])),
+        if (s.isOffice || a['author_id'] == s.staff?['id']) _NoticeMenu(a: a, office: s.isOffice),
       ]))])));
   }
 
   void _compose(BuildContext context, WidgetRef ref, Session s) {
     String cat = 'general', title = '', body = ''; bool all = s.isOffice; final grades = <String>{}, sections = <String>{}; DateTime? when; bool busy = false, uploading = false; final files = <Map<String, dynamic>>[];
+    DateTime? pinUntil; String bus = '';   // bus: '' = everyone chosen · 'bus' = only bus students · otherwise one route id
     showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, set) => AlertDialog(insetPadding: EdgeInsets.symmetric(horizontal: isNarrow(context) ? 12 : 40, vertical: 24), title: const Text('New announcement'), content: SizedBox(width: 560, child: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
       Wrap(spacing: 8, children: [for (final e in cats.entries) if (e.key != 'urgent' || s.isOffice) ChoiceChip(label: Text(e.value), selected: cat == e.key, onSelected: (_) => set(() => cat = e.key))]),
       if (cat == 'urgent') const Padding(padding: EdgeInsets.only(top: 8), child: NoteBox('Urgent rings every phone immediately, even at night. For closures, safety and emergencies only.', icon: Icons.warning_amber_rounded, iconColor: Brand.crimson)),
@@ -278,7 +277,26 @@ class StaffAnnouncementsScreen extends ConsumerWidget {
         const SizedBox(height: 6),
         Consumer(builder: (_, r, __) => r.watch(mySectionsProvider).when(loading: () => const SizedBox(), error: (e, _) => _err(e), data: (ss) => Wrap(spacing: 6, children: [for (final sec in ss) FilterChip(label: Text(sectionLabel(sec)), selected: sections.contains(sec['id']), onSelected: (v) => set(() => v ? sections.add(sec['id']) : sections.remove(sec['id'])))]))),
       ],
+      // office: send only to bus families (all routes, or one route) among the classes chosen above
+      if (s.isOffice) Consumer(builder: (_, r, __) {
+        final routes = [for (final x in r.watch(routesProvider).value ?? const <Map<String, dynamic>>[]) if (x['active'] != false) x];
+        if (routes.isEmpty) return const SizedBox.shrink();
+        return Padding(padding: const EdgeInsets.only(top: 10), child: DropdownButtonFormField<String>(
+          value: bus, isExpanded: true, decoration: const InputDecoration(labelText: 'Bus', isDense: true),
+          items: [
+            const DropdownMenuItem(value: '', child: Text('Everyone chosen above')),
+            const DropdownMenuItem(value: 'bus', child: Text('Only students who use the school bus')),
+            for (final ro in routes) DropdownMenuItem(value: ro['id'] as String, child: Text('Only bus route: ${ro['name']}', overflow: TextOverflow.ellipsis)),
+          ],
+          onChanged: (v) => set(() => bus = v ?? '')));
+      }),
       const SizedBox(height: 12),
+      Row(children: [Expanded(child: Text(pinUntil == null ? 'Not kept on top' : 'Kept on top until ${DateFormat('d MMM').format(pinUntil!)}', style: const TextStyle(fontWeight: FontWeight.w700))),
+        if (pinUntil != null) IconButton(tooltip: 'Do not keep on top', onPressed: () => set(() => pinUntil = null), icon: const Icon(Icons.close_rounded, size: 18)),
+        TextButton.icon(onPressed: () async {
+          final now = DateTime.now();
+          final d = await showDatePicker(context: ctx, helpText: 'Keep on top until', initialDate: pinUntil ?? now.add(const Duration(days: 7)), firstDate: now, lastDate: now.add(const Duration(days: 120)));
+          if (d != null) set(() => pinUntil = d); }, icon: const Icon(Icons.push_pin_outlined, size: 18), label: const Text('Keep on top'))]),
       Row(children: [Expanded(child: Text(when == null ? 'Send now' : 'Scheduled: ${DateFormat('d MMM, h:mm a').format(when!)}', style: const TextStyle(fontWeight: FontWeight.w700))), TextButton.icon(onPressed: () async {
         final d = await showDatePicker(context: ctx, initialDate: DateTime.now(), firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 180))); if (d == null) return;
         if (!ctx.mounted) return; final t = await showTimePicker(context: ctx, initialTime: const TimeOfDay(hour: 8, minute: 0)); if (t == null) return;
@@ -289,7 +307,7 @@ class StaffAnnouncementsScreen extends ConsumerWidget {
         if (title.trim().isEmpty || body.trim().isEmpty) { toast(ctx, 'Title and message are needed.'); return; }
         if (!all && grades.isEmpty && sections.isEmpty) { toast(ctx, 'Choose who should receive it.'); return; }
         set(() => busy = true);
-        try { await postAnnouncement(ref, category: cat, title: title.trim(), body: body.trim(), all: all, gradeIds: grades.toList(), sectionIds: sections.toList(), scheduledFor: when, attachments: List.of(files)); ref.invalidate(staffAnnouncementsProvider); if (ctx.mounted) { Navigator.pop(ctx); toast(context, when == null ? 'Sent.' : 'Scheduled.'); } }
+        try { await postAnnouncement(ref, category: cat, title: title.trim(), body: body.trim(), all: all, gradeIds: grades.toList(), sectionIds: sections.toList(), scheduledFor: when, attachments: List.of(files), pinnedUntil: pinUntil, busOnly: bus == 'bus', routeIds: bus.isEmpty || bus == 'bus' ? const [] : [bus]); ref.invalidate(staffAnnouncementsProvider); if (ctx.mounted) { Navigator.pop(ctx); toast(context, when == null ? 'Sent.' : 'Scheduled.'); if (when == null && context.mounted) showPaperPlane(context); } }
         catch (e) { set(() => busy = false); if (ctx.mounted) toast(ctx, 'Not allowed or failed: $e'); }
       }, child: Text(when == null ? 'Send' : 'Schedule')),
     ])));
@@ -320,14 +338,14 @@ class _StaffDiaryScreenState extends ConsumerState<StaffDiaryScreen> {
             const SizedBox(width: 12),
             OutlinedButton.icon(style: OutlinedButton.styleFrom(minimumSize: const Size(0, 54)), onPressed: () async { final d = await showDatePicker(context: context, initialDate: day, firstDate: DateTime.now().subtract(const Duration(days: 120)), lastDate: DateTime.now()); if (d != null) setState(() => day = d); }, icon: const Icon(Icons.event_rounded, size: 18), label: Text(DateFormat('EEE, d MMM').format(day))),
           ])),
-          if (entries != null) entries.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty ? Panel(child: Text('Nothing posted for this day yet.', style: TextStyle(color: cs.onSurfaceVariant))) : Column(children: [for (final e in rows) Panel(padding: const EdgeInsets.all(14), child: CardRow(children: [
+          if (entries != null) entries.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty ? const Panel(child: EmptyState(kind: EmptyKind.homework, title: 'Nothing posted for this day', line: 'Homework and notes you post appear here.', compact: true)) : Column(children: [for (final e in rows) Panel(padding: const EdgeInsets.all(14), child: CardRow(children: [
             Pill(kinds[e['kind']] ?? e['kind'], fg: Brand.blue, bg: Brand.blueTint), const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(e['title'], style: const TextStyle(fontWeight: FontWeight.w800)),
               if (e['body'] != null) Text(e['body'], style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
               Text('${e['subject']?['name'] ?? 'General'} · ${e['author']?['display_name'] ?? ''}${e['due_on'] != null ? ' · for ${_dm(e['due_on'])}' : ''}${e['needs_submission'] == true ? ' · submission on' : ''}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
             ])),
-            IconButton(onPressed: () async { await deleteDiary(e['id']); ref.invalidate(staffDiaryProvider((sectionId!, _d(day)))); }, icon: const Icon(Icons.delete_outline_rounded), tooltip: 'Remove'),
+            IconButton(onPressed: () async { final key = (sectionId!, _d(day)); await deleteDiary(e['id']); ref.invalidate(staffDiaryProvider(key)); if (context.mounted) showUndo(context, 'Diary note', () => ref.invalidate(staffDiaryProvider(key))); }, icon: const Icon(Icons.delete_outline_rounded), tooltip: 'Remove'),
           ]))])),
         ]));
     });
@@ -337,6 +355,11 @@ class _StaffDiaryScreenState extends ConsumerState<StaffDiaryScreen> {
     final assigns = ref.read(myAssignmentsProvider).value ?? [];
     final mySubjects = assigns.where((a) => a['section_id'] == sectionId).map((a) => a['subject']).toList();
     String kind = 'homework', title = '', body = ''; String? subjectId = mySubjects.isNotEmpty ? mySubjects.first['id'] : null; DateTime? due; bool needs = false, busy = false;
+    // "Also send to": only other sections of the SAME grade where I teach the SAME subject (never another grade), ticked already
+    final here = sections.firstWhere((s) => s['id'] == sectionId);
+    final unticked = <String>{};
+    List<Map<String, dynamic>> twins() => subjectId == null ? const [] : [for (final a in assigns)
+        if (a['section_id'] != sectionId && a['subject']?['id'] == subjectId && a['section']?['grade']?['code'] == here['grade']?['code']) a];
     showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, set) => AlertDialog(insetPadding: EdgeInsets.symmetric(horizontal: isNarrow(context) ? 12 : 40, vertical: 24), title: Text('Post to ${sectionLabel(sections.firstWhere((s) => s['id'] == sectionId))} · today'), content: SizedBox(width: 520, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Wrap(spacing: 8, children: [for (final e in kinds.entries) ChoiceChip(label: Text(e.value), selected: kind == e.key, onSelected: (_) => set(() => kind = e.key))]),
       const SizedBox(height: 12),
@@ -346,13 +369,33 @@ class _StaffDiaryScreenState extends ConsumerState<StaffDiaryScreen> {
       TextField(onChanged: (v) => body = v, minLines: 2, maxLines: 6, decoration: const InputDecoration(labelText: 'Details (optional)')), const SizedBox(height: 10),
       Row(children: [Expanded(child: OutlinedButton.icon(onPressed: () async { final now = DateTime.now(); final d = await showDatePicker(context: ctx, initialDate: now.add(const Duration(days: 1)), firstDate: now, lastDate: now.add(const Duration(days: 60))); if (d != null) set(() => due = d); }, icon: const Icon(Icons.event_rounded, size: 18), label: Text(due == null ? 'For / due date (optional) — e.g. test on Wednesday' : 'For ${DateFormat('EEE d MMM').format(due!)}')))]),
       Padding(padding: const EdgeInsets.only(top: 6), child: Text('Parents see this note under today\'s diary. The date above shows on it as a tag.', style: TextStyle(fontSize: 12, color: Theme.of(ctx).colorScheme.onSurfaceVariant))),
-      SwitchListTile(value: needs, onChanged: (v) => set(() => needs = v), title: const Text('Students submit a file in the app'), subtitle: const Text('Off by default. Turn on for projects or worksheets to be returned.'), contentPadding: EdgeInsets.zero),
+      SwitchListTile(value: needs, onChanged: (v) => set(() => needs = v), title: const Text('Students submit a file in the app'), subtitle: const Text('Off by default. Turn on for projects to be returned.'), contentPadding: EdgeInsets.zero),
+      if (twins().isNotEmpty) Container(margin: const EdgeInsets.only(top: 6), padding: const EdgeInsets.fromLTRB(12, 10, 12, 6), decoration: BoxDecoration(color: Brand.amberTint, borderRadius: BorderRadius.circular(12)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Also send to', style: TextStyle(fontWeight: FontWeight.w800)),
+          Text('Only your other ${here['grade']?['code'] ?? ''} sections for the same subject.', style: const TextStyle(fontSize: 12)),
+          Wrap(spacing: 4, children: [for (final a in twins()) FilterChip(
+            label: Text('${a['section']?['grade']?['code']}-${a['section']?['name']} · ${a['subject']?['name']}'),
+            selected: !unticked.contains(a['section_id']),
+            onSelected: (v) => set(() => v ? unticked.remove(a['section_id']) : unticked.add(a['section_id'] as String)))]),
+        ])),
     ]))), actions: [
       TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
       FilledButton(onPressed: busy ? null : () async {
         if (title.trim().isEmpty) { toast(ctx, 'Title is needed.'); return; }
         set(() => busy = true);
-        try { await postDiary(ref, sectionId: sectionId!, subjectId: subjectId, kind: kind, title: title.trim(), body: body.trim().isEmpty ? null : body.trim(), forDate: DateTime.now(), dueOn: due, needsSubmission: needs); setState(() => day = DateTime.now()); ref.invalidate(staffDiaryProvider((sectionId!, _d(DateTime.now())))); ref.invalidate(staffOverviewProvider); if (ctx.mounted) Navigator.pop(ctx); }
+        try {
+          final targets = [sectionId!, for (final a in twins()) if (!unticked.contains(a['section_id'])) a['section_id'] as String];
+          for (final sec in targets) {
+            await postDiary(ref, sectionId: sec, subjectId: subjectId, kind: kind, title: title.trim(), body: body.trim().isEmpty ? null : body.trim(), forDate: DateTime.now(), dueOn: due, needsSubmission: needs);
+          }
+          setState(() => day = DateTime.now()); ref.invalidate(staffDiaryProvider((sectionId!, _d(DateTime.now())))); ref.invalidate(staffOverviewProvider);
+          if (ctx.mounted) Navigator.pop(ctx);
+          if (targets.length > 1 && context.mounted) {
+            final names = [sectionLabel(here), for (final a in twins()) if (!unticked.contains(a['section_id'])) '${a['section']?['grade']?['code']}-${a['section']?['name']}'];
+            toast(context, 'Sent to ${names.join(', ')}');
+          }
+        }
         catch (e) { set(() => busy = false); if (ctx.mounted) toast(ctx, 'Could not post: $e'); }
       }, child: const Text('Post')),
     ])));
@@ -367,7 +410,7 @@ class StaffLeaveScreen extends ConsumerWidget {
     final list = ref.watch(staffLeavesProvider);
     final cs = Theme.of(context).colorScheme;
     const col = {'pending': (Brand.amber, Brand.amberTint), 'approved': (Brand.green, Brand.greenTint), 'declined': (Brand.crimsonDeep, Brand.crimsonTint)};
-    return StaffPage(title: 'Leave requests', subtitle: 'Class teachers see their own section; the office sees all.', body: list.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty ? Panel(child: Text('No requests.', style: TextStyle(color: cs.onSurfaceVariant))) : Column(children: [for (final l in rows) Panel(padding: const EdgeInsets.all(14), child: CardRow(children: [
+    return StaffPage(title: 'Leave requests', subtitle: 'Class teachers see their own section; the office sees all.', body: list.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty ? const Panel(child: EmptyState(kind: EmptyKind.calendar, title: 'No leave requests', line: 'Nothing waiting for you.', compact: true)) : Column(children: [for (final l in rows) Panel(padding: const EdgeInsets.all(14), child: CardRow(children: [
       Pill(l['status'], fg: col[l['status']]!.$1, bg: col[l['status']]!.$2), const SizedBox(width: 12),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('${l['student']?['full_name'] ?? ''} · ${_cls(l['student'])}', style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -407,5 +450,46 @@ class _SeenBarState extends ConsumerState<_SeenBar> {
         if (mounted) setState(() => busy = false);
       }, icon: const Icon(Icons.notifications_active_outlined, size: 18), label: Text('Remind the $left who haven\'t'))),
     ]));
+  }
+}
+
+/// ⋮ on a notice: Edit · Unsend (within 10 minutes, removed from every phone) · Delete (office, any time). Undo right after.
+class _NoticeMenu extends ConsumerWidget {
+  final Map<String, dynamic> a; final bool office;
+  const _NoticeMenu({required this.a, required this.office});
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sent = DateTime.tryParse(a['sent_at'] ?? a['created_at'] ?? '')?.toLocal();
+    final fresh = sent == null || DateTime.now().difference(sent).inMinutes < 10;
+    return PopupMenuButton<String>(tooltip: 'More', icon: const Icon(Icons.more_vert_rounded), onSelected: (v) async {
+      if (v == 'edit') {
+        final t = TextEditingController(text: a['title']), b = TextEditingController(text: a['body']);
+        final ok = await showDialog<bool>(context: context, builder: (d) => AlertDialog(title: const Text('Edit notice'), content: SizedBox(width: 520, child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: t, decoration: const InputDecoration(labelText: 'Title')), const SizedBox(height: 10),
+          TextField(controller: b, minLines: 4, maxLines: 10, decoration: const InputDecoration(labelText: 'Message')),
+          const SizedBox(height: 8),
+          const Text('Families see the corrected notice with "Updated" on it. No new notification is sent.', style: TextStyle(fontSize: 12)),
+        ])), actions: [TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Save'))]));
+        if (ok != true || t.text.trim().isEmpty || b.text.trim().isEmpty) return;
+        try { await db.from('announcement').update({'title': t.text.trim(), 'body': b.text.trim(), 'edited_at': DateTime.now().toUtc().toIso8601String()}).eq('id', a['id']); ref.invalidate(staffAnnouncementsProvider); if (context.mounted) toast(context, 'Notice updated ✓'); }
+        catch (e) { if (context.mounted) toast(context, 'Could not save: $e'); }
+        return;
+      }
+      final ok = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
+        title: Text(v == 'unsend' ? 'Unsend this notice?' : 'Delete this notice?'),
+        content: Text(v == 'unsend' ? 'It disappears from every phone, with its notification.' : 'It is removed for families and staff. IT can bring it back from the Bin for 30 days.'),
+        actions: [TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Keep')),
+          FilledButton(style: FilledButton.styleFrom(backgroundColor: Brand.crimson), onPressed: () => Navigator.pop(d, true), child: Text(v == 'unsend' ? 'Unsend' : 'Delete'))]));
+      if (ok != true) return;
+      try {
+        await db.rpc('notice_unsend', params: {'p_id': a['id']});
+        ref.invalidate(staffAnnouncementsProvider);
+        if (context.mounted) showUndo(context, 'Notice', () => ref.invalidate(staffAnnouncementsProvider));
+      } catch (e) { if (context.mounted) toast(context, '$e'.replaceAll(RegExp(r'^.*?message: |, code.*$'), '')); }
+    }, itemBuilder: (_) => [
+      const PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit_rounded), title: Text('Edit'), dense: true)),
+      if (fresh) const PopupMenuItem(value: 'unsend', child: ListTile(leading: Icon(Icons.undo_rounded, color: Brand.crimson), title: Text('Unsend'), subtitle: Text('Within 10 minutes of sending'), dense: true))
+      else if (office) const PopupMenuItem(value: 'delete', child: ListTile(leading: Icon(Icons.delete_outline_rounded, color: Brand.crimson), title: Text('Delete'), dense: true)),
+    ]);
   }
 }
