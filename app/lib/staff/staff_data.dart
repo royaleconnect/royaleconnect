@@ -4,6 +4,7 @@ import '../core/config.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/session.dart';
 import '../core/data.dart';
+import '../core/cache.dart';
 
 /// Staff-side data. RLS decides what each role may see or change; the app only asks.
 String _d(DateTime d) => d.toIso8601String().substring(0, 10);
@@ -21,6 +22,7 @@ final yearProvider = FutureProvider<Map<String, dynamic>>((ref) async {
 
 /// Years that have open classes right now (from 1 March: this year and next year).
 final liveYearIdsProvider = FutureProvider.autoDispose<List<String>>((ref) async {
+  ref.cacheFor();
   final year = await ref.watch(yearProvider.future);
   final rows = await db.from('section').select('academic_year_id').eq('status', 'active');
   return {year['id'] as String, for (final r in rows) r['academic_year_id'] as String}.toList();
@@ -34,6 +36,7 @@ Future<String> sectionYearId(String sectionId) async => (await db.from('section'
 
 /// Sections this staff member works with (class teacher / subject teacher / coordinator / office → all).
 final mySectionsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.cacheFor();
   final s = ref.watch(sessionProvider).value;
   if (s == null || !s.isStaff) return [];
   // open sections (from 1 March the new Grade IX, X and XII are open while the rest are still in the old year)
@@ -50,6 +53,7 @@ final mySectionsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>
 
 /// Subjects I teach per section (for diary / marks / portions).
 final myAssignmentsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.cacheFor();
   final s = ref.watch(sessionProvider).value;
   if (s == null || !s.isStaff) return [];
   final data = await db.from('teaching_assignment').select('section_id,subject:subject_id(id,name),section:section_id!inner(name,status,grade:grade_id(code))').eq('staff_id', s.staff!['id']).eq('section.status', 'active');
@@ -61,6 +65,7 @@ final gradesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async =>
 
 /// Students of a section (current year), with phones for the office.
 final sectionStudentsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, sectionId) async {
+  ref.cacheFor();
   final data = await db.from('enrolment').select('roll_no,student:student_id(id,admission_no,full_name,photo_path,active,family_phone(phone,label))').eq('section_id', sectionId).order('roll_no', ascending: true);
   final rows = List<Map<String, dynamic>>.from(data);
   rows.sort((a, b) => ((a['roll_no'] ?? 999) as int).compareTo((b['roll_no'] ?? 999) as int));
@@ -69,6 +74,7 @@ final sectionStudentsProvider = FutureProvider.autoDispose.family<List<Map<Strin
 
 /// Student search (office): by name or admission number.
 final studentSearchProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, q) async {
+  ref.cacheFor();
   if (q.trim().length < 2) return [];
   // name, admission number (old or new) or a parent's phone; current students
   final data = await db.rpc('find_students', params: {'p_q': q.trim(), 'p_past': false, 'p_limit': 30});
@@ -77,6 +83,7 @@ final studentSearchProvider = FutureProvider.autoDispose.family<List<Map<String,
 
 // ---------------------------------------------------------------- overview numbers
 final staffOverviewProvider = FutureProvider.autoDispose<Map<String, int>>((ref) async {
+  ref.cacheFor();
   final s = ref.watch(sessionProvider).value!;
   final me = s.staff!['id'];
   final unread = await db.from('conversation').select('staff_unread').eq('staff_id', me).eq('staff_done', false);
@@ -97,6 +104,7 @@ final inboxProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((re
 
 /// Every student this staff member may message (class teacher: own section; subject teacher: sections taught; coordinator/VP/office: all theirs).
 final myStudentsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.cacheFor();
   final secs = await ref.watch(mySectionsProvider.future);
   if (secs.isEmpty) return [];
   final data = await db.from('enrolment').select('roll_no,section:section_id(id,name,grade:grade_id(code)),student:student_id(id,admission_no,full_name)')
@@ -126,6 +134,7 @@ Future<void> markDone(String conversationId, bool done) => db.from('conversation
 
 // ---------------------------------------------------------------- announcements
 final staffAnnouncementsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.cacheFor();
   final data = await db.from('announcement').select('id,category,title,body,attachments,sent_at,scheduled_for,audience_all,audience_grade_ids,audience_section_ids,author_id,author:author_id(display_name),created_at').order('created_at', ascending: false).limit(100);
   final rows = [for (final r in data) Map<String, dynamic>.from(r)];
   // "Seen by X of Y": how many of the students in the audience have opened it
@@ -140,17 +149,24 @@ final staffAnnouncementsProvider = FutureProvider.autoDispose<List<Map<String, d
 /// Queue a reminder notification for everyone in the audience who has not opened it yet. Returns how many.
 Future<int> remindAnnouncement(String id) async => (await db.rpc('remind_announcement', params: {'aid': id})) as int;
 
-Future<void> postAnnouncement(WidgetRef ref, {required String category, required String title, required String body, required bool all, List<String> gradeIds = const [], List<String> sectionIds = const [], DateTime? scheduledFor, List<Map<String, dynamic>> attachments = const []}) async {
+/// [pinnedUntil]: families see it first until that day. [busOnly] / [routeIds]: only bus families (of those routes) among the audience.
+Future<void> postAnnouncement(WidgetRef ref, {required String category, required String title, required String body, required bool all, List<String> gradeIds = const [], List<String> sectionIds = const [], DateTime? scheduledFor, List<Map<String, dynamic>> attachments = const [],
+    DateTime? pinnedUntil, bool busOnly = false, List<String> routeIds = const []}) async {
   final year = await ref.read(yearProvider.future);
   await db.from('announcement').insert({
     'academic_year_id': year['id'], 'category': category, 'title': title, 'body': body, 'author_id': myId(ref),
     'audience_all': all, 'audience_grade_ids': gradeIds, 'audience_section_ids': sectionIds, 'attachments': attachments,
     'scheduled_for': scheduledFor?.toUtc().toIso8601String(), 'sent_at': scheduledFor == null ? nowIso() : null,
+    // only sent when used, so posting still works before the database step of this update is run
+    if (pinnedUntil != null) 'pinned_until': _d(pinnedUntil),
+    if (busOnly) 'audience_bus_only': true,
+    if (routeIds.isNotEmpty) 'audience_route_ids': routeIds,
   });
 }
 
 // ---------------------------------------------------------------- diary
 final staffDiaryProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, (String, String)>((ref, key) async {
+  ref.cacheFor();
   final (sectionId, isoDate) = key;
   final data = await db.from('diary_entry').select('id,kind,title,body,for_date,due_on,needs_submission,posted_at,subject:subject_id(name),author:author_id(display_name)').eq('section_id', sectionId).eq('for_date', isoDate).order('created_at', ascending: true);
   return List<Map<String, dynamic>>.from(data);
@@ -163,6 +179,7 @@ Future<void> deleteDiary(String id) => db.from('diary_entry').delete().eq('id', 
 
 // ---------------------------------------------------------------- leave
 final staffLeavesProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.cacheFor();
   final data = await db.from('leave_request').select('id,from_date,to_date,reason,note,status,created_at,student:student_id(full_name,admission_no,enrolment(is_current,section:section_id(name,grade:grade_id(code))))')
       .eq('student.enrolment.is_current', true).order('created_at', ascending: false).limit(100);
   return List<Map<String, dynamic>>.from(data);
@@ -174,6 +191,7 @@ Future<void> postStar(WidgetRef ref, {required String sectionId, required String
     db.from('star_of_month').upsert({'section_id': sectionId, 'month': _d(DateTime(month.year, month.month, 1)), 'student_id': studentId, 'reason': reason, 'posted_by': myId(ref)}, onConflict: 'section_id,month');
 
 final staffStarHistoryProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, sectionId) async {
+  ref.cacheFor();
   final data = await db.from('star_of_month').select('month,reason,photo_path,student:student_id(full_name,photo_path)').eq('section_id', sectionId).order('month', ascending: false).limit(12);
   return List<Map<String, dynamic>>.from(data);
 });
@@ -182,12 +200,14 @@ Future<void> postMoment(WidgetRef ref, {required String sectionId, required Stri
     db.from('moment').insert({'section_id': sectionId, 'caption': caption, 'photo_paths': paths, 'posted_by': myId(ref), 'posted_at': nowIso()});
 
 final staffMomentsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.cacheFor();
   final data = await db.from('moment').select('id,caption,photo_paths,posted_at,section:section_id(name,grade:grade_id(code)),posted_by_staff:posted_by(display_name)').order('created_at', ascending: false).limit(50);
   return List<Map<String, dynamic>>.from(data);
 });
 
 // ---------------------------------------------------------------- exams, plan, worksheets
 final staffExamsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.cacheFor();
   final years = await ref.watch(liveYearIdsProvider.future);
   final data = await db.from('exam').select('id,name,term,starts_on,ends_on,max_marks,note,published_at,grade:grade_id(id,code,name),exam_paper(id,on_date,portions,confirmed_at,subject:subject_id(id,name))').inFilter('academic_year_id', years).order('starts_on', ascending: false);
   return List<Map<String, dynamic>>.from(data);
@@ -204,6 +224,7 @@ Future<void> savePortions(WidgetRef ref, String paperId, {DateTime? onDate, Stri
     db.from('exam_paper').update({'on_date': onDate == null ? null : _d(onDate), 'portions': portions, 'confirmed_by': myId(ref), 'confirmed_at': nowIso()}).eq('id', paperId);
 
 final staffPlanProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, (String, String)>((ref, key) async {
+  ref.cacheFor();
   final (gradeId, monthIso) = key;
   final data = await db.from('monthly_plan').select('id,topics,assessment,published_at,subject:subject_id(id,name)').eq('grade_id', gradeId).eq('month', monthIso);
   return List<Map<String, dynamic>>.from(data);
@@ -214,6 +235,7 @@ Future<void> savePlan(WidgetRef ref, {required String gradeId, required String m
 }
 
 final staffWorksheetsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.cacheFor();
   final data = await db.from('worksheet').select('id,kind,title,file_path,answer_key_path,answer_key_release_on,created_at,subject:subject_id(name),section:section_id(name,grade:grade_id(code)),grade:grade_id(code),author:author_id(display_name)').order('created_at', ascending: false).limit(100);
   return List<Map<String, dynamic>>.from(data);
 });
@@ -222,6 +244,7 @@ Future<void> addWorksheet(WidgetRef ref, {String? sectionId, String? gradeId, re
 
 // ---------------------------------------------------------------- marks
 final marksProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, (String, String, String)>((ref, key) async {
+  ref.cacheFor();
   final (examId, subjectId, sectionId) = key;
   final students = await ref.watch(sectionStudentsProvider(sectionId).future);
   final marks = await db.from('mark').select('student_id,internal,external,absent').eq('exam_id', examId).eq('subject_id', subjectId);
@@ -233,6 +256,7 @@ Future<void> saveMarks(WidgetRef ref, String examId, String subjectId, List<Map<
 
 // ---------------------------------------------------------------- feedback (office)
 final staffFeedbackProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.cacheFor();
   final data = await db.from('feedback').select('id,category,subject,body,anonymous,status,reply,created_at,student:student_id(full_name,admission_no),section:section_id(name,grade:grade_id(code))').order('created_at', ascending: false).limit(100);
   return List<Map<String, dynamic>>.from(data);
 });
@@ -240,22 +264,26 @@ Future<void> replyFeedback(WidgetRef ref, String id, String reply, String status
 
 // ---------------------------------------------------------------- fees desk (office / accounts)
 final studentLedgerProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, studentId) async {
+  ref.cacheFor();
   final data = await db.from('fee_ledger').select('id,title,amount,due_on,status,paid_on,parent_ledger_id,note,academic_year:academic_year_id(is_current,label)').eq('student_id', studentId).order('due_on', ascending: true);
   return [for (final r in data) if (r['academic_year']?['is_current'] == true || r['status'] == 'pending') Map<String, dynamic>.from(r)];
 });
 final overdueReportProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.cacheFor();
   final today = _d(DateTime.now());
   final data = await db.from('fee_ledger').select('id,title,amount,due_on,student:student_id(id,full_name,admission_no,enrolment(is_current,section:section_id(name,grade:grade_id(code))))')
       .eq('status', 'pending').lt('due_on', today).eq('student.enrolment.is_current', true).order('due_on', ascending: true).limit(500);
   return List<Map<String, dynamic>>.from(data);
 });
 final recentPaymentsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.cacheFor();
   final data = await db.from('payment').select('id,amount,mode,status,receipt_no,paid_at,student:student_id(full_name,admission_no)').eq('status', 'success').order('paid_at', ascending: false).limit(100);
   return List<Map<String, dynamic>>.from(data);
 });
 
 // ---------------------------------------------------------------- transport (in-charge / office)
 final routesProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.cacheFor();
   final data = await db.from('route').select('id,name,bus_reg_no,active,morning_start,afternoon_start,driver:driver_staff_id(display_name,phone,username),conductor:conductor_staff_id(display_name,phone,username),route_stop(id,seq,name),transport_enrolment(student_id)').order('name', ascending: true);
   return List<Map<String, dynamic>>.from(data);
 });
