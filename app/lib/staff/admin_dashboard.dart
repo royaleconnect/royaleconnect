@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../auth/session.dart';
 import '../core/data.dart';
 import '../core/school_docs.dart' show openMonthlyReport;
@@ -12,15 +11,30 @@ import '../widgets/common.dart';
 import 'staff_data.dart';
 import 'staff_shell.dart';
 import '../widgets/royal_extras.dart' show CountUpText, GoldLoading, FestiveBanner, FestiveSky;
+import 'health_dot.dart';
+import 'year_end.dart';
+import 'password_requests.dart' show PasswordRequestsCard;
+import '../widgets/staff_birthday.dart';
 
 /// First screen for the IT admin, Principal and Vice Principal: the whole school at a glance.
-/// Everything comes from one database call (admin_dashboard) and refreshes every minute.
+/// Kept calm on purpose: six numbers, then Enrollment, Data checker and Leaving check, then the day.
+/// Data comes from admin_dashboard (fees, app use, buses, calendar) and admin_overview (students, attendance,
+/// notices read, data checks) and refreshes every minute. The health dot sits in the header.
 /// Private chats stay private: only counts are shown, never message text.
 
 bool isSchoolAdmin(Session s) => s.hasRole('it_admin') || s.hasRole('principal') || s.hasRole('vice_principal');
 
 final adminDashProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async =>
     Map<String, dynamic>.from(await db.rpc('admin_dashboard') as Map));
+
+/// Students, attendance, notices read and the data checks (null until the database step of this update is run).
+final adminOverviewProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
+  try {
+    return Map<String, dynamic>.from(await db.rpc('admin_overview') as Map);
+  } catch (_) {
+    return null;
+  }
+});
 
 String _inrShort(num v) {
   if (v >= 10000000) return '₹${(v / 10000000).toStringAsFixed(2)} Cr';
@@ -53,7 +67,7 @@ class AdminDashboard extends ConsumerStatefulWidget {
 class _AdminDashboardState extends ConsumerState<AdminDashboard> {
   Timer? tick;
   @override
-  void initState() { super.initState(); tick = Timer.periodic(const Duration(seconds: 60), (_) => ref.invalidate(adminDashProvider)); }
+  void initState() { super.initState(); tick = Timer.periodic(const Duration(seconds: 60), (_) { ref.invalidate(adminDashProvider); ref.invalidate(adminOverviewProvider); }); }
   @override
   void dispose() { tick?.cancel(); super.dispose(); }
 
@@ -68,13 +82,14 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
       title: '$greet${s.staff?['name'] != null ? ', ${s.staff!['name']}' : ''}',
       subtitle: '${DateFormat('EEEE d MMMM yyyy').format(DateTime.now())} · the whole school at a glance${dash.value?['generated_at'] != null ? ' · updated ${DateFormat('h:mm a').format(DateTime.parse(dash.value!['generated_at']).toLocal())}' : ''}',
       actions: [
+        const HealthDot(),
         FilledButton.icon(onPressed: () => _monthly(context), icon: const Icon(Icons.picture_as_pdf_rounded, size: 18), label: const Text('Monthly report')),
-        OutlinedButton.icon(onPressed: () { ref.invalidate(adminDashProvider); ref.invalidate(_adoptionProvider); }, icon: const Icon(Icons.refresh_rounded, size: 18), label: const Text('Refresh')),
+        OutlinedButton.icon(onPressed: () { ref.invalidate(adminDashProvider); ref.invalidate(adminOverviewProvider); ref.invalidate(_adoptionProvider); ref.invalidate(yearEndProvider); }, icon: const Icon(Icons.refresh_rounded, size: 18), label: const Text('Refresh')),
       ],
       body: dash.when(
         loading: () => const Center(child: Padding(padding: EdgeInsets.all(48), child: CircularProgressIndicator())),
         error: (e, _) => Panel(child: Text('Could not load the dashboard: $e\nIf this says “function admin_dashboard does not exist”, the database step of the update has not been run yet.', style: const TextStyle(color: Brand.crimsonDeep))),
-        data: (d) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [const FestiveBanner(), _body(context, d, cs)]),
+        data: (d) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [const FestiveBanner(), const StaffBirthdayLine(), const PasswordRequestsCard(), const YearEndCard(), _body(context, d, ref.watch(adminOverviewProvider).value, cs), const StaffBirthdaysPanel()]),
       ),
     ));
   }
@@ -101,31 +116,36 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     if (go == true && context.mounted) openMonthlyReport(context, month, hl.text);
   }
 
-  Widget _body(BuildContext context, Map<String, dynamic> d, ColorScheme cs) {
+  Widget _body(BuildContext context, Map<String, dynamic> d, Map<String, dynamic>? o, ColorScheme cs) {
     final fam = Map<String, dynamic>.from(d['families'] ?? {});
     final fees = Map<String, dynamic>.from(d['fees'] ?? {});
     final bus = Map<String, dynamic>.from(d['buses'] ?? {});
-    final att = Map<String, dynamic>.from(d['attention'] ?? {});
     final tch = Map<String, dynamic>.from(d['teaching'] ?? {});
-    final hl = Map<String, dynamic>.from(d['health'] ?? {});
-    final students = _i(fam['students']), signed = _i(fam['signed_in']);
     final running = List<Map<String, dynamic>>.from(bus['running'] ?? const []);
     final idle = List<String>.from(bus['idle'] ?? const []);
-    final attention = _i(att['leave_pending']) + _i(att['feedback_new']) + _i(att['messages_late']);
+    final att = Map<String, dynamic>.from(o?['attendance'] ?? {});
+    final nts = Map<String, dynamic>.from(o?['notices'] ?? {});
+    final grades = List<Map<String, dynamic>>.from(o?['grades'] ?? const []);
+    final students = o == null ? _i(fam['students']) : _i(o['students']);
+    final seats = grades.fold<int>(0, (a, g) => a + _i(g['seats']));
+    final marked = _i(att['marked']), present = _i(att['present']);
+    final aud = _i(nts['audience']), seen = _i(nts['seen']);
 
     final tiles = <Widget>[
-      _Tile('Families on the app', '$signed', sub: students == 0 ? 'no students yet' : '${(signed * 100 / students).round()}% of $students students · ${_i(fam['new_week'])} new this week',
-          icon: Icons.family_restroom_rounded, color: Brand.blue, onTap: () => context.go('/staff/students')),
-      _Tile('Opened the app today', '${_i(fam['opened_today'])}', sub: 'students’ families · ${_i(fam['staff_today'])} of ${_i(fam['staff_total'])} staff',
-          icon: Icons.phone_android_rounded, color: Brand.violet),
-      _Tile('Fees collected today', _inrShort(fees['today_amount'] ?? 0), sub: '${_i(fees['today_count'])} payments · ${_i(fees['today_online'])} online · month ${_inrShort(fees['month_amount'] ?? 0)}',
+      _Tile('Students', '$students', sub: o == null ? 'in the current classes' : '${seats > 0 ? 'of $seats seats · ' : ''}${_i(o['new_this_year'])} new this year · ${_i(o['left_this_year'])} left',
+          icon: Icons.school_rounded, color: Brand.blue, onTap: () => context.go('/staff/students')),
+      _Tile('Present today', marked == 0 ? '—' : '${(present * 100 / marked).round()}%',
+          sub: marked == 0 ? 'attendance not taken yet today' : '${_i(att['absent'])} absent · ${_i(att['sections_marked'])} of ${_i(att['sections'])} classes marked',
+          icon: Icons.fact_check_rounded, color: Brand.green, onTap: () => context.go('/staff/attendance')),
+      _Tile('Fees collected today', _inrShort(fees['today_amount'] ?? 0), sub: '${_i(fees['today_count'])} payments · this month ${_inrShort(fees['month_amount'] ?? 0)}',
           icon: Icons.account_balance_wallet_rounded, color: Brand.green, onTap: () => context.go('/staff/fees')),
-      _Tile('Overdue fees', _inrShort(fees['overdue_amount'] ?? 0), sub: '${_i(fees['overdue_students'])} students · reminders go automatically',
+      _Tile('Dues', _inrShort(fees['overdue_amount'] ?? 0), sub: '${_i(fees['overdue_students'])} students · reminders go by themselves',
           icon: Icons.warning_amber_rounded, color: Brand.crimson, onTap: () => context.go('/staff/fees')),
-      _Tile('Buses live now', '${running.length} / ${_i(bus['routes'])}', sub: running.isEmpty ? 'no trip running · ${_i(bus['trips_today'])} trips today' : running.map((r) => r['route']).join(', '),
-          icon: Icons.directions_bus_rounded, color: Brand.amber, onTap: () => context.go('/staff/transport')),
-      _Tile('Needs attention', '$attention', sub: '${_i(att['leave_pending'])} leave · ${_i(att['feedback_new'])} feedback · ${_i(att['messages_late'])} chats waiting > 24 h',
-          icon: Icons.notifications_active_rounded, color: attention > 0 ? Brand.crimson : Brand.green, onTap: () => context.go(_i(att['leave_pending']) > 0 ? '/staff/leave' : _i(att['feedback_new']) > 0 ? '/staff/feedback' : '/staff/messages')),
+      _Tile('Opened the app today', '${_i(fam['opened_today'])}', sub: 'families · ${_i(fam['staff_today'])} of ${_i(fam['staff_total'])} staff',
+          icon: Icons.phone_android_rounded, color: Brand.violet),
+      _Tile('Notices read', aud == 0 ? '—' : '${(seen * 100 / aud).clamp(0, 100).round()}%',
+          sub: _i(nts['sent']) == 0 ? 'no notices in the last 7 days' : '${_i(nts['sent'])} notice${_i(nts['sent']) == 1 ? '' : 's'} in the last 7 days',
+          icon: Icons.campaign_rounded, color: Brand.amber, onTap: () => context.go('/staff/announcements')),
     ];
 
     return LayoutBuilder(builder: (_, c) {
@@ -139,11 +159,11 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
         Wrap(spacing: 12, runSpacing: 12, children: [for (final t in tiles) SizedBox(width: tileW, child: t)]),
         const SizedBox(height: 14),
         Wrap(spacing: 14, children: [
-          panel(const _AdoptionPanel()),
-          panel(_notices(context, d, cs)),
-          panel(_teaching(context, tch, cs)),
+          if (o != null) panel(_enrollment(context, o, cs)),
+          if (o != null) panel(Column(children: [_dataChecker(context, o, cs), _leaving(context, o, cs)])),
           panel(_today(context, d, running, idle, cs)),
-          panel(_health(context, hl, fam, cs)),
+          panel(_teaching(context, tch, cs)),
+          panel(const _AdoptionPanel()),
           panel(const _ViewAsFamily()),
           panel(_activity(context, d, cs)),
         ]),
@@ -152,23 +172,81 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     });
   }
 
-  Widget _notices(BuildContext context, Map<String, dynamic> d, ColorScheme cs) {
-    final list = List<Map<String, dynamic>>.from(d['notices'] ?? const []);
-    return Panel(title: 'Notices read — last 7 days', trailing: TextButton(onPressed: () => context.go('/staff/announcements'), child: const Text('All notices')), child: list.isEmpty
-        ? Text('No notices sent in the last 7 days.', style: TextStyle(color: cs.onSurfaceVariant))
-        : Column(children: [for (final n in list) Builder(builder: (_) {
-            final aud = _i(n['audience']), seen = _i(n['seen']);
-            final p = aud == 0 ? 0.0 : (seen / aud).clamp(0.0, 1.0);
-            return Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Expanded(child: Text('${n['title']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-                Text('${(p * 100).round()}%', style: TextStyle(fontWeight: FontWeight.w800, color: context.tone(p >= .8 ? Brand.green : p >= .5 ? Brand.amber : Brand.crimson))),
-              ]),
-              const SizedBox(height: 4),
-              ClipRRect(borderRadius: BorderRadius.circular(9), child: LinearProgressIndicator(value: p, minHeight: 8, backgroundColor: cs.surfaceContainerHighest, color: context.tone(p >= .8 ? Brand.green : p >= .5 ? Brand.amber : Brand.crimson))),
-              Text('$seen of $aud families opened it · ${_ago(n['sent_at'])}', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-            ]));
-          })]));
+  // ---------------------------------------------------------------- Enrollment
+  Widget _enrollment(BuildContext context, Map<String, dynamic> o, ColorScheme cs) {
+    final grades = List<Map<String, dynamic>>.from(o['grades'] ?? const []);
+    final secs = List<Map<String, dynamic>>.from(o['sections'] ?? const []);
+    return Panel(title: 'Enrollment', trailing: TextButton(onPressed: () => context.go('/staff/students'), child: const Text('Students')), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (grades.isEmpty) Text('No students in the current classes yet.', style: TextStyle(color: cs.onSurfaceVariant)),
+      for (final g in grades) Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(width: 52, child: Text('${g['code']}', style: const TextStyle(fontWeight: FontWeight.w800))),
+        Expanded(child: Text([for (final s in secs) if (s['grade'] == g['code']) '${s['section']} ${s['n']}'].join(' · '), style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant))),
+        Text(g['seats'] != null && _i(g['seats']) > 0 ? '${g['n']} / ${g['seats']}' : '${g['n']}', style: const TextStyle(fontWeight: FontWeight.w800)),
+      ])),
+      const Divider(height: 20),
+      _row('New admissions this year', '${_i(o['new_this_year'])}', cs),
+      _row('Left this year', '${_i(o['left_this_year'])}', cs),
+    ]));
+  }
+
+  // ---------------------------------------------------------------- Data checker
+  static const _checks = [
+    ('dob', 'Students without a date of birth', false), ('blood_group', 'Students without a blood group', false), ('photo', 'Students without a photo', false),
+    ('phone', 'Students without a parent phone', false), ('house', 'Students without a house', false),
+    ('staff_phone', 'Staff without a phone number', true), ('no_class_teacher', 'Classes without a class teacher', true),
+  ];
+
+  Widget _dataChecker(BuildContext context, Map<String, dynamic> o, ColorScheme cs) {
+    final c = Map<String, dynamic>.from(o['checks'] ?? {});
+    final open = _checks.where((k) => _i(c[k.$1]) > 0).length;
+    return Panel(title: 'Data checker', trailing: Pill(open == 0 ? 'All complete' : '$open to fill in', fg: open == 0 ? Brand.green : Brand.amber, bg: open == 0 ? Brand.greenTint : Brand.amberTint),
+      child: Column(children: [for (final k in _checks) _checkRow(context, k.$1, k.$2, _i(c[k.$1]), cs)]));
+  }
+
+  Widget _checkRow(BuildContext context, String kind, String label, int n, ColorScheme cs) => Padding(padding: const EdgeInsets.symmetric(vertical: 2), child: Row(children: [
+    Icon(n == 0 ? Icons.check_circle_rounded : Icons.error_outline_rounded, size: 18, color: context.tone(n == 0 ? Brand.green : Brand.amber)),
+    const SizedBox(width: 8),
+    Expanded(child: Text(label, style: TextStyle(color: n == 0 ? cs.onSurfaceVariant : cs.onSurface))),
+    Text('$n', style: TextStyle(fontWeight: FontWeight.w800, color: n == 0 ? cs.onSurfaceVariant : context.tone(Brand.amber))),
+    SizedBox(width: 64, child: n == 0 ? null : TextButton(onPressed: () => _showList(context, kind, label), child: const Text('Show'))),
+  ]));
+
+  // ---------------------------------------------------------------- Leaving check
+  Widget _leaving(BuildContext context, Map<String, dynamic> o, ColorScheme cs) {
+    final n = _i(o['certificates_pending']);
+    return Panel(title: 'Leaving check', child: Row(children: [
+      Icon(n == 0 ? Icons.verified_rounded : Icons.assignment_late_rounded, color: context.tone(n == 0 ? Brand.green : Brand.crimson)),
+      const SizedBox(width: 10),
+      Expanded(child: Text(n == 0 ? 'Everyone who left has a TC and a conduct certificate uploaded.' : '$n student${n == 1 ? '' : 's'} left without a TC or conduct certificate uploaded.',
+          style: TextStyle(color: n == 0 ? cs.onSurfaceVariant : cs.onSurface))),
+      if (n > 0) TextButton(onPressed: () => _showList(context, 'certificates', 'Left without a TC or conduct certificate'), child: const Text('Show')),
+    ]));
+  }
+
+  void _showList(BuildContext context, String kind, String title) {
+    final staffList = kind == 'staff_phone' || kind == 'no_class_teacher';
+    showDialog(context: context, builder: (c) => AlertDialog(
+      title: Text(title),
+      content: SizedBox(width: 480, height: 420, child: FutureBuilder(
+        future: db.rpc('data_check_list', params: {'p_kind': kind}),
+        builder: (_, snap) {
+          if (snap.hasError) return Text('Could not load: ${snap.error}');
+          if (!snap.hasData) return const GoldLoading();
+          final rows = [for (final r in snap.data as List) Map<String, dynamic>.from(r as Map)];
+          if (rows.isEmpty) return const Center(child: Text('Nothing missing now ✓'));
+          return ListView.separated(itemCount: rows.length, separatorBuilder: (_, __) => const Divider(height: 1), itemBuilder: (_, i) => ListTile(
+            dense: true, contentPadding: EdgeInsets.zero,
+            title: Text('${rows[i]['name']}', style: const TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: Text('${rows[i]['info'] ?? ''}'),
+          ));
+        },
+      )),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c), child: const Text('Close')),
+        FilledButton(onPressed: () { Navigator.pop(c); context.go(kind == 'staff_phone' ? '/staff/users' : staffList ? '/staff/setup' : '/staff/students'); },
+            child: Text(kind == 'staff_phone' ? 'Open Staff' : staffList ? 'Open Classes' : 'Open Students')),
+      ],
+    ));
   }
 
   Widget _row(String k, String v, ColorScheme cs, {Color? color}) => Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Row(children: [
@@ -208,29 +286,6 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
         Text(_ago(r['last_fix_at']), style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
       ])),
       if (running.isNotEmpty && idle.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text('Not started: ${idle.join(', ')}', style: TextStyle(fontSize: 12, color: context.tone(Brand.amber)))),
-    ]));
-  }
-
-  Widget _health(BuildContext context, Map<String, dynamic> h, Map<String, dynamic> fam, ColorScheme cs) {
-    final queue = _i(h['queue']), oldest = _i(h['queue_oldest_min']);
-    final jobs = List<Map<String, dynamic>>.from(h['jobs'] ?? const []);
-    final jobsOk = jobs.every((j) => j['status'] == null || j['status'] == 'succeeded');
-    final files = h['files_mb'] == null ? null : _i(h['files_mb']);
-    final dbMb = _i(h['db_mb']);
-    Widget ok(bool good, String text) => Pill(text, fg: good ? Brand.green : Brand.crimsonDeep, bg: good ? Brand.greenTint : Brand.crimsonTint);
-    return Panel(title: 'System health', child: Column(children: [
-      Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Row(children: [Expanded(child: Text('Server & database', style: TextStyle(color: cs.onSurfaceVariant))), ok(true, 'Working')])),
-      Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Row(children: [Expanded(child: Text('Phone notifications', style: TextStyle(color: cs.onSurfaceVariant))),
-        ok(queue == 0 || oldest < 5, queue > 0 && oldest >= 5 ? '$queue waiting ($oldest min)' : '${_i(h['sent_hour'])} in the last hour · ${_i(h['sent_today'])} today')])),
-      Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Row(children: [Expanded(child: Text('Night jobs (fees, clean-up, notices)', style: TextStyle(color: cs.onSurfaceVariant))), ok(jobsOk, jobsOk ? 'All OK' : 'Check')])),
-      _row('Phones getting notifications', '${_i(fam['push_phones'])}', cs),
-      _row('Database used', '$dbMb MB of 500 MB${dbMb > 400 ? ' — time for Pro' : ''}', cs, color: dbMb > 400 ? context.tone(Brand.crimson) : null),
-      if (files != null) _row('Files & photos stored', '$files MB of 1,024 MB${files > 800 ? ' — time for Pro' : ''}', cs, color: files > 800 ? context.tone(Brand.crimson) : null),
-      const SizedBox(height: 6),
-      Wrap(spacing: 8, runSpacing: 8, children: [
-        OutlinedButton.icon(onPressed: () => launchUrl(Uri.parse('https://console.firebase.google.com/project/royale-connect/crashlytics'), mode: LaunchMode.externalApplication), icon: const Icon(Icons.bug_report_outlined, size: 18), label: const Text('App crash reports')),
-        OutlinedButton.icon(onPressed: () => launchUrl(Uri.parse('https://github.com/royaleconnect/royaleconnect/actions'), mode: LaunchMode.externalApplication), icon: const Icon(Icons.cloud_done_outlined, size: 18), label: const Text('Backups & builds')),
-      ]),
     ]));
   }
 
