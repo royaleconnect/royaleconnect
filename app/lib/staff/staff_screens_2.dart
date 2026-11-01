@@ -8,12 +8,13 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show FileOptions;
 import '../auth/session.dart';
 import '../core/data.dart';
-import '../core/school_docs.dart' show openReceiptPdf;
 import '../core/theme.dart';
 import '../screens/family_screens.dart' show StorageImage, callNumber;
 import '../widgets/common.dart';
 import 'staff_data.dart';
 import 'staff_shell.dart';
+import 'fees_office.dart' show FeeCategoryBar, RecentPaymentsPanel;
+import '../widgets/hub_tabs.dart';
 
 String _d(DateTime d) => DateFormat('yyyy-MM-dd').format(d);
 String _dm(String? iso) => iso == null ? '' : DateFormat('d MMM').format(DateTime.parse(iso).toLocal());
@@ -61,7 +62,7 @@ class StaffExamsScreen extends ConsumerWidget {
     final exams = ref.watch(staffExamsProvider);
     final canCreate = s.isOffice || s.hasRole('coordinator');
     final cs = Theme.of(context).colorScheme;
-    return StaffPage(title: 'Exams & portions', subtitle: canCreate ? 'Create the schedule; subject teachers fill in portions; publish when ready.' : 'Fill in portions for the subjects you teach. The coordinator publishes.',
+    return StaffPage(title: 'Exams & portions', hub: Hub.staffExams, subtitle: canCreate ? 'Create the schedule; subject teachers fill in portions; publish when ready.' : 'Fill in portions for the subjects you teach. The coordinator publishes.',
       actions: [if (canCreate) FilledButton.icon(onPressed: () => _create(context, ref), icon: const Icon(Icons.add_rounded), label: const Text('New exam'))],
       body: exams.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty ? Panel(child: Text('No exams yet.', style: TextStyle(color: cs.onSurfaceVariant))) : Column(children: [for (final e in rows) Panel(
         title: '${e['grade']?['name'] ?? ''} · ${e['name']} (${e['term']})',
@@ -130,7 +131,7 @@ class _StaffMarksScreenState extends ConsumerState<StaffMarksScreen> {
     final sectionsForGrade = (secs.value ?? []).where((x) => exam == null || x['grade']['id'] == exam['grade']['id']).toList();
     final subjectsFor = s.isOffice ? (List<Map<String, dynamic>>.from(exam?['exam_paper'] ?? []).map((p) => p['subject']).toList()) : (assigns.value ?? []).where((a) => a['section_id'] == sectionId).map((a) => a['subject']).toList();
     final rows = (examId != null && subjectId != null && sectionId != null) ? ref.watch(marksProvider((examId!, subjectId!, sectionId!))) : null;
-    return StaffPage(title: 'Marks entry', subtitle: 'Marks are private to staff. Parents see them only on the published report card.', body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    return StaffPage(title: 'Marks entry', hub: Hub.staffExams, subtitle: 'Marks are private to staff. Parents see them only on the published report card.', body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Panel(padding: const EdgeInsets.all(12), child: Wrap(spacing: 10, runSpacing: 10, children: [
         SizedBox(width: isNarrow(context) ? double.infinity : 300, child: PickField<String>(label: 'Exam', value: examId, items: [for (final e in exams.value ?? []) DropdownMenuItem(value: e['id'] as String, child: Text('${e['grade']?['code']} · ${e['name']}'))], onChanged: (v) => setState(() { examId = v; sectionId = null; subjectId = null; edits.clear(); }))),
         SizedBox(width: isNarrow(context) ? double.infinity : 180, child: PickField<String>(label: 'Section', value: sectionId, items: [for (final x in sectionsForGrade) DropdownMenuItem(value: x['id'] as String, child: Text(sectionLabel(x)))], onChanged: (v) => setState(() { sectionId = v; subjectId = null; edits.clear(); }))),
@@ -372,12 +373,15 @@ class _StaffFeesScreenState extends ConsumerState<StaffFeesScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return StaffPage(title: 'Fees desk', subtitle: 'Every online payment lands here with its receipt number. Fee heads and plans are loaded from the accounts sheet.', body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    return StaffPage(title: 'Fees desk', subtitle: 'Every online payment lands here with its receipt number. Fee heads and plans are loaded from the accounts sheet.',
+        actions: [OutlinedButton.icon(onPressed: () => context.go('/staff/fees/reports'), icon: const Icon(Icons.table_view_rounded, size: 18), label: const Text('Reports & Excel'))],
+        body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       SegmentedButton<int>(showSelectedIcon: !isNarrow(context), segments: [ButtonSegment(value: 0, label: Text(isNarrow(context) ? 'Ledger' : 'Student ledger')), const ButtonSegment(value: 1, label: Text('Overdue')), ButtonSegment(value: 2, label: Text(isNarrow(context) ? 'Payments' : 'Recent payments'))], selected: {tab}, onSelectionChanged: (v) => setState(() => tab = v.first)),
       const SizedBox(height: 14),
       if (tab == 0) ...[
         Panel(padding: const EdgeInsets.all(12), child: TextField(onChanged: (v) => setState(() { q = v; studentId = null; }), decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: 'Search by name or admission number'))),
         if (studentId == null) Consumer(builder: (_, r, __) => r.watch(studentSearchProvider(q)).when(loading: () => const SizedBox(), error: (e, _) => _err(e), data: (rows) => Column(children: [for (final s in rows) ListTile(title: Text(s['full_name']), subtitle: Text('${s['admission_no']} · ${_cls(s)}'), onTap: () => setState(() { studentId = s['id']; studentName = s['full_name']; }))]))),
+        if (studentId != null) FeeCategoryBar(studentId: studentId!, onChanged: () => ref.invalidate(studentLedgerProvider(studentId!))),
         if (studentId != null) Consumer(builder: (_, r, __) => r.watch(studentLedgerProvider(studentId!)).when(loading: _loading, error: (e, _) => _err(e), data: (rows) {
           final total = rows.fold<num>(0, (a, x) => a + (x['amount'] as num)); final paid = rows.where((x) => x['status'] == 'paid').fold<num>(0, (a, x) => a + (x['amount'] as num));
           return Panel(title: studentName, trailing: Text('Paid ${inr(paid)} of ${inr(total)}', style: const TextStyle(fontWeight: FontWeight.w800, color: Brand.green)), child: Column(children: [for (final x in rows) ListTile(dense: true, contentPadding: EdgeInsets.zero,
@@ -386,7 +390,7 @@ class _StaffFeesScreenState extends ConsumerState<StaffFeesScreen> {
         })),
       ],
       if (tab == 1) Consumer(builder: (_, r, __) => r.watch(overdueReportProvider).when(loading: _loading, error: (e, _) => _err(e), data: (rows) => Panel(title: '${rows.length} overdue items · ${inr(rows.fold<num>(0, (a, x) => a + (x['amount'] as num)))}', padding: const EdgeInsets.all(12), child: Column(children: [for (final x in rows) ListTile(dense: true, title: Text('${x['student']?['full_name'] ?? ''} · ${_cls(x['student'])}'), subtitle: Text('${x['title']} · due ${_dmy(x['due_on'])}'), trailing: Text(inr(x['amount']), style: const TextStyle(fontWeight: FontWeight.w800, color: Brand.crimsonDeep)))])))),
-      if (tab == 2) Consumer(builder: (_, r, __) => r.watch(recentPaymentsProvider).when(loading: _loading, error: (e, _) => _err(e), data: (rows) => Panel(padding: const EdgeInsets.all(12), child: rows.isEmpty ? Text('No online payments yet.', style: TextStyle(color: cs.onSurfaceVariant)) : Column(children: [for (final p in rows) ListTile(dense: true, onTap: () => openReceiptPdf(context, p['id'], receiptNo: p['receipt_no']), leading: const Icon(Icons.receipt_long_rounded, color: Brand.green), title: Text('${p['receipt_no']} · ${p['student']?['full_name'] ?? ''}'), subtitle: Text('${p['mode']} · ${_dmt(p['paid_at'])} · tap for PDF'), trailing: Text(inr(p['amount']), style: const TextStyle(fontWeight: FontWeight.w800)))])))),
+      if (tab == 2) const RecentPaymentsPanel(),
     ]));
   }
 }
@@ -507,7 +511,7 @@ class _StaffMeScreenState extends ConsumerState<StaffMeScreen> {
     final s = ref.watch(sessionProvider).value!;
     return StaffPage(title: 'My settings', body: Column(children: [
       Panel(title: 'Signed in as', child: Text('${s.staff?['name']} · ${s.staff?['email']}\n${s.roles.map(roleLabel).join(', ')}')),
-      Panel(title: 'Appearance', trailing: const ThemeChoice(), child: Text('Dark is easier on the eyes in the evening; Light suits bright rooms.', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant))),
+      Panel(title: 'Appearance', trailing: const ThemeChoice(), child: Text('Automatic (the usual): dark from 6:15 pm to 6:15 am, light in the day. Or keep Light or Dark all the time.', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant))),
       Panel(title: 'Change password', child: Column(children: [
         TextField(controller: cur, obscureText: true, decoration: const InputDecoration(labelText: 'Current password')), const SizedBox(height: 10),
         TextField(controller: a, obscureText: true, decoration: const InputDecoration(labelText: 'New password (8+)')), const SizedBox(height: 10),
