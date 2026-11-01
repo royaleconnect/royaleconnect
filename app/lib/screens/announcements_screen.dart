@@ -6,8 +6,11 @@ import '../auth/session.dart';
 import '../core/data.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
+import '../widgets/empty_state.dart';
 import 'family_screens.dart' show StorageImage;
+import 'notice_extras.dart';
 import '../widgets/royal_extras.dart' show GoldLoading;
+import '../widgets/r_refresh.dart';
 
 class AnnouncementsScreen extends ConsumerStatefulWidget {
   const AnnouncementsScreen({super.key});
@@ -22,6 +25,8 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
   @override
   Widget build(BuildContext context) {
     final notices = ref.watch(noticesProvider);
+    final extras = ref.watch(noticeExtrasProvider).value ?? const <String, NoticeExtra>{};
+    final myRoute = ref.watch(transportProvider).value?['route']?['id'] as String?;
     final cs = Theme.of(context).colorScheme;
     return Scaffold(body: Column(children: [
       BrandHeader(padding: const EdgeInsets.fromLTRB(20, 8, 20, 14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -34,20 +39,26 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
         loading: () => const GoldLoading(),
         error: (e, _) => Center(child: Text('Could not load announcements.\n$e', textAlign: TextAlign.center)),
         data: (list) {
-          final rows = filter == 'all' ? list : list.where((n) => n.category == filter).toList();
-          if (rows.isEmpty) return const Center(child: Text('Nothing here yet.'));
-          return RefreshIndicator(onRefresh: () async => ref.invalidate(noticesProvider), child: ListView.separated(
+          final mine = familyNotices(list, extras, myRoute);   // bus notices for this child only; kept-on-top first
+          final rows = filter == 'all' ? mine : mine.where((n) => n.category == filter).toList();
+          if (rows.isEmpty) return EmptyState(kind: EmptyKind.notices, title: filter == 'all' ? 'No notices yet' : 'Nothing here yet', line: filter == 'all' ? 'New notices from the school appear here, and you get a notification.' : 'Notices of this kind will appear here.');
+          return RRefresh(onRefresh: () async { ref.invalidate(noticesProvider); ref.invalidate(noticeExtrasProvider); }, child: ListView.separated(
             padding: const EdgeInsets.all(20), itemCount: rows.length, separatorBuilder: (_, __) => const SizedBox(height: 10),
             itemBuilder: (_, i) {
               final n = rows[i];
+              final x = extras[n.id];
+              final top = x?.pinned == true;
               return Material(color: cs.surface, borderRadius: BorderRadius.circular(18), child: InkWell(borderRadius: BorderRadius.circular(18),
                 onTap: () => context.push('/notice/${n.id}'),
-                child: Container(padding: const EdgeInsets.all(14), decoration: n.urgent ? BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: Brand.crimson, width: 1.5)) : null,
+                child: Container(padding: const EdgeInsets.all(14), decoration: n.urgent ? BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: Brand.crimson, width: 1.5))
+                    : top ? BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: Brand.gold, width: 1.5)) : null,
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Row(children: [
                       Pill(cats[n.category] ?? n.category, fg: n.urgent ? Colors.white : Brand.crimsonDeep, bg: n.urgent ? Brand.crimson : Brand.crimsonTint),
                       const SizedBox(width: 8),
                       Text(DateFormat('d MMM').format(DateTime.parse(n.when).toLocal()), style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                      if (top) ...[const SizedBox(width: 8), Icon(Icons.push_pin_rounded, size: 14, color: context.tone(Brand.amber)),
+                        Text(' Kept on top', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: context.tone(Brand.amber)))],
                       const Spacer(),
                       if (!n.read) Container(width: 8, height: 8, decoration: const BoxDecoration(color: Brand.crimson, shape: BoxShape.circle)),
                     ]),
@@ -56,7 +67,7 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
                     const SizedBox(height: 4),
                     Text(n.body, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, height: 1.4, color: cs.onSurfaceVariant)),
                     const SizedBox(height: 8),
-                    Text('${n.by} · ${n.audience}${n.hasFiles ? ' · 📎 ${n.attachments.length} file${n.attachments.length > 1 ? 's' : ''}' : ''}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
+                    Text('${n.by} · ${noticeAudience(n, x)}${n.edited ? ' · Updated' : ''}${n.hasFiles ? ' · 📎 ${n.attachments.length} file${n.attachments.length > 1 ? 's' : ''}' : ''}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
                   ]))));
             }));
         })),
@@ -102,12 +113,12 @@ class _NoticeScreenState extends ConsumerState<NoticeScreen> {
             Row(children: [
               Pill(noticeCategories[n.category] ?? n.category, fg: n.urgent ? Colors.white : Brand.crimsonDeep, bg: n.urgent ? Brand.crimson : Brand.crimsonTint),
               const SizedBox(width: 8),
-              Flexible(child: Text(n.audience, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant))),
+              Flexible(child: Text(noticeAudience(n, ref.watch(noticeExtrasProvider).value?[n.id]), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant))),
             ]),
             const SizedBox(height: 12),
             Text(n.title, style: t.headlineSmall?.copyWith(fontSize: 24, height: 1.25)),
             const SizedBox(height: 6),
-            Text('${n.by} · ${DateFormat('d MMMM yyyy, h:mm a').format(DateTime.parse(n.when).toLocal())}', style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+            Text('${n.by} · ${DateFormat('d MMMM yyyy, h:mm a').format(DateTime.parse(n.when).toLocal())}${n.edited ? ' · Updated' : ''}', style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
             const SizedBox(height: 18),
             SelectableText(n.body, style: const TextStyle(fontSize: 15.5, height: 1.6)),
             if (n.hasFiles) ...[
