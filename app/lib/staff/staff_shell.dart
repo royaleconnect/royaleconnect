@@ -9,6 +9,12 @@ import '../widgets/common.dart';
 import '../screens/help_screen.dart' show HelpFab;
 import 'staff_data.dart';
 import '../core/data3.dart' show appSettingsProvider, staffAccessOf, yearLabelProvider;
+import '../widgets/hub_tabs.dart';
+import 'staff_search.dart' show StaffSearchBar, StaffSearchShortcuts, showStaffSearch;
+import 'approvals_page.dart' show approvalsCountProvider;
+import '../widgets/guided_tour.dart' show maybeShowTour, tourRoleFor;
+import '../widgets/staff_birthday.dart';
+import 'id_cards_page.dart' show idCardsAllReadyProvider;
 
 /// One menu entry: route, label, icon, group, and which roles see it (empty = everyone).
 class StaffItem {
@@ -21,34 +27,57 @@ class StaffItem {
 const officeRoles = ['office', 'it_admin', 'principal', 'vice_principal'];
 const allStaffRoles = ['teacher', 'class_teacher', 'coordinator', 'accounts', 'office', 'transport_incharge', 'vice_principal', 'principal', 'it_admin'];
 
+// Fewer items than before: pages that belong together open with tabs at the top
+// (Exams & marks: portions · marks · report cards; Honours: toppers · council · houses; School setup: staff · classes · sections · Bin · settings).
 const staffMenu = [
   StaffItem('/staff', 'Today', Icons.today_rounded, 'TODAY', locked: true),
   StaffItem('/staff/messages', 'Messages', Icons.chat_bubble_rounded, 'TODAY'),
   StaffItem('/staff/announcements', 'Notices', Icons.campaign_rounded, 'TODAY'),
-  StaffItem('/staff/feedback', 'Parent feedback', Icons.rate_review_rounded, 'TODAY', roles: officeRoles),
-  StaffItem('/staff/calendar', 'School calendar', Icons.calendar_month_rounded, 'TODAY', roles: officeRoles),
-  StaffItem('/staff/diary', 'Class diary', Icons.menu_book_rounded, 'MY CLASS'),
+  StaffItem('/staff/approvals', 'Approvals', Icons.inbox_rounded, 'TODAY', roles: ['it_admin', 'principal', 'vice_principal', 'office', 'accounts', 'class_teacher']),
+  StaffItem('/staff/diary', 'Diary', Icons.menu_book_rounded, 'MY CLASS'),
+  StaffItem('/staff/attendance', 'Attendance', Icons.fact_check_rounded, 'MY CLASS', roles: ['class_teacher', 'coordinator', ...officeRoles]),
   StaffItem('/staff/leave', 'Leave requests', Icons.event_busy_rounded, 'MY CLASS'),
   StaffItem('/staff/moments', 'Class photos', Icons.photo_library_rounded, 'MY CLASS'),
   StaffItem('/staff/star', 'Star of the month', Icons.star_rounded, 'MY CLASS'),
-  StaffItem('/staff/worksheets', 'Worksheets', Icons.description_rounded, 'MY CLASS'),
-  StaffItem('/staff/plan', 'Monthly plan', Icons.view_agenda_rounded, 'MY CLASS', roles: ['coordinator', ...officeRoles]),
-  StaffItem('/staff/marks', 'Marks entry', Icons.grading_rounded, 'EXAMS & REPORTS'),
-  StaffItem('/staff/reports', 'Report cards', Icons.assignment_turned_in_rounded, 'EXAMS & REPORTS', roles: ['class_teacher', ...officeRoles]),
-  StaffItem('/staff/exams', 'Exams & portions', Icons.quiz_rounded, 'EXAMS & REPORTS'),
+  StaffItem('/staff/exams', 'Exams & marks', Icons.grading_rounded, 'MY CLASS'),
   StaffItem('/staff/students', 'Students', Icons.people_alt_rounded, 'STUDENTS'),
-  StaffItem('/staff/sections', 'New sections', Icons.view_module_rounded, 'STUDENTS', roles: ['it_admin', 'principal']),
-  StaffItem('/staff/fees', 'Fees desk', Icons.account_balance_wallet_rounded, 'STUDENTS', roles: ['accounts', ...officeRoles]),
+  StaffItem('/staff/certificates', 'Certificates', Icons.workspace_premium_rounded, 'STUDENTS', roles: ['office', 'it_admin', 'principal', 'vice_principal', 'accounts']),
+  StaffItem('/staff/id-cards', 'ID cards', Icons.badge_rounded, 'STUDENTS', roles: officeRoles),
+  StaffItem('/staff/fees', 'Fees & receipts', Icons.account_balance_wallet_rounded, 'STUDENTS', roles: ['accounts', ...officeRoles]),
   StaffItem('/staff/transport', 'Transport', Icons.directions_bus_rounded, 'STUDENTS', roles: ['transport_incharge', ...officeRoles]),
-  StaffItem('/staff/toppers', 'Board Toppers & Hall of Fame', Icons.emoji_events_rounded, 'STUDENTS'),
-  StaffItem('/staff/council', 'Student Council', Icons.how_to_vote_rounded, 'STUDENTS'),
-  StaffItem('/staff/desk', "Principal's Desk", Icons.auto_awesome_rounded, 'STUDENTS'),
-  StaffItem('/staff/users', 'Staff', Icons.badge_rounded, 'SCHOOL', roles: ['it_admin', 'principal']),
-  StaffItem('/staff/setup', 'Classes & fees', Icons.tune_rounded, 'SCHOOL', roles: ['accounts', ...officeRoles]),
-  StaffItem('/staff/settings', 'School settings', Icons.admin_panel_settings_rounded, 'SCHOOL', roles: ['it_admin'], locked: true),
+  StaffItem('/staff/toppers', 'Honours', Icons.emoji_events_rounded, 'STUDENTS'),
+  StaffItem('/staff/desk', "Principal's Desk", Icons.auto_awesome_rounded, 'SCHOOL', roles: ['it_admin', 'principal']),
+  StaffItem('/staff/calendar', 'School calendar', Icons.calendar_month_rounded, 'SCHOOL', roles: officeRoles),
+  StaffItem('/staff/feedback', 'Parent feedback', Icons.rate_review_rounded, 'SCHOOL', roles: officeRoles),
+  StaffItem('/staff/setup', 'School setup', Icons.tune_rounded, 'SCHOOL', roles: ['accounts', ...officeRoles]),
   StaffItem('/staff/me', 'My settings', Icons.settings_rounded, 'ME', locked: true),
   StaffItem('/staff/help', 'Help', Icons.help_outline_rounded, 'ME', locked: true),
 ];
+
+/// Pages reached through a tab of another menu item (they keep their own "who can use it" setting in School settings).
+const staffSubPages = [
+  StaffItem('/staff/marks', 'Marks entry', Icons.grading_rounded, 'MY CLASS'),
+  StaffItem('/staff/reports', 'Report cards', Icons.assignment_turned_in_rounded, 'MY CLASS', roles: ['class_teacher', ...officeRoles]),
+  StaffItem('/staff/council', 'Student Council', Icons.how_to_vote_rounded, 'STUDENTS'),
+  StaffItem('/staff/users', 'Staff', Icons.badge_rounded, 'SCHOOL', roles: ['it_admin', 'principal']),
+  StaffItem('/staff/sections', 'New sections', Icons.view_module_rounded, 'SCHOOL', roles: ['it_admin', 'principal']),
+  StaffItem('/staff/bin', 'Bin', Icons.delete_outline_rounded, 'SCHOOL', roles: ['it_admin', 'principal']),
+  StaffItem('/staff/settings', 'School settings', Icons.admin_panel_settings_rounded, 'SCHOOL', roles: ['it_admin'], locked: true),
+  StaffItem('/staff/houses', 'Houses', Icons.flag_rounded, 'STUDENTS'),
+  StaffItem('/staff/year-end', 'Year-end checklist', Icons.event_available_rounded, 'SCHOOL', roles: ['it_admin', 'principal'], locked: true),
+  StaffItem('/staff/week', 'Your week at Royale', Icons.insights_rounded, 'SCHOOL', roles: ['principal', 'it_admin', 'vice_principal'], locked: true),
+];
+
+/// Which menu item a tab-page belongs to (so the right item stays highlighted).
+const staffHubOf = {'/staff/marks': '/staff/exams', '/staff/reports': '/staff/exams', '/staff/council': '/staff/toppers', '/staff/houses': '/staff/toppers',
+  '/staff/users': '/staff/setup', '/staff/sections': '/staff/setup', '/staff/bin': '/staff/setup', '/staff/settings': '/staff/setup', '/staff/fees/reports': '/staff/fees', '/staff/year-end': '/staff', '/staff/week': '/staff', '/staff/thanks': '/staff'};
+
+/// May this person open this page (menu item or tab page)?
+bool staffCanOpen(Session s, Map<String, String>? settings, String path) {
+  final all = [...staffMenu, ...staffSubPages];
+  final m = all.where((x) => x.path == path).firstOrNull;
+  return m == null || chosenRolesOf(m, staffAccessOf(settings)).any(s.hasRole);
+}
 
 /// The most a page can be opened to (the database rules decide what each role can actually read).
 List<String> maxRolesOf(StaffItem m) => m.roles.isEmpty ? allStaffRoles : m.roles;
@@ -81,17 +110,21 @@ class StaffShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(sessionProvider).value;
     if (s == null || !s.isStaff) return const SizedBox.shrink();
+    WidgetsBinding.instance.addPostFrameCallback((_) { if (context.mounted) maybeShowTour(context, tourRoleFor(s)); });
     final menu = visibleMenu(s, ref.watch(appSettingsProvider).value);
-    final loc = GoRouterState.of(context).matchedLocation;
+    final loc0 = GoRouterState.of(context).matchedLocation;
+    final loc = staffHubOf.entries.where((e) => loc0 == e.key || loc0.startsWith('${e.key}/')).firstOrNull?.value ?? loc0;
     final ov = ref.watch(staffOverviewProvider).value ?? const {};
-    int badge(String p) => p == '/staff/messages' ? (ov['unread'] ?? 0) : p == '/staff/leave' ? (ov['leaves'] ?? 0) : p == '/staff/feedback' ? (ov['feedback'] ?? 0) : 0;
+    final approvals = ref.watch(approvalsCountProvider);
+    final idReady = officeRoles.any(s.hasRole) && ref.watch(idCardsAllReadyProvider).value == true;
+    int badge(String p) => p == '/staff/messages' ? (ov['unread'] ?? 0) : p == '/staff/leave' ? (ov['leaves'] ?? 0) : p == '/staff/feedback' ? (ov['feedback'] ?? 0) : p == '/staff/approvals' ? approvals : 0;
     final cs = Theme.of(context).colorScheme;
     // The app-wide button theme is "full width" (right for phone screens). Inside the panel, buttons size to their content.
     final content = staffTheme(context, child);
 
     // Help: bottom right of the Overview page
-    final help = loc == '/staff' ? HelpFab(onTap: () => context.go('/staff/help')) : null;
-    return DeskGate(child: LayoutBuilder(builder: (_, c) {
+    final help = loc0 == '/staff' ? HelpFab(onTap: () => context.go('/staff/help')) : null;
+    return StaffSearchShortcuts(child: DeskGate(child: StaffBirthdayGate(child: LayoutBuilder(builder: (_, c) {
       final wide = c.maxWidth >= 960;
       if (wide) {
         return Scaffold(body: Row(children: [
@@ -106,12 +139,12 @@ class StaffShell extends ConsumerWidget {
             Expanded(child: ListView(padding: const EdgeInsets.symmetric(horizontal: 10), children: [
               for (final (i, m) in menu.indexed) ...[
                 if (i == 0 || menu[i - 1].group != m.group) Padding(padding: const EdgeInsets.fromLTRB(12, 14, 12, 4), child: Text(m.group, style: TextStyle(color: Colors.white.withValues(alpha: .6), fontSize: 10.5, letterSpacing: 1.6, fontWeight: FontWeight.w800))),
-                _NavTile(m, selected: loc == m.path || (m.path != '/staff' && loc.startsWith(m.path)), badge: badge(m.path), onTap: () => m.path == '/staff/me' ? context.push(m.path) : context.go(m.path)),
+                _NavTile(m, selected: loc == m.path || (m.path != '/staff' && loc.startsWith(m.path)), badge: badge(m.path), glow: m.path == '/staff/id-cards' && idReady, onTap: () => m.path == '/staff/me' ? context.push(m.path) : context.go(m.path)),
               ],
             ])),
             _MeTile(s, onSignOut: () async { await ref.read(sessionProvider.notifier).signOut(); if (context.mounted) context.go('/login'); }),
           ]))),
-          Expanded(child: ColoredBox(color: cs.surfaceContainerHighest.withValues(alpha: .35), child: content)),
+          Expanded(child: ColoredBox(color: cs.surfaceContainerHighest.withValues(alpha: .35), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [const StaffSearchBar(), Expanded(child: content)]))),
         ]), floatingActionButton: help);
       }
       // phone / tablet
@@ -119,7 +152,7 @@ class StaffShell extends ConsumerWidget {
       return Scaffold(
         appBar: AppBar(backgroundColor: Brand.crimsonDeep, foregroundColor: Colors.white, elevation: 0,
           title: Text(menu.firstWhere((m) => loc == m.path || (m.path != '/staff' && loc.startsWith(m.path)), orElse: () => menu.first).label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
-          actions: [IconButton(onPressed: () => _more(context, ref, s, menu, loc, badge), icon: const Icon(Icons.menu_rounded), tooltip: 'Menu')]),
+          actions: [IconButton(onPressed: () => showStaffSearch(context), icon: const Icon(Icons.search_rounded), tooltip: 'Search a student'), IconButton(onPressed: () => _more(context, ref, s, menu, loc, badge), icon: const Icon(Icons.menu_rounded), tooltip: 'Menu')]),
         body: content,
         floatingActionButton: help,
         bottomNavigationBar: NavigationBar(
@@ -128,7 +161,7 @@ class StaffShell extends ConsumerWidget {
           destinations: [for (final m in quick) NavigationDestination(icon: badge(m.path) > 0 ? Badge(label: Text('${badge(m.path)}'), child: Icon(m.icon)) : Icon(m.icon), label: const {'Parent feedback': 'Feedback', 'School calendar': 'Calendar', 'Class diary': 'Diary', 'Leave requests': 'Leave', 'Exams & portions': 'Exams', 'Marks entry': 'Marks'}[m.label] ?? m.label.split(' ').first)],
         ),
       );
-    }));
+    }))));
   }
 
   void _more(BuildContext context, WidgetRef ref, Session s, List<StaffItem> menu, String loc, int Function(String) badge) => showModalBottomSheet(context: context, showDragHandle: true, isScrollControlled: true, builder: (sheet) => ConstrainedBox(
@@ -150,8 +183,8 @@ class StaffShell extends ConsumerWidget {
 }
 
 class _NavTile extends StatelessWidget {
-  final StaffItem m; final bool selected; final int badge; final VoidCallback onTap;
-  const _NavTile(this.m, {required this.selected, required this.badge, required this.onTap});
+  final StaffItem m; final bool selected; final int badge; final VoidCallback onTap; final bool glow;
+  const _NavTile(this.m, {required this.selected, required this.badge, required this.onTap, this.glow = false});
   @override
   Widget build(BuildContext context) => Padding(padding: const EdgeInsets.only(bottom: 2), child: AnimatedContainer(duration: const Duration(milliseconds: 280), curve: Curves.easeOutCubic,
       decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), color: selected ? Colors.white.withValues(alpha: .16) : Colors.transparent,
@@ -160,6 +193,8 @@ class _NavTile extends StatelessWidget {
       child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(12), child: Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10), child: Row(children: [
         Icon(m.icon, size: 20, color: selected ? Brand.gold2 : Colors.white.withValues(alpha: .85)), const SizedBox(width: 12),
         Expanded(child: Text(m.label, style: TextStyle(color: Colors.white, fontWeight: selected ? FontWeight.w800 : FontWeight.w600, fontSize: 13.5))),
+        if (glow) Tooltip(message: 'All ID cards ready', child: Container(width: 8, height: 8, margin: const EdgeInsets.only(right: 4),
+            decoration: BoxDecoration(shape: BoxShape.circle, color: Brand.gold2, boxShadow: [BoxShadow(color: Brand.gold2.withValues(alpha: .8), blurRadius: 8)]))),
         if (badge > 0) Container(padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2), decoration: BoxDecoration(color: Brand.gold, borderRadius: BorderRadius.circular(999)), child: Text('$badge', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Brand.ink))),
       ]))))));
 }
@@ -185,7 +220,8 @@ String roleLabel(String r) => const {'teacher': 'Teacher', 'class_teacher': 'Cla
 /// Page frame used by every staff screen: title row + optional action button, then content; max width on desktop.
 class StaffPage extends StatelessWidget {
   final String title; final String? subtitle; final Widget body; final List<Widget> actions; final bool scroll;
-  const StaffPage({super.key, required this.title, this.subtitle, required this.body, this.actions = const [], this.scroll = true});
+  final Hub? hub;   // tabs to the pages that share one menu item
+  const StaffPage({super.key, required this.title, this.subtitle, required this.body, this.actions = const [], this.scroll = true, this.hub});
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
@@ -198,6 +234,7 @@ class StaffPage extends StatelessWidget {
       final titles = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(title, style: t.headlineSmall?.copyWith(fontSize: narrow ? 21 : 24)),
         if (subtitle != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(subtitle!, style: TextStyle(color: cs.onSurfaceVariant, fontSize: narrow ? 13 : 14))),
+        if (hub != null) Padding(padding: const EdgeInsets.only(top: 12), child: HubTabs(hub!, onDark: false)),
       ]);
       final header = Padding(padding: EdgeInsets.fromLTRB(pad, narrow ? 16 : 22, pad, 12), child: narrow
           ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [titles, for (final a in actions) Padding(padding: const EdgeInsets.only(top: 12), child: a)])
