@@ -8,6 +8,7 @@ import '../widgets/auth_layout.dart';
 import '../widgets/common.dart';
 import '../widgets/royal_motion.dart';
 import 'session.dart';
+import 'forgot_password.dart';
 
 /// Opening screen ("Heritage", animated): on every opening the gold double frame draws itself, the school logo
 /// builds up piece by piece (the crest-R rises, ROYALE CONCORDE is written in, Build · Learn · Grow slides in),
@@ -44,7 +45,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
     super.didChangeDependencies();
     if (_started) return;
     _started = true;
-    if (reduceMotion(context)) { c.value = 1; } else { c.forward(); }
+    if (reduceMotion(context)) { c.value = 1; } else { c.forward(); MotionGuard.watch(); }
   }
 
   @override
@@ -91,10 +92,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
           ])),
           const SizedBox(height: 20),
           // ROYALE CONNECT, letter by letter, in engraved gold
-          Stack(alignment: Alignment.center, children: [
+          // always fits inside the gold frame (320–430 px phones): shrinks a little when needed, never overflows
+          FittedBox(fit: BoxFit.scaleDown, child: Stack(alignment: Alignment.center, children: [
             Transform.translate(offset: const Offset(0, 1.2), child: _letters(titleStyle.copyWith(color: const Color(0xE6FFF0C8)))),
             ShaderMask(blendMode: BlendMode.srcIn, shaderCallback: (r) => SplashScreen._engraved.createShader(r), child: _letters(titleStyle.copyWith(color: Colors.white))),
-          ]),
+          ])),
           const SizedBox(height: 10),
           Row(children: [
             Expanded(child: Align(alignment: Alignment.centerRight, child: FractionallySizedBox(widthFactor: pLines, child: const Divider(color: SplashScreen.frameGold, thickness: 1)))),
@@ -233,7 +235,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         PrimaryButton(widget.addSibling ? 'Add to this phone' : 'Sign in', busy: busy, onPressed: _signIn),
         if (!widget.addSibling) ...[
           const SizedBox(height: 12),
-          Text('Forgot the password? The class teacher or the school office will give you a new password slip.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+          Center(child: TextButton(onPressed: () => showForgotPassword(context, admission: adm.text.trim()), child: const Text('Forgot password?', style: TextStyle(fontWeight: FontWeight.w800)))),
           // big and easy to spot for teachers
           Padding(padding: const EdgeInsets.only(top: 14), child: Center(child: TextButton.icon(
             onPressed: () => context.go('/staff-login'),
