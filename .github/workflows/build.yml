@@ -125,7 +125,9 @@ jobs:
       - name: Build web
         working-directory: app
         run: |
-          flutter build web --release --base-href /royaleconnect/
+          # the faster web engine (WebAssembly) when every package supports it; otherwise the usual build, so the website
+          # always publishes. Browsers that can't run WebAssembly get the usual version automatically.
+          flutter build web --release --wasm --base-href /royaleconnect/ || flutter build web --release --base-href /royaleconnect/
           cp build/web/index.html build/web/404.html   # deep links (e.g. /pay/done) on GitHub Pages
 
       - name: Upload web for Pages
