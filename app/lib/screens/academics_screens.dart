@@ -10,11 +10,14 @@ import '../widgets/common.dart';
 import 'family_screens.dart' show StorageImage;
 import '../widgets/royal_extras.dart' show GoldLoading;
 import '../widgets/royal_extras.dart' show Spotlight, openWithEnvelope;
+import '../widgets/hub_tabs.dart';
 
 /// Shared page frame: red header with back + title, body below.
 class AppPage extends StatelessWidget {
   final String title; final Widget body; final Widget? headerExtra; final List<Widget> actions;
-  const AppPage({super.key, required this.title, required this.body, this.headerExtra, this.actions = const []});
+  /// tabs to the pages that share one menu item (Calendar · Timetable · Exams …)
+  final Hub? hub;
+  const AppPage({super.key, required this.title, required this.body, this.headerExtra, this.actions = const [], this.hub});
   @override
   Widget build(BuildContext context) => Scaffold(body: Column(children: [
         BrandHeader(padding: const EdgeInsets.fromLTRB(8, 4, 12, 14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -23,6 +26,7 @@ class AppPage extends StatelessWidget {
             Expanded(child: Text(title, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800))),
             ...actions,
           ]),
+          if (hub != null) Padding(padding: const EdgeInsets.fromLTRB(12, 6, 8, 0), child: HubTabs(hub!)),
           if (headerExtra != null) Padding(padding: const EdgeInsets.fromLTRB(12, 6, 8, 0), child: headerExtra),
         ])),
         Expanded(child: body),
@@ -46,7 +50,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
   Widget build(BuildContext context) {
     final tt = ref.watch(timetableProvider);
     final cs = Theme.of(context).colorScheme;
-    return AppPage(title: 'Timetable',
+    return AppPage(title: 'Timetable', hub: Hub.calendar,
       headerExtra: Row(children: [for (var d = 1; d <= 6; d++) Expanded(child: GestureDetector(onTap: () => setState(() => day = d), child: Container(
         margin: const EdgeInsets.only(right: 6), height: 36, alignment: Alignment.center,
         decoration: BoxDecoration(color: day == d ? Colors.white : Colors.white.withValues(alpha: .14), borderRadius: BorderRadius.circular(10)),
@@ -74,7 +78,7 @@ class ExamsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final ex = ref.watch(examsProvider);
     final cs = Theme.of(context).colorScheme;
-    return AppPage(title: 'Exams & portions', body: ex.when(loading: _loading, error: (e, _) => _empty(context, '$e'), data: (list) => list.isEmpty ? _empty(context, 'Exam schedules appear here once the school publishes them.') :
+    return AppPage(title: 'Exams & portions', hub: Hub.calendar, body: ex.when(loading: _loading, error: (e, _) => _empty(context, '$e'), data: (list) => list.isEmpty ? _empty(context, 'Exam schedules appear here once the school publishes them.') :
       ListView(padding: const EdgeInsets.all(20), children: [for (final e in list) _card(context, Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [Pill(e['term'] ?? '', fg: Brand.crimsonDeep, bg: Brand.crimsonTint), const Spacer(), Text('Max ${e['max_marks']}', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant))]),
         const SizedBox(height: 8),
@@ -156,7 +160,7 @@ class StarScreen extends ConsumerWidget {
     final st = ref.watch(starProvider);
     final cs = Theme.of(context).colorScheme;
     Widget photo(Map<String, dynamic> s, double size) { final p = s['photo_path'] ?? s['student']?['photo_path']; return p != null ? StorageImage(p, width: size, height: size, radius: BorderRadius.circular(size * .33)) : Avatar((s['student']?['full_name'] ?? '?').toString().split(' ').take(2).map((w) => w[0]).join(), size: size, bg: Brand.amberTint, fg: Brand.amber); }
-    return AppPage(title: 'Star of the month', body: st.when(loading: _loading, error: (e, _) => _empty(context, '$e'), data: (list) {
+    return AppPage(title: 'Star of the month', hub: Hub.honours, body: st.when(loading: _loading, error: (e, _) => _empty(context, '$e'), data: (list) {
       if (list.isEmpty) return _empty(context, 'The class teacher picks a star every month. The first one appears here.');
       final top = list.first; final rest = list.skip(1).toList();
       return ListView(padding: const EdgeInsets.all(20), children: [
@@ -211,7 +215,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     final cs = Theme.of(context).colorScheme;
     final today = _iso(DateTime.now());
     final first = _iso(month), last = _iso(DateTime(month.year, month.month + 1, 0));
-    return AppPage(title: 'Calendar',
+    return AppPage(title: 'Calendar', hub: Hub.calendar,
       headerExtra: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
           IconButton(onPressed: () => setState(() => month = DateTime(month.year, month.month - 1)), icon: const Icon(Icons.chevron_left_rounded, color: Colors.white, size: 30), tooltip: 'Previous month'),
