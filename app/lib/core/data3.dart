@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/session.dart';
 import 'data.dart';
 import 'data2.dart';
+import 'cache.dart';
 
 /// Release A data: school settings (feature switches, who can use what), homework for tomorrow,
 /// Board Toppers and Hall of Fame.
@@ -32,9 +33,15 @@ const featureList = [
   ('messages', 'Messages to teachers', 'Private chat between families and teachers.'),
   ('gallery', 'Gallery & class moments', 'School albums and class photos.'),
   ('star', 'Star of the month', 'One student per class each month.'),
-  ('worksheets', 'Worksheets', 'PDF worksheets and answer keys.'),
-  ('plan', 'Monthly plan', 'What each subject covers this month.'),
   ('leave', 'Leave requests', 'Families ask for leave; the class teacher approves.'),
+  ('timetable', 'Timetable', 'The class timetable, and the "now / next period" line on Home.'),
+  ('desk', "Principal's Desk", "The Principal's welcome and event messages, shown full screen once."),
+  ('houses', 'House points', 'Athena, Ares, Artemis and Apollo: points and the flags.'),
+  ('festivals', 'Festival celebrations', 'Diwali, Eid, Christmas and other festival greetings on Home.'),
+  ('birthdays', 'Birthday wishes', 'The full-screen birthday wish for the student.'),
+  ('year_review', 'Year in Review', 'The animated story of the year, each May.'),
+  ('thanks', "Teachers' Day thank-you wall", 'Thank-you notes to teachers during Teachers\' Day week.'),
+  ('idcard', 'Digital ID card', 'The ID card in Profile.'),
 ];
 
 /// Who can use which staff page: page path → roles. Missing = the normal choice.
@@ -51,6 +58,7 @@ final yearLabelProvider = FutureProvider<String?>((ref) async {
 // ---------------------------------------------------------------- homework for the next school day
 /// How many homework / project entries of the active student's class are due on [isoDate].
 final homeworkDueProvider = FutureProvider.autoDispose.family<int, String>((ref, isoDate) async {
+  ref.cacheFor();
   final e = await ref.watch(enrolmentProvider.future);
   final sec = e?['section'];
   if (sec == null || shownSection(sec) == null) return 0;
@@ -62,6 +70,7 @@ final homeworkDueProvider = FutureProvider.autoDispose.family<int, String>((ref,
 // ---------------------------------------------------------------- Board Toppers & Hall of Fame
 /// All toppers of a board class ('X' or 'XII'), newest year first.
 final toppersProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, cls) async {
+  ref.cacheFor();
   final rows = await db.from('board_topper').select('id,year,board_class,kind,rank,full_name,section,percent,subject,photo_path,sort')
       .eq('board_class', cls).order('year', ascending: false).order('rank', ascending: true).order('full_name', ascending: true);
   return List<Map<String, dynamic>>.from(rows);
@@ -69,11 +78,13 @@ final toppersProvider = FutureProvider.autoDispose.family<List<Map<String, dynam
 
 /// Yearly summary (students, pass %, 90%+) keyed by year.
 final boardResultsProvider = FutureProvider.autoDispose.family<Map<int, Map<String, dynamic>>, String>((ref, cls) async {
+  ref.cacheFor();
   final rows = await db.from('board_result').select('year,board_class,students,pass_percent,distinctions,note').eq('board_class', cls);
   return {for (final r in rows) (r['year'] as num).toInt(): Map<String, dynamic>.from(r)};
 });
 
 final hallOfFameProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.cacheFor();
   final rows = await db.from('hall_of_fame').select('id,full_name,batch,achievement,category,photo_path,spotlight,sort')
       .order('spotlight', ascending: false).order('sort', ascending: true).order('batch', ascending: false);
   return List<Map<String, dynamic>>.from(rows);
