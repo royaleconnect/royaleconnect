@@ -4,6 +4,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../auth/session.dart';
 import 'config.dart';
 import 'data2.dart' show enrolmentProvider;
+import 'cache.dart';
+import 'offline.dart';
 
 /// Opens a file stored in the private `files` bucket through a short-lived signed URL.
 Future<void> openStorageFile(String path) async {
@@ -57,11 +59,12 @@ class FeeSummary {
 
 /// Fees for the active student (the nightly job keeps late-fee rows current).
 final feesProvider = FutureProvider.autoDispose<FeeSummary>((ref) async {
+  ref.cacheFor();
   final s = ref.watch(sessionProvider).value?.active;
   if (s == null) return FeeSummary([]);
-  final data = await db.from('fee_ledger')
+  final data = await offlineRows(ref, 'fees|${s.id}', () async => await db.from('fee_ledger')
       .select('id,title,amount,due_on,status,paid_on,parent_ledger_id,note,fee_head:fee_head_id(kind),academic_year:academic_year_id(is_current)')
-      .eq('student_id', s.id).order('due_on', ascending: true);
+      .eq('student_id', s.id).order('due_on', ascending: true));
   // this year's fees, plus anything still unpaid from another year (e.g. next year's fees from 1 March)
   return FeeSummary([for (final r in data) if (r['academic_year']?['is_current'] == true || r['status'] == 'pending') FeeRow(r['id'], r['title'], r['amount'] as num, r['due_on'], r['status'], r['fee_head']?['kind'] ?? 'other', r['paid_on'], r['parent_ledger_id'], r['note'])]);
 });
@@ -69,7 +72,9 @@ final feesProvider = FutureProvider.autoDispose<FeeSummary>((ref) async {
 class Notice { final String id, category, title, body, by, when, audience; final bool urgent, read; final String? file;
   /// Files attached to the announcement: {path, name, mime}. Older single attachments are folded in.
   final List<Map<String, dynamic>> attachments;
-  Notice(this.id, this.category, this.title, this.body, this.by, this.when, this.audience, this.urgent, this.read, this.file, [this.attachments = const []]);
+  /// corrected by the teacher / office after sending
+  final bool edited;
+  Notice(this.id, this.category, this.title, this.body, this.by, this.when, this.audience, this.urgent, this.read, this.file, [this.attachments = const [], this.edited = false]);
   bool get hasFiles => attachments.isNotEmpty;
 }
 
@@ -79,18 +84,19 @@ List<Map<String, dynamic>> _files(Map<String, dynamic> r) => [
 ];
 
 final noticesProvider = FutureProvider.autoDispose<List<Notice>>((ref) async {
+  ref.cacheFor();
   final s = ref.watch(sessionProvider).value?.active;
   if (s == null) return [];
   final e = await ref.watch(enrolmentProvider.future);
   final secId = e?['section']?['id'], gradeId = e?['section']?['grade']?['id'];
-  final rows = await db.from('announcement')
-      .select('id,category,title,body,attachment_path,attachments,sent_at,audience_all,audience_grade_ids,audience_section_ids,author:author_id(display_name),announcement_read(student_id)')
-      .not('sent_at', 'is', null).order('sent_at', ascending: false).limit(80);
+  final rows = await offlineRows(ref, 'notices|${s.id}', () async => await db.from('announcement')
+      .select('id,category,title,body,attachment_path,attachments,sent_at,edited_at,audience_all,audience_grade_ids,audience_section_ids,author:author_id(display_name),announcement_read(student_id)')
+      .not('sent_at', 'is', null).order('sent_at', ascending: false).limit(80));
   // a family login can cover siblings in different classes, so keep only what is meant for the active child
   final data = rows.where((r) => r['audience_all'] == true || e == null || (r['audience_grade_ids'] as List).contains(gradeId) || (r['audience_section_ids'] as List).contains(secId)).take(50);
   return [for (final r in data) Notice(r['id'], r['category'], r['title'], r['body'], r['author']?['display_name'] ?? 'School office',
       r['sent_at'], r['audience_all'] == true ? 'Whole school' : (r['audience_section_ids'] as List).contains(secId) ? 'Your class' : 'Your grade', r['category'] == 'urgent',
-      (r['announcement_read'] as List).any((x) => x['student_id'] == s.id), r['attachment_path'], _files(r))];
+      (r['announcement_read'] as List).any((x) => x['student_id'] == s.id), r['attachment_path'], _files(r), r['edited_at'] != null)];
 });
 
 Future<void> markNoticeRead(String noticeId, String studentId) async {
@@ -102,11 +108,12 @@ class DiaryEntry { final String id, kind, title, forDate, by; final String? body
   DiaryEntry(this.id, this.kind, this.title, this.body, this.forDate, this.subject, this.by, this.dueOn, this.needsSubmission); }
 
 final diaryProvider = FutureProvider.autoDispose.family<List<DiaryEntry>, String>((ref, isoDate) async {
+  ref.cacheFor();
   final e = await ref.watch(enrolmentProvider.future);
   if (e == null) return [];
-  final data = await db.from('diary_entry')
+  final data = await offlineRows(ref, 'diary|${e['section']['id']}|$isoDate', () async => await db.from('diary_entry')
       .select('id,kind,title,body,for_date,due_on,needs_submission,subject:subject_id(name),author:author_id(display_name)')
-      .eq('section_id', e['section']['id']).eq('for_date', isoDate).not('posted_at', 'is', null).order('created_at', ascending: true);
+      .eq('section_id', e['section']['id']).eq('for_date', isoDate).not('posted_at', 'is', null).order('created_at', ascending: true));
   return [for (final r in data) DiaryEntry(r['id'], r['kind'], r['title'], r['body'], r['for_date'], r['subject']?['name'], r['author']?['display_name'] ?? '', r['due_on'], r['needs_submission'] == true)];
 });
 
@@ -120,6 +127,7 @@ final unreadMessagesProvider = FutureProvider.autoDispose<int>((ref) async {
 
 /// Transport enrolment (null when the student is not on a bus) — decides whether the Bus tab shows.
 final transportProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
+  ref.cacheFor();
   final s = ref.watch(sessionProvider).value?.active;
   if (s == null) return null;
   final r = await db.from('transport_enrolment').select('route:route_id(id,name,bus_reg_no,morning_start,afternoon_start),stop:stop_id(name,seq,morning_eta,afternoon_eta)').eq('student_id', s.id).maybeSingle();
@@ -132,6 +140,7 @@ final paymentProvider = FutureProvider.autoDispose.family<Map<String, dynamic>?,
 
 /// Payment history for the active student, newest first.
 final paymentsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.cacheFor();
   final s = ref.watch(sessionProvider).value?.active;
   if (s == null) return [];
   final data = await db.from('payment').select('id,amount,status,receipt_no,paid_at').eq('student_id', s.id).neq('status', 'created').order('created_at', ascending: false);
@@ -140,11 +149,12 @@ final paymentsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>(
 
 /// The latest diary day (today or earlier) that has entries for the active child — used on the laptop Home.
 final latestDiaryProvider = FutureProvider.autoDispose<(String?, List<DiaryEntry>)>((ref) async {
+  ref.cacheFor();
   final e = await ref.watch(enrolmentProvider.future);
   if (e == null) return (null, <DiaryEntry>[]);
-  final data = await db.from('diary_entry')
+  final data = await offlineRows(ref, 'diary_latest|${e['section']['id']}', () async => await db.from('diary_entry')
       .select('id,kind,title,body,for_date,due_on,needs_submission,subject:subject_id(name),author:author_id(display_name)')
-      .eq('section_id', e['section']['id']).lte('for_date', _today()).not('posted_at', 'is', null).order('for_date', ascending: false).limit(12);
+      .eq('section_id', e['section']['id']).lte('for_date', _today()).not('posted_at', 'is', null).order('for_date', ascending: false).limit(12));
   if (data.isEmpty) return (null, <DiaryEntry>[]);
   final day = data.first['for_date'] as String;
   return (day, [for (final r in data.where((r) => r['for_date'] == day)) DiaryEntry(r['id'], r['kind'], r['title'], r['body'], r['for_date'], r['subject']?['name'], r['author']?['display_name'] ?? '', r['due_on'], r['needs_submission'] == true)]);
