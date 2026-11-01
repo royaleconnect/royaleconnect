@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -110,32 +111,70 @@ ThemeData buildTheme(Brightness b) {
 }
 
 
-/// Light / dark appearance, chosen in Settings and remembered on the device. Dark is the default.
-class ThemeModeController extends Notifier<ThemeMode> {
+/// Appearance chosen in Settings and remembered on the device: 'auto' (the default), 'light' or 'dark'.
+/// Automatic = the present dark theme from 6:15 pm to 6:15 am, the present light theme in the day.
+class ThemePrefController extends Notifier<String> {
   static const _key = 'rc_theme';
   @override
-  ThemeMode build() {
-    SharedPreferences.getInstance().then((p) { final v = p.getString(_key); if (v == 'light') state = ThemeMode.light; });
-    return ThemeMode.dark;
+  String build() {
+    // a person who already picked Light or Dark keeps it; everyone else gets Automatic
+    SharedPreferences.getInstance().then((p) { final v = p.getString(_key); if (v == 'light' || v == 'dark') state = v!; });
+    return 'auto';
   }
-  Future<void> set(ThemeMode m) async { state = m; (await SharedPreferences.getInstance()).setString(_key, m == ThemeMode.light ? 'light' : 'dark'); }
+  Future<void> set(String v) async {
+    state = v;
+    final p = await SharedPreferences.getInstance();
+    v == 'auto' ? await p.remove(_key) : await p.setString(_key, v);
+  }
+}
+final themePrefProvider = NotifierProvider<ThemePrefController, String>(ThemePrefController.new);
+
+/// Night = 18:15 to 06:15 local time.
+bool isNightTime(DateTime t) { final m = t.hour * 60 + t.minute; return m >= 18 * 60 + 15 || m < 6 * 60 + 15; }
+
+/// The next 6:15 (am or pm) after [t] — when Automatic switches by itself.
+DateTime nextThemeSwitch(DateTime t) {
+  final am = DateTime(t.year, t.month, t.day, 6, 15), pm = DateTime(t.year, t.month, t.day, 18, 15);
+  if (t.isBefore(am)) return am;
+  if (t.isBefore(pm)) return pm;
+  return DateTime(t.year, t.month, t.day + 1, 6, 15);
+}
+
+/// The theme the app shows now. On Automatic it changes by itself at 6:15 am / 6:15 pm while the app is open.
+class ThemeModeController extends Notifier<ThemeMode> {
+  Timer? _t;
+  @override
+  ThemeMode build() {
+    final pref = ref.watch(themePrefProvider);
+    ref.onDispose(() => _t?.cancel());
+    _t?.cancel();
+    if (pref == 'light') return ThemeMode.light;
+    if (pref == 'dark') return ThemeMode.dark;
+    final now = DateTime.now();
+    // a timer at the next boundary (plus a second); if the phone slept past it, it fires on waking and still lands right
+    _t = Timer(nextThemeSwitch(now).difference(now) + const Duration(seconds: 1), () => ref.invalidateSelf());
+    return isNightTime(now) ? ThemeMode.dark : ThemeMode.light;
+  }
+  Future<void> set(ThemeMode m) => ref.read(themePrefProvider.notifier).set(m == ThemeMode.light ? 'light' : m == ThemeMode.dark ? 'dark' : 'auto');
 }
 final themeModeProvider = NotifierProvider<ThemeModeController, ThemeMode>(ThemeModeController.new);
 
-/// "Appearance: Dark | Light" — used in the parents' Settings and the staff "My settings".
+/// "Appearance: Automatic | Light | Dark" — used in the parents' Settings and the staff "My settings".
 class ThemeChoice extends ConsumerWidget {
   const ThemeChoice({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final mode = ref.watch(themeModeProvider);
-    return SegmentedButton<ThemeMode>(
+    final pref = ref.watch(themePrefProvider);
+    return SegmentedButton<String>(
       segments: const [
-        ButtonSegment(value: ThemeMode.dark, icon: Icon(Icons.dark_mode_rounded, size: 18), label: Text('Dark')),
-        ButtonSegment(value: ThemeMode.light, icon: Icon(Icons.light_mode_rounded, size: 18), label: Text('Light')),
+        ButtonSegment(value: 'auto', icon: Icon(Icons.brightness_auto_rounded, size: 18), label: Text('Automatic'), tooltip: 'Dark from 6:15 pm to 6:15 am, light in the day'),
+        ButtonSegment(value: 'light', icon: Icon(Icons.light_mode_rounded, size: 18), label: Text('Light')),
+        ButtonSegment(value: 'dark', icon: Icon(Icons.dark_mode_rounded, size: 18), label: Text('Dark')),
       ],
-      selected: {mode == ThemeMode.light ? ThemeMode.light : ThemeMode.dark},
+      selected: {pref},
       showSelectedIcon: false,
-      onSelectionChanged: (v) => ref.read(themeModeProvider.notifier).set(v.first),
+      style: const ButtonStyle(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+      onSelectionChanged: (v) => ref.read(themePrefProvider.notifier).set(v.first),
     );
   }
 }
