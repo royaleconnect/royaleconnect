@@ -10,8 +10,10 @@ import '../core/bus_map.dart';
 import '../core/data2.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
+import '../widgets/empty_state.dart';
 import 'family_screens.dart' show callNumber;
 import '../widgets/royal_extras.dart' show GoldLoading;
+import '../widgets/bus_ring.dart';
 
 Widget _loading() => const GoldLoading();
 
@@ -55,7 +57,7 @@ class _BusScreenState extends ConsumerState<BusScreen> {
           decoration: BoxDecoration(color: tab == i ? Colors.white : Colors.white.withValues(alpha: .14), borderRadius: BorderRadius.circular(10)), child: Text(l, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: tab == i ? Brand.crimsonDeep : Colors.white)))))]),
       ])),
       Expanded(child: route.when(loading: _loading, error: (e, _) => Center(child: Text('$e')), data: (r) {
-        if (r == null) return const Center(child: Text('No bus route on record.'));
+        if (r == null) return const EmptyState(kind: EmptyKind.bus, title: 'No bus route', line: 'Your child is not on a school bus route. The transport office can add one.');
         final stops = List<Map<String, dynamic>>.from(r['route_stop'] ?? [])..sort((a, b) => (a['seq'] as int).compareTo(b['seq'] as int));
         return switch (tab) { 0 => _stops(r, stops, trip.value, cs), 1 => _map(r, stops, trip.value, cs), _ => _alerts(cs) };
       })),
@@ -108,6 +110,7 @@ class _BusScreenState extends ConsumerState<BusScreen> {
     final lat = (t?['last_lat'] as num?)?.toDouble(), lng = (t?['last_lng'] as num?)?.toDouble();
     final age = t?['last_fix_at'] == null ? null : DateTime.now().difference(DateTime.parse(t!['last_fix_at']).toLocal()).inSeconds;
     String title, sub;
+    int? etaMin;   // minutes to your stop (gold ring), only while the bus is coming to it
     if (t == null) {
       title = 'The bus is not on a trip right now';
       sub = 'Next ${morning ? 'morning' : 'afternoon'} trip starts ${(morning ? r['morning_start'] : r['afternoon_start'])?.toString().substring(0, 5) ?? ''}. You get a notification when it starts.';
@@ -121,14 +124,21 @@ class _BusScreenState extends ConsumerState<BusScreen> {
       final (m, min) = etaTo(lat, lng, order, nIdx, myIdx);
       final away = myIdx - nIdx;
       title = away == 0 ? (m < 300 ? 'The bus is arriving at your stop' : 'Your stop is next · about $min min') : 'Bus is $away stop${away == 1 ? '' : 's'} away · about $min min';
-      sub = 'Next stop: ${order[nIdx]['name']} · ${m >= 1000 ? '${(m / 1000).toStringAsFixed(1)} km' : '${m.round()} m'} to your stop';
+      etaMin = away == 0 && m < 300 ? 0 : min;
+      sub = 'Next stop: ${order[nIdx]['name']} · ${m >= 1000 ? '${(m / 1000).toStringAsFixed(1)} km' : '${m.round()} m'} to your stop'
+          '${etaMin > 0 ? ' · expected ${DateFormat('h:mm a').format(DateTime.now().add(Duration(minutes: etaMin))).toLowerCase()}' : ''}';
     }
     return Stack(children: [
-      Positioned.fill(child: BusMap(stops: order, myStopId: myId, busLat: lat, busLng: lng, trail: trail, nextIdx: nIdx, running: t != null, padding: const EdgeInsets.only(bottom: 170))),
+      Positioned.fill(child: BusMap(stops: order, myStopId: myId, busLat: lat, busLng: lng, trail: trail, nextIdx: nIdx, running: t != null, padding: const EdgeInsets.only(bottom: 200))),
       Positioned(left: 12, right: 12, bottom: 12, child: Material(color: cs.surface, elevation: 6, borderRadius: BorderRadius.circular(20), child: Padding(padding: const EdgeInsets.all(14), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-        const SizedBox(height: 2),
-        Text(sub, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+        Row(children: [
+          if (etaMin != null) ...[BusCountdownRing(minutes: etaMin), const SizedBox(width: 14)],
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+            const SizedBox(height: 2),
+            Text(sub, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+          ])),
+        ]),
         if (age != null) Text(age < 15 ? '● Live · updated ${age < 2 ? 'just now' : '$age s ago'}' : '● Last update ${age ~/ 60 > 0 ? '${age ~/ 60} min' : '$age s'} ago — the bus may be in a low-network area',
             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: context.tone(age < 15 ? Brand.green : Brand.amber))),
         const SizedBox(height: 10),
@@ -149,7 +159,7 @@ class _BusScreenState extends ConsumerState<BusScreen> {
       return ListView(padding: const EdgeInsets.all(20), children: [Container(decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(18)), child: Column(children: [
         sw('trip_started', 'Trip started', 'When the bus leaves school / the first stop'),
         sw('two_stops', 'Two stops away', 'Time to come down'),
-        sw('ten_min', '10 minutes away', 'Based on the live position'),
+        sw('ten_min', '10 and 5 minutes away', 'Based on the live position'),
         sw('at_stop', 'Bus at your stop', ''),
         sw('trip_ended', 'Trip ended', 'Bus reached school / last stop'),
       ])), const SizedBox(height: 12), const NoteBox('Bus alerts always come through, even during quiet hours.')]);
