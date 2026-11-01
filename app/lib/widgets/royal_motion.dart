@@ -1,11 +1,60 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 /// "Royal Edition" motion kit: short, smooth animations used across the app.
 /// Every animation respects the phone's "reduce motion" setting (it then shows the end state at once).
 
 bool reduceMotion(BuildContext c) => MediaQuery.maybeDisableAnimationsOf(c) ?? false;
+
+/// The speed guard. While the opening animation plays, it measures how smoothly the device draws. On a device that
+/// struggles (an old tab, a busy laptop browser) it switches to "lite": the always-moving effects (gold dust, the moving
+/// header, festival emoji over the page) are drawn still, so the app stays quick. Nobody has to set anything.
+class MotionGuard {
+  static bool lite = false;
+  static bool _started = false;
+  static void watch() {
+    if (_started) return;
+    _started = true;
+    final gaps = <int>[];
+    Duration? last; var done = false;
+    final t0 = DateTime.now();
+    SchedulerBinding.instance.addPersistentFrameCallback((ts) {
+      if (done) return;
+      final ms = DateTime.now().difference(t0).inMilliseconds;
+      if (ms > 700 && last != null) {
+        final g = (ts - last!).inMicroseconds;
+        if (g > 0 && g < 200000) gaps.add(g);    // ignore pauses when nothing was moving
+      }
+      last = ts;
+      if (ms > 3000 || gaps.length >= 120) {
+        done = true;
+        if (gaps.length >= 20) {
+          gaps.sort();
+          final median = gaps[gaps.length ~/ 2];
+          final slow = gaps.where((g) => g > 34000).length / gaps.length;
+          if (median > 26000 || slow > .25) lite = true;
+        }
+      }
+    });
+  }
+}
+
+/// True when moving effects should be still: the phone's "reduce motion" setting, or the speed guard said so.
+bool liteMotion(BuildContext c) => reduceMotion(c) || MotionGuard.lite;
+
+/// Runs a looping animation only while it can actually be seen: not while another page is open on top, not while the
+/// app is in the background, and not in lite mode. Call it from didChangeDependencies.
+void loopWhileVisible(BuildContext context, AnimationController c, {bool reverse = false}) {
+  final route = ModalRoute.of(context);
+  final on = TickerMode.of(context) && (route?.isCurrent ?? true) && !liteMotion(context);
+  if (on && !c.isAnimating) {
+    c.repeat(reverse: reverse);
+  } else if (!on && c.isAnimating) {
+    c.stop();
+  }
+}
 
 const royalGold = [Color(0xFFF6E2A6), Color(0xFFC9A24A), Color(0xFF9C7A2E)];
 
@@ -49,8 +98,10 @@ class GoldParticles extends StatefulWidget {
 }
 
 class _GoldParticlesState extends State<GoldParticles> with SingleTickerProviderStateMixin {
-  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(seconds: 60))..repeat();
+  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(seconds: 60));
   late final List<List<double>> p;
+  @override
+  void didChangeDependencies() { super.didChangeDependencies(); loopWhileVisible(context, c); }
   @override
   void initState() {
     super.initState();
@@ -61,8 +112,8 @@ class _GoldParticlesState extends State<GoldParticles> with SingleTickerProvider
   void dispose() { c.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) {
-    if (reduceMotion(context)) return const SizedBox.expand();
-    return IgnorePointer(child: CustomPaint(size: Size.infinite, painter: _DustPainter(c, p, widget.color, widget.speed)));
+    if (liteMotion(context)) return const SizedBox.expand();
+    return IgnorePointer(child: RepaintBoundary(child: CustomPaint(size: Size.infinite, painter: _DustPainter(c, p, widget.color, widget.speed))));
   }
 }
 
@@ -72,12 +123,12 @@ class _DustPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size s) {
     final t = a.value * 60;   // seconds
-    final glow = Paint()..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3);
+    final glow = Paint();   // a soft halo without blur: blur on every speck every frame is what made older devices lag
     for (final q in p) {
       final y = ((q[1] - t * q[3] * speed) % 1 + 1) % 1;
       final x = q[0] + math.sin(t * .5 + q[4]) * .015;
       final al = .25 + .35 * (.5 + .5 * math.sin(t * 1.6 + q[4] * 3));
-      canvas.drawCircle(Offset(x * s.width, y * s.height), q[2] * 1.8, glow..color = color.withValues(alpha: al * .45));
+      canvas.drawCircle(Offset(x * s.width, y * s.height), q[2] * 2.2, glow..color = color.withValues(alpha: al * .18));
       canvas.drawCircle(Offset(x * s.width, y * s.height), q[2] * .7, Paint()..color = color.withValues(alpha: al));
     }
   }
@@ -101,8 +152,9 @@ class _ShineSweepState extends State<ShineSweep> with SingleTickerProviderStateM
   void initState() { super.initState(); _t = Timer(widget.delay, _go); }
   void _go() {
     if (!mounted) return;
-    c.forward(from: 0);
-    if (widget.every != null) _t = Timer(widget.every!, _go);
+    final seen = TickerMode.of(context) && (ModalRoute.of(context)?.isCurrent ?? true);
+    if (seen) c.forward(from: 0);
+    if (widget.every != null && !liteMotion(context)) _t = Timer(widget.every!, _go);
   }
   @override
   void dispose() { _t?.cancel(); c.dispose(); super.dispose(); }
