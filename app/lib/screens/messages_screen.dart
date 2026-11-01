@@ -9,9 +9,13 @@ import 'package:intl/intl.dart';
 import '../auth/session.dart';
 import '../core/data.dart';
 import '../core/data2.dart';
+import '../core/offline.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
+import '../widgets/empty_state.dart';
+import '../widgets/chat_bubble.dart';
 import '../widgets/royal_extras.dart' show GoldLoading;
+import '../widgets/r_refresh.dart';
 
 /// Private 1:1 messages with the teachers who teach this student (+ coordinator / VP). Student side can only start
 /// a chat with those contacts; nothing can be deleted; files are PDF or images.
@@ -27,7 +31,7 @@ class MessagesScreen extends ConsumerWidget {
         IconButton(onPressed: () => context.pop(), icon: const Icon(Icons.arrow_back_rounded, color: Colors.white)),
         const Text('Messages', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
       ])),
-      Expanded(child: RefreshIndicator(onRefresh: () async { ref.invalidate(conversationsProvider); ref.invalidate(contactsProvider); }, child: ListView(padding: const EdgeInsets.all(20), children: [
+      Expanded(child: RRefresh(onRefresh: () async { ref.invalidate(conversationsProvider); ref.invalidate(contactsProvider); }, child: ListView(padding: const EdgeInsets.all(20), children: [
         if ((convs.value ?? []).isNotEmpty) ...[
           Eyebrow('Recent', color: cs.onSurfaceVariant), const SizedBox(height: 8),
           for (final c in convs.value!) _tile(context, cs, name: c['staff']?['display_name'] ?? '', sub: c['last_message_at'] == null ? 'No messages yet' : DateFormat('d MMM, h:mm a').format(DateTime.parse(c['last_message_at']).toLocal()),
@@ -38,7 +42,7 @@ class MessagesScreen extends ConsumerWidget {
         contacts.when(
           loading: () => const Padding(padding: EdgeInsets.all(24), child: const GoldLoading()),
           error: (e, _) => Text('$e'),
-          data: (list) => Column(children: [for (final k in list) _tile(context, cs, name: k.name, sub: k.subject ?? '', onTap: () async {
+          data: (list) => list.isEmpty ? const EmptyState(kind: EmptyKind.messages, title: 'No messages yet', line: 'Your teachers appear here once the class is set up.', compact: true) : Column(children: [for (final k in list) _tile(context, cs, name: k.name, sub: k.subject ?? '', onTap: () async {
             final s = ref.read(sessionProvider).value!.active!;
             final id = await openConversation(s.id, k.staffId);
             if (context.mounted) context.push('/chat/$id', extra: k.name);
@@ -68,9 +72,22 @@ class ChatScreen extends ConsumerStatefulWidget {
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final text = TextEditingController(); final scroll = ScrollController();
   bool sending = false;
+  /// typed without internet — sent by themselves when the internet is back
+  List<String> waiting = const [];
 
   @override
-  void initState() { super.initState(); markConversationRead(widget.conversationId).then((_) => ref.invalidate(unreadMessagesProvider)); }
+  void initState() {
+    super.initState();
+    markConversationRead(widget.conversationId).then((_) => ref.invalidate(unreadMessagesProvider), onError: (_) {});
+    onlineAgain.addListener(_back);
+    _loadWaiting().then((_) { if (waiting.isNotEmpty) flushOutbox(); });
+  }
+
+  @override
+  void dispose() { onlineAgain.removeListener(_back); super.dispose(); }
+
+  Future<void> _loadWaiting() async { final w = await queuedMessages(widget.conversationId); if (mounted) setState(() => waiting = w); }
+  void _back() { ref.invalidate(messagesProvider(widget.conversationId)); ref.invalidate(conversationsProvider); _loadWaiting(); }
 
   Future<void> _send({String? path, String? name, String? mime}) async {
     final body = text.text.trim();
@@ -79,7 +96,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       await sendMessage(widget.conversationId, body: body.isEmpty ? null : body, path: path, name: name, mime: mime);
       text.clear(); ref.invalidate(messagesProvider(widget.conversationId)); ref.invalidate(conversationsProvider);
-    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not send: $e'))); }
+    } catch (e) {
+      if (path == null && body.isNotEmpty && isNetworkError(e)) {
+        await queueMessage(widget.conversationId, body);   // no internet: keep it and send it later by itself
+        text.clear(); await _loadWaiting();
+      } else if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not send: $e'))); }
+    }
     if (mounted) setState(() => sending = false);
   }
 
@@ -117,21 +139,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         data: (list) {
           WidgetsBinding.instance.addPostFrameCallback((_) { if (scroll.hasClients) scroll.jumpTo(scroll.position.maxScrollExtent); });
           return ListView.builder(controller: scroll, padding: const EdgeInsets.all(16), itemCount: list.length, itemBuilder: (_, i) {
-            final m = list[i]; final mine = m['sender_kind'] == 'student';
-            return Align(alignment: mine ? Alignment.centerRight : Alignment.centerLeft, child: Container(
-              constraints: const BoxConstraints(maxWidth: 300), margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.fromLTRB(14, 10, 14, 8),
-              decoration: BoxDecoration(color: mine ? Brand.crimson : cs.surface, borderRadius: BorderRadius.only(topLeft: const Radius.circular(16), topRight: const Radius.circular(16), bottomLeft: Radius.circular(mine ? 16 : 4), bottomRight: Radius.circular(mine ? 4 : 16))),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                if (m['attachment_path'] != null) InkWell(onTap: () => openStorageFile(m['attachment_path']), child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon((m['attachment_mime'] ?? '').toString().startsWith('image') ? Icons.image_rounded : Icons.picture_as_pdf_rounded, size: 18, color: mine ? Colors.white : Brand.crimsonDeep), const SizedBox(width: 6),
-                  Flexible(child: Text(m['attachment_name'] ?? 'Attachment', style: TextStyle(color: mine ? Colors.white : cs.onSurface, fontWeight: FontWeight.w700, decoration: TextDecoration.underline))),
-                ])),
-                if (m['body'] != null) Align(alignment: Alignment.centerLeft, child: SelectableText(m['body'], style: TextStyle(color: mine ? Colors.white : cs.onSurface, height: 1.4))),
-                const SizedBox(height: 3),
-                Text('${DateFormat('h:mm a').format(DateTime.parse(m['created_at']).toLocal())}${mine ? (m['seen_at'] != null ? ' · Seen' : '') : ''}', style: TextStyle(fontSize: 10, color: mine ? Colors.white70 : cs.onSurfaceVariant)),
-              ])));
+            final m = list[i];
+            return ChatBubble(m: m, mine: m['sender_kind'] == 'student', time: chatTime, onChanged: () => ref.invalidate(messagesProvider(widget.conversationId)));
           });
         })),
+      if (waiting.isNotEmpty) Container(width: double.infinity, color: Brand.amberTint, padding: const EdgeInsets.fromLTRB(14, 8, 14, 8), child: Row(children: [
+        const Icon(Icons.schedule_send_rounded, size: 18, color: Brand.amber), const SizedBox(width: 8),
+        Expanded(child: Text('Will send when internet is back · ${waiting.length == 1 ? '“${waiting.first}”' : '${waiting.length} messages'}', maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF6A4A00)))),
+      ])),
       Container(padding: EdgeInsets.fromLTRB(8, 8, 8, 8 + MediaQuery.of(context).padding.bottom), decoration: BoxDecoration(color: cs.surface, border: Border(top: BorderSide(color: cs.outline))), child: Row(children: [
         IconButton(onPressed: sending ? null : () => _attach(), icon: const Icon(Icons.attach_file_rounded), tooltip: 'PDF or photo'),
         IconButton(onPressed: sending ? null : () => _attach(camera: true), icon: const Icon(Icons.photo_camera_outlined), tooltip: 'Camera'),
