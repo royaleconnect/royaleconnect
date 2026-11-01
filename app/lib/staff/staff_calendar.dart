@@ -5,11 +5,14 @@ import '../core/data.dart';
 import '../core/theme.dart';
 import 'staff_data.dart';
 import 'staff_shell.dart';
+import '../core/cache.dart';
+import '../widgets/common.dart' show showUndo;
 
 /// Office: add, change or remove holidays and events. Families see changes at once in their calendar and "Your day" card.
 /// Who can edit: office, principal, vice principal, IT admin (database rule cal_write). Every change is recorded in audit_log.
 
 final staffCalendarProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.cacheFor();
   final data = await db.from('calendar_event')
       .select('id,title,starts_on,ends_on,kind,grades,note,academic_year!inner(is_current)')
       .eq('academic_year.is_current', true).order('starts_on', ascending: true);
@@ -216,8 +219,9 @@ class _EventEditorState extends ConsumerState<_EventEditor> {
     if (ok != true) return;
     setState(() => busy = true);
     try {
+      final box = ProviderScope.containerOf(context, listen: false);
       await db.from('calendar_event').delete().eq('id', widget.event!['id']);
-      if (mounted) { toast(context, 'Deleted.'); Navigator.pop(context, true); }
+      if (mounted) { showUndo(context, 'Event', () => box.invalidate(staffCalendarProvider)); Navigator.pop(context, true); }
     } catch (e) {
       if (mounted) { toast(context, 'Could not delete: $e'); setState(() => busy = false); }
     }
