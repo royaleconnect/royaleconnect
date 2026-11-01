@@ -34,6 +34,22 @@ import 'staff/toppers_admin.dart';
 import 'staff/merged_pages.dart';
 import 'screens/desk_screen.dart';
 import 'staff/desk_admin.dart';
+import 'screens/attendance_screen.dart';
+import 'staff/attendance_page.dart';
+import 'staff/bin_page.dart';
+import 'widgets/hub_tabs.dart';
+import 'screens/idcard_screen.dart';
+import 'screens/houses_screen.dart';
+import 'screens/thanks_screen.dart';
+import 'screens/year_review_screen.dart';
+import 'staff/houses_admin.dart';
+import 'staff/thanks_wall.dart';
+import 'staff/approvals_page.dart';
+import 'staff/fees_office.dart' show StaffFeeReportsScreen;
+import 'staff/year_end.dart';
+import 'staff/week_summary.dart';
+import 'staff/id_cards_page.dart';
+import 'staff/certificates_page.dart';
 
 /// Makes go_router re-run `redirect` whenever the session changes.
 class _SessionListenable extends ChangeNotifier {
@@ -93,22 +109,32 @@ final routerProvider = Provider<GoRouter>((ref) {
         GoRoute(path: '/staff/leave', builder: (_, __) => const StaffLeaveScreen()),
         GoRoute(path: '/staff/exams', builder: (_, __) => const StaffExamsScreen()),
         GoRoute(path: '/staff/marks', builder: (_, __) => const StaffMarksScreen()),
+        GoRoute(path: '/staff/attendance', builder: (_, __) => const StaffAttendanceScreen()),
+        GoRoute(path: '/staff/bin', builder: (_, __) => const StaffPage(title: 'Bin', hub: Hub.schoolSetup, subtitle: 'Everything deleted in the last 30 days. Bring anything back with one tap.', body: BinPanel())),
         GoRoute(path: '/staff/plan', builder: (_, __) => const StaffPlanScreen()),
         GoRoute(path: '/staff/worksheets', builder: (_, __) => const StaffWorksheetsScreen()),
         GoRoute(path: '/staff/star', builder: (_, __) => const StaffStarScreen()),
         GoRoute(path: '/staff/moments', builder: (_, __) => const StaffMomentsScreen()),
         GoRoute(path: '/staff/feedback', builder: (_, __) => const StaffFeedbackScreen()),
         GoRoute(path: '/staff/fees', builder: (_, __) => const StaffFeesScreen()),
+        GoRoute(path: '/staff/fees/reports', builder: (_, __) => const StaffFeeReportsScreen()),
         GoRoute(path: '/staff/calendar', builder: (_, __) => const StaffCalendarScreen()),
         GoRoute(path: '/staff/reports', builder: (_, __) => const StaffReportsScreen()),
         GoRoute(path: '/staff/transport', builder: (_, __) => const TransportPage()),
         GoRoute(path: '/staff/students', builder: (_, __) => const StudentsPage()),
+        GoRoute(path: '/staff/id-cards', builder: (_, __) => const StaffIdCardsScreen()),
+        GoRoute(path: '/staff/certificates', builder: (_, __) => const StaffCertificatesScreen()),
         GoRoute(path: '/staff/sections', builder: (_, __) => const NewSectionsScreen()),
         GoRoute(path: '/staff/settings', builder: (_, __) => const SchoolSettingsScreen()),
         GoRoute(path: '/staff/toppers', builder: (_, __) => const StaffToppersScreen()),
         GoRoute(path: '/staff/toppers/edit', builder: (_, __) => const ToppersAdminScreen()),
         GoRoute(path: '/staff/council', builder: (_, __) => const StaffCouncilScreen()),
         GoRoute(path: '/staff/council/manage', builder: (_, __) => const CouncilAdminScreen()),
+        GoRoute(path: '/staff/houses', builder: (_, __) => const StaffHousesScreen()),
+        GoRoute(path: '/staff/thanks', builder: (_, __) => const StaffThanksScreen()),
+        GoRoute(path: '/staff/year-end', builder: (_, __) => const YearEndScreen()),
+        GoRoute(path: '/staff/week', builder: (_, __) => const WeekSummaryScreen()),
+        GoRoute(path: '/staff/approvals', builder: (_, __) => const StaffApprovalsScreen()),
         GoRoute(path: '/staff/users', builder: (_, __) => const StaffPeopleScreen()),
         GoRoute(path: '/staff/setup', builder: (_, __) => const SchoolSetupScreen()),
         GoRoute(path: '/staff/help', builder: (_, __) => const HelpScreen(staff: true)),
@@ -123,6 +149,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/star', pageBuilder: (_, st) => _grow(st, const StarScreen())),
       GoRoute(path: '/gallery', pageBuilder: (_, st) => _grow(st, const GalleryScreen())),
       GoRoute(path: '/leave', pageBuilder: (_, st) => _grow(st, const LeaveScreen())),
+      GoRoute(path: '/attendance', pageBuilder: (_, st) => _grow(st, const AttendanceScreen())),
+      GoRoute(path: '/idcard', pageBuilder: (_, st) => _grow(st, const IdCardScreen())),
       GoRoute(path: '/plan', pageBuilder: (_, st) => _grow(st, const MonthlyPlanScreen())),
       GoRoute(path: '/worksheets', pageBuilder: (_, st) => _grow(st, const WorksheetsScreen())),
       GoRoute(path: '/exams', pageBuilder: (_, st) => _grow(st, const ExamsScreen())),
@@ -135,6 +163,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/toppers', pageBuilder: (_, st) => _grow(st, const ToppersScreen())),
       GoRoute(path: '/fame', pageBuilder: (_, st) => _grow(st, const ToppersScreen(tab: 2))),
       GoRoute(path: '/council', pageBuilder: (_, st) => _grow(st, const CouncilScreen())),
+      GoRoute(path: '/houses', pageBuilder: (_, st) => _grow(st, const HousesScreen())),
+      GoRoute(path: '/thanks', pageBuilder: (_, st) => _grow(st, const ThanksScreen())),
+      GoRoute(path: '/year-review', pageBuilder: (_, st) => _grow(st, YearReviewScreen(studentId: st.uri.queryParameters['student']))),
       GoRoute(path: '/desk', pageBuilder: (_, st) => _grow(st, const DeskListScreen())),
       GoRoute(path: '/pay', pageBuilder: (_, st) => _grow(st, const PayScreen()), routes: [
         GoRoute(path: 'done', pageBuilder: (_, st) => _grow(st, ReceiptScreen(paymentId: st.uri.queryParameters['payment_id'] ?? ''))),   // return URL of the web payment link
