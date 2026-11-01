@@ -7,6 +7,7 @@ import '../core/data.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
 import '../widgets/royal_extras.dart' show GoldLoading;
+import '../widgets/r_refresh.dart';
 
 class FeesScreen extends ConsumerWidget {
   const FeesScreen({super.key});
@@ -30,7 +31,7 @@ class FeesScreen extends ConsumerWidget {
         Expanded(child: fees.when(
           loading: () => const GoldLoading(),
           error: (e, _) => Center(child: Text('Could not load fees.\n$e', textAlign: TextAlign.center)),
-          data: (f) => RefreshIndicator(onRefresh: () async => ref.invalidate(feesProvider), child: ListView(padding: const EdgeInsets.fromLTRB(20, 16, 20, 110), children: [
+          data: (f) => RRefresh(onRefresh: () async => ref.invalidate(feesProvider), child: ListView(padding: const EdgeInsets.fromLTRB(20, 16, 20, 110), children: [
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Container(padding: const EdgeInsets.all(18), decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(22), boxShadow: [BoxShadow(color: Brand.crimsonDeep.withValues(alpha: .12), blurRadius: 30, offset: const Offset(0, 10))]),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
