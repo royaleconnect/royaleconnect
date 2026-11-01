@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'royal_motion.dart';
+import '../core/data3.dart' show appSettingsProvider, featureOn;
 
 /// Royal Edition, part 2: shimmer loading, the living header, the sun / moon, the gold ring, press effect,
 /// spotlight and twinkles, the report-card envelope, the full-screen birthday and the festival celebrations.
@@ -19,7 +22,14 @@ class GoldLoading extends StatefulWidget {
 }
 
 class _GoldLoadingState extends State<GoldLoading> with SingleTickerProviderStateMixin {
-  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))..repeat();
+  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400));
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // the loading shimmer keeps moving even in lite mode (it is small), but stops when its page is hidden
+    final on = TickerMode.of(context) && (ModalRoute.of(context)?.isCurrent ?? true);
+    if (on && !c.isAnimating) { c.repeat(); } else if (!on) { c.stop(); }
+  }
   @override
   void dispose() { c.dispose(); super.dispose(); }
   @override
@@ -27,7 +37,7 @@ class _GoldLoadingState extends State<GoldLoading> with SingleTickerProviderStat
     final dark = Theme.of(context).brightness == Brightness.dark;
     final base = dark ? const Color(0xFF2A272D) : const Color(0xFFECE5D8);
     final hi = dark ? const Color(0xFF5A4A2A) : const Color(0xFFF8E9C2);
-    return Center(child: Padding(padding: const EdgeInsets.all(20), child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 360), child: AnimatedBuilder(animation: c, builder: (_, __) {
+    return Center(child: Padding(padding: const EdgeInsets.all(20), child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 360), child: RepaintBoundary(child: AnimatedBuilder(animation: c, builder: (_, __) {
       final m = -0.5 + c.value * 2;
       return ShaderMask(blendMode: BlendMode.srcATop,
         shaderCallback: (r) => LinearGradient(colors: [base, hi, base], stops: [(m - .25).clamp(0.0, 1.0), m.clamp(0.0, 1.0), (m + .25).clamp(0.0, 1.0)]).createShader(r),
@@ -36,7 +46,7 @@ class _GoldLoadingState extends State<GoldLoading> with SingleTickerProviderStat
               decoration: BoxDecoration(color: base, borderRadius: BorderRadius.circular(8))),
         ]),
       );
-    }))));
+    })))));
   }
 }
 
@@ -50,13 +60,16 @@ class LivingSilk extends StatefulWidget {
 }
 
 class _LivingSilkState extends State<LivingSilk> with SingleTickerProviderStateMixin {
-  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(seconds: 16))..repeat();
+  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(seconds: 16));
+  @override
+  void didChangeDependencies() { super.didChangeDependencies(); loopWhileVisible(context, c); }
   @override
   void dispose() { c.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) {
-    if (reduceMotion(context)) return DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: widget.colors)), child: widget.child);
-    return AnimatedBuilder(animation: c, child: widget.child, builder: (_, child) {
+    if (liteMotion(context)) return DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: widget.colors)), child: widget.child);
+    // the header's text and buttons sit in their own layer, so only the colours behind them are redrawn as they move
+    return RepaintBoundary(child: AnimatedBuilder(animation: c, child: RepaintBoundary(child: widget.child), builder: (_, child) {
       final a = c.value * 2 * math.pi;
       return DecoratedBox(
         decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment(-1 + .3 * math.sin(a), -1 + .3 * math.cos(a)), end: Alignment(1 - .3 * math.sin(a), 1 - .3 * math.cos(a)), colors: widget.colors, stops: const [0, .55, 1])),
@@ -65,7 +78,7 @@ class _LivingSilkState extends State<LivingSilk> with SingleTickerProviderStateM
               colors: [const Color(0xFFFFD9A0).withValues(alpha: .16), Colors.transparent])),
           child: child),
       );
-    });
+    }));
   }
 }
 
@@ -79,14 +92,16 @@ class TimeOfDayIcon extends StatefulWidget {
 }
 
 class _TimeOfDayIconState extends State<TimeOfDayIcon> with SingleTickerProviderStateMixin {
-  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(seconds: 12))..repeat();
+  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(seconds: 12));
+  @override
+  void didChangeDependencies() { super.didChangeDependencies(); loopWhileVisible(context, c); }
   @override
   void dispose() { c.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) {
     final h = DateTime.now().hour;
     final night = h >= 18 || h < 5;
-    return SizedBox(width: widget.size, height: widget.size, child: AnimatedBuilder(animation: c, builder: (_, __) => CustomPaint(painter: _SkyPainter(c.value, night))));
+    return RepaintBoundary(child: SizedBox(width: widget.size, height: widget.size, child: AnimatedBuilder(animation: c, builder: (_, __) => CustomPaint(painter: _SkyPainter(c.value, night)))));
   }
 }
 
@@ -176,12 +191,14 @@ class Spotlight extends StatefulWidget {
 }
 
 class _SpotlightState extends State<Spotlight> with SingleTickerProviderStateMixin {
-  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(seconds: 6))..repeat();
+  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(seconds: 6));
+  @override
+  void didChangeDependencies() { super.didChangeDependencies(); loopWhileVisible(context, c); }
   @override
   void dispose() { c.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) => Stack(clipBehavior: Clip.none, alignment: Alignment.center, children: [
-        Positioned.fill(child: IgnorePointer(child: AnimatedBuilder(animation: c, builder: (_, __) => CustomPaint(painter: _TwinklePainter(c.value))))),
+        Positioned.fill(child: IgnorePointer(child: RepaintBoundary(child: AnimatedBuilder(animation: c, builder: (_, __) => CustomPaint(painter: _TwinklePainter(c.value)))))),
         ShineSweep(delay: const Duration(milliseconds: 600), every: const Duration(milliseconds: 4500), child: widget.child),
       ]);
 }
@@ -215,12 +232,14 @@ class PulseRing extends StatefulWidget {
 }
 
 class _PulseRingState extends State<PulseRing> with SingleTickerProviderStateMixin {
-  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800))..repeat();
+  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800));
+  @override
+  void didChangeDependencies() { super.didChangeDependencies(); loopWhileVisible(context, c); }
   @override
   void dispose() { c.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) => Stack(clipBehavior: Clip.none, alignment: Alignment.center, children: [
-        AnimatedBuilder(animation: c, builder: (_, __) => Transform.scale(scale: 1 + c.value * 1.4, child: Container(decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: widget.color.withValues(alpha: 1 - c.value), width: 3))))),
+        if (!liteMotion(context)) RepaintBoundary(child: AnimatedBuilder(animation: c, builder: (_, __) => Transform.scale(scale: 1 + c.value * 1.4, child: Container(decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: widget.color.withValues(alpha: 1 - c.value), width: 3)))))),
         widget.child,
       ]);
 }
@@ -300,16 +319,19 @@ enum DriftMode { fall, rise, float, walk }
 class EmojiDrift extends StatefulWidget {
   final List<String> emojis; final DriftMode mode; final int count; final double size;
   final List<Color> confetti;     // optional coloured paper (e.g. tricolour)
-  final bool snow;
-  const EmojiDrift({super.key, required this.emojis, this.mode = DriftMode.fall, this.count = 26, this.size = 30, this.confetti = const [], this.snow = false});
+  final bool snow; final double opacity;
+  const EmojiDrift({super.key, required this.emojis, this.mode = DriftMode.fall, this.count = 26, this.size = 30, this.confetti = const [], this.snow = false, this.opacity = 1});
   @override
   State<EmojiDrift> createState() => _EmojiDriftState();
 }
 
 class _EmojiDriftState extends State<EmojiDrift> with SingleTickerProviderStateMixin {
-  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(seconds: 30))..repeat();
+  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(seconds: 30));
   late final List<List<double>> p;
-  final List<TextPainter> glyphs = [];
+  /// each emoji drawn once into a small picture; every frame then only stamps the pictures (drawing text every frame was slow)
+  final List<ui.Image> glyphs = [];
+  @override
+  void didChangeDependencies() { super.didChangeDependencies(); loopWhileVisible(context, c); }
   final _timers = <Timer>[];
   @override
   void initState() {
@@ -324,20 +346,34 @@ class _EmojiDriftState extends State<EmojiDrift> with SingleTickerProviderStateM
   }
   void _glyphs() {
     if (!mounted) return;
-    glyphs..clear()..addAll([for (final e in widget.emojis) TextPainter(text: TextSpan(text: e, style: TextStyle(fontSize: widget.size)), textDirection: TextDirection.ltr)..layout()]);
+    final fresh = <ui.Image>[];
+    for (final e in widget.emojis) {
+      final tp = TextPainter(text: TextSpan(text: e, style: TextStyle(fontSize: widget.size)), textDirection: TextDirection.ltr)..layout();
+      final w = tp.width.ceil().clamp(1, 400), h = tp.height.ceil().clamp(1, 400);
+      final rec = ui.PictureRecorder();
+      final cv = Canvas(rec)..scale(2);       // drawn at double size so it stays sharp
+      tp.paint(cv, Offset.zero);
+      final pic = rec.endRecording();
+      fresh.add(pic.toImageSync(w * 2, h * 2));
+      pic.dispose();
+    }
+    final old = List<ui.Image>.of(glyphs);
+    glyphs..clear()..addAll(fresh);
+    WidgetsBinding.instance.addPostFrameCallback((_) { for (final i in old) { i.dispose(); } });
   }
   @override
-  void dispose() { PaintingBinding.instance.systemFonts.removeListener(_glyphs); for (final t in _timers) { t.cancel(); } c.dispose(); super.dispose(); }
+  void dispose() { PaintingBinding.instance.systemFonts.removeListener(_glyphs); for (final t in _timers) { t.cancel(); } for (final i in glyphs) { i.dispose(); } c.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) {
     if (reduceMotion(context)) return const SizedBox.shrink();
-    return IgnorePointer(child: CustomPaint(size: Size.infinite, painter: _DriftPainter(c, p, glyphs, widget.mode, widget.confetti, widget.snow)));
+    return IgnorePointer(child: RepaintBoundary(child: CustomPaint(size: Size.infinite, painter: _DriftPainter(c, p, glyphs, widget.mode, widget.confetti, widget.snow, widget.opacity))));
   }
 }
 
 class _DriftPainter extends CustomPainter {
-  final Animation<double> a; final List<List<double>> p; final List<TextPainter> g; final DriftMode mode; final List<Color> confetti; final bool snow;
-  _DriftPainter(this.a, this.p, this.g, this.mode, this.confetti, this.snow) : super(repaint: a);
+  final Animation<double> a; final List<List<double>> p; final List<ui.Image> g; final DriftMode mode; final List<Color> confetti; final bool snow; final double opacity;
+  _DriftPainter(this.a, this.p, this.g, this.mode, this.confetti, this.snow, this.opacity) : super(repaint: a);
+  late final Paint _img = Paint()..filterQuality = FilterQuality.medium..color = Colors.white.withValues(alpha: opacity);
   @override
   void paint(Canvas canvas, Size s) {
     final t = a.value * 30;
@@ -363,7 +399,8 @@ class _DriftPainter extends CustomPainter {
       canvas.translate(x, y);
       if (mode != DriftMode.walk) canvas.rotate(math.sin(t * .9 + q[3]) * .35);
       canvas.scale(q[4]);
-      glyph.paint(canvas, Offset(-glyph.width / 2, -glyph.height / 2));
+      final gw = glyph.width / 2, gh = glyph.height / 2;      // pictures are double size
+      canvas.drawImageRect(glyph, Rect.fromLTWH(0, 0, glyph.width.toDouble(), glyph.height.toDouble()), Rect.fromLTWH(-gw / 2, -gh / 2, gw, gh), _img);
       canvas.restore();
     }
   }
@@ -420,11 +457,11 @@ Festival? festivalToday([DateTime? now]) {
 }
 
 /// The festive banner on Home (families) and Today (all staff), for the festival day and the 6 days after.
-class FestiveBanner extends StatelessWidget {
+class FestiveBanner extends ConsumerWidget {
   const FestiveBanner({super.key});
   @override
-  Widget build(BuildContext context) {
-    final fest = festivalToday();
+  Widget build(BuildContext context, WidgetRef ref) {
+    final fest = featureOn(ref.watch(appSettingsProvider).value, 'festivals') ? festivalToday() : null;
     if (fest == null) return const SizedBox.shrink();
     return Padding(padding: const EdgeInsets.only(bottom: 14), child: Container(
       height: 92, clipBehavior: Clip.antiAlias,
@@ -447,17 +484,18 @@ class FestiveBanner extends StatelessWidget {
 
 /// The festival's animation over the whole page (Home / Today), all the time while the page is open during the
 /// festival week. Touches pass straight through to the page.
-class FestiveSky extends StatelessWidget {
+class FestiveSky extends ConsumerWidget {
   final Widget child;
   const FestiveSky({super.key, required this.child});
   @override
-  Widget build(BuildContext context) {
-    final f = festivalToday();
-    if (f == null) return child;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final f = featureOn(ref.watch(appSettingsProvider).value, 'festivals') ? festivalToday() : null;
+    if (f == null || liteMotion(context)) return child;     // the festive banner still shows
+    final phone = MediaQuery.sizeOf(context).width < 600;   // on phones: fewer emoji, a little see-through
     return Stack(children: [
       child,
       Positioned.fill(child: IgnorePointer(child: Stack(children: [
-        Positioned.fill(child: EmojiDrift(emojis: f.emojis, mode: f.mode, count: f.mode == DriftMode.walk ? 9 : 22, size: f.mode == DriftMode.walk ? 40 : 30, confetti: f.confetti, snow: f.snow)),
+        Positioned.fill(child: EmojiDrift(emojis: f.emojis, mode: f.mode, count: f.mode == DriftMode.walk ? (phone ? 5 : 8) : (phone ? 9 : 16), size: f.mode == DriftMode.walk ? (phone ? 32 : 40) : (phone ? 24 : 30), confetti: f.confetti, snow: f.snow, opacity: phone ? .6 : .85)),
         if (f.key == 'diwali') const Positioned(left: 0, right: 0, bottom: 0, height: 70, child: _DiyaRow()),
         if (f.key == 'eid' || f.key == 'bakrid') Positioned(right: 24, top: 70, child: Text('🌙', style: TextStyle(fontSize: 64, shadows: [Shadow(color: Colors.amber.withValues(alpha: .7), blurRadius: 30)]))),
       ]))),
@@ -472,12 +510,14 @@ class _Bob extends StatefulWidget {
 }
 
 class _BobState extends State<_Bob> with SingleTickerProviderStateMixin {
-  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800))..repeat(reverse: true);
+  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800));
+  @override
+  void didChangeDependencies() { super.didChangeDependencies(); loopWhileVisible(context, c, reverse: true); }
   @override
   void dispose() { c.dispose(); super.dispose(); }
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(animation: c, child: widget.child,
-      builder: (_, child) => Transform.translate(offset: Offset(0, -4 * Curves.easeInOut.transform(c.value)), child: Transform.rotate(angle: (c.value - .5) * .12, child: child)));
+  Widget build(BuildContext context) => RepaintBoundary(child: AnimatedBuilder(animation: c, child: widget.child,
+      builder: (_, child) => Transform.translate(offset: Offset(0, -4 * Curves.easeInOut.transform(c.value)), child: Transform.rotate(angle: (c.value - .5) * .12, child: child))));
 }
 
 /// A row of flickering diyas along the bottom (Diwali).
@@ -488,17 +528,19 @@ class _DiyaRow extends StatefulWidget {
 }
 
 class _DiyaRowState extends State<_DiyaRow> with SingleTickerProviderStateMixin {
-  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat();
+  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(seconds: 2));
+  @override
+  void didChangeDependencies() { super.didChangeDependencies(); loopWhileVisible(context, c); }
   @override
   void dispose() { c.dispose(); super.dispose(); }
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(animation: c, builder: (_, __) => LayoutBuilder(builder: (_, b) {
+  Widget build(BuildContext context) => RepaintBoundary(child: AnimatedBuilder(animation: c, builder: (_, __) => LayoutBuilder(builder: (_, b) {
         final n = (b.maxWidth / 70).floor().clamp(4, 24);
         return Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
           for (var i = 0; i < n; i++) Transform.scale(scale: .92 + .1 * math.sin(c.value * 6.28 * 2 + i), child: Text('🪔', style: TextStyle(fontSize: 34,
               shadows: [Shadow(color: const Color(0xFFFFB300).withValues(alpha: .6 + .3 * math.sin(c.value * 6.28 * 3 + i * 1.7)), blurRadius: 22)]))),
         ]);
-      }));
+      })));
 }
 
 // ================================================================== the birthday, full screen once
