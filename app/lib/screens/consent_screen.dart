@@ -50,13 +50,14 @@ class _ConsentScreenState extends ConsumerState<ConsentScreen> {
           point('Never sold, and never shared for advertising.'),
           point('Kept safely. Only the staff who need it for their work can see it.'),
           point('You can ask the school office to see or correct it at any time.'),
+          point('How long it is kept: official records (name, date of birth, admission number, parents, phone numbers, classes, transfer certificate, marksheets and certificates) are kept permanently. Everything else (messages, photos, diary and notifications) is removed one year after the student leaves the school.'),
           TextButton(onPressed: () => showPrivacyNotice(context), style: TextButton.styleFrom(padding: EdgeInsets.zero), child: const Text('Read the full privacy notice ›', style: TextStyle(fontWeight: FontWeight.w800))),
         ])),
         const SizedBox(height: 14),
         Material(color: cs.surface, borderRadius: BorderRadius.circular(18), child: CheckboxListTile(
           value: ticked, onChanged: busy ? null : (v) => setState(() => ticked = v ?? false),
           controlAffinity: ListTileControlAffinity.leading, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-          title: const Text('I am the parent / guardian, and I agree to the school using my child’s information as described.', style: TextStyle(fontWeight: FontWeight.w700)),
+          title: const Text('I have read and agree. I am the parent / guardian, and the school may use my child’s information as described above.', style: TextStyle(fontWeight: FontWeight.w700)),
         )),
         const SizedBox(height: 16),
         FilledButton(onPressed: ticked && !busy ? _agree : null, child: Text(busy ? 'Saving…' : 'I agree — continue')),
@@ -78,7 +79,8 @@ void showPrivacyNotice(BuildContext context) => showDialog(context: context, bui
     'Why: to teach and look after your child, to keep you informed, to collect fees and give receipts, to run the school bus safely, and as the law requires (for example CBSE records).\n\n'
     'Who can see it: only school staff who need it for their work (for example the class teacher sees their own class). Private messages between a parent and a teacher are not read by anyone else. '
     'We never sell it or use it for advertising.\n\n'
-    'How long: while your child studies here, and afterwards only as long as school records must be kept (certificates, marks and fee records).\n\n'
+    'How long: official records — the student’s name, date of birth, admission number, parents’ names, phone numbers, classes, transfer certificate, marksheets and certificates — '
+    'are kept permanently, as school records must be. Everything else — messages, photos, diary entries and notifications — is removed one year after the student leaves the school.\n\n'
     'Your rights: you can ask the school office to see your child’s information, to correct it, or to raise a concern. You can also ask about this notice at the school office.\n\n'
     'Agreeing: you agree once, at your first sign-in. If you do not agree, please speak to the school office.',
     style: TextStyle(height: 1.5),
@@ -105,3 +107,4 @@ class BirthdayCard extends StatelessWidget {
     ]),
   );
 }
+
