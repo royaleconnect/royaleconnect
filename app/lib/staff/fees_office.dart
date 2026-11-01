@@ -1,0 +1,346 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
+import '../auth/session.dart';
+import '../core/cache.dart';
+import '../core/data.dart';
+import '../core/school_docs.dart' show openReceiptPdf;
+import '../core/theme.dart';
+import '../core/xlsx_writer.dart';
+import '../widgets/common.dart';
+import 'staff_data.dart';
+import 'staff_shell.dart';
+
+/// Fees desk extras for the office and accounts:
+///   • Fee reports with Excel download (Collection · Dues · Cancelled receipts)
+///   • "Remind everyone who hasn't paid" (once a day)
+///   • Recent payments with "Cancel receipt…" (reason → the Principal approves in Approvals)
+///   • Fee type of a student (Regular / RTE / Staff ward / Special) and, for RTE, waiving the fees still to come
+
+String _msg(Object e) => e is PostgrestException ? e.message : e.toString().replaceFirst('Exception: ', '');
+String _iso(DateTime d) => DateFormat('yyyy-MM-dd').format(d);
+String _dmy(String? iso) => iso == null ? '' : DateFormat('d MMM yyyy').format(DateTime.parse(iso).toLocal());
+String _dmt(String? iso) => iso == null ? '' : DateFormat('d MMM, h:mm a').format(DateTime.parse(iso).toLocal());
+const _feeRoles = ['accounts', 'office', 'it_admin', 'principal', 'vice_principal'];
+bool _feeStaff(Session? s) => s != null && _feeRoles.any(s.hasRole);
+
+// ================================================================== fee type (RTE etc.)
+const feeCategories = {'regular': 'Regular', 'rte': 'RTE', 'staff_ward': 'Staff ward', 'special': 'Special fee'};
+
+/// Small pill for a non-regular fee type (nothing for Regular).
+class FeeCategoryPill extends StatelessWidget {
+  final String? category;
+  const FeeCategoryPill(this.category, {super.key});
+  @override
+  Widget build(BuildContext context) {
+    final c = category ?? 'regular';
+    if (c == 'regular') return const SizedBox.shrink();
+    final (fg, bg) = switch (c) { 'rte' => (Brand.violet, Brand.violetTint), 'staff_ward' => (Brand.blue, Brand.blueTint), _ => (Brand.amber, Brand.amberTint) };
+    return Pill(feeCategories[c] ?? c, fg: fg, bg: bg);
+  }
+}
+
+final _feeCategoryProvider = FutureProvider.autoDispose.family<String, String>((ref, studentId) async {
+  ref.cacheFor();
+  final r = await db.from('student').select('fee_category').eq('id', studentId).maybeSingle();
+  return (r?['fee_category'] ?? 'regular') as String;
+});
+
+/// Shown above a student's fees: the fee type (office / accounts can change it) and, for RTE students,
+/// "Waive fees still to come" (one tap, a reason, written in the activity log).
+class FeeCategoryBar extends ConsumerWidget {
+  final String studentId;
+  final VoidCallback? onChanged;
+  const FeeCategoryBar({super.key, required this.studentId, this.onChanged});
+
+  Future<void> _change(BuildContext context, WidgetRef ref, String cur) async {
+    String pick = cur;
+    final ok = await showDialog<bool>(context: context, builder: (c) => StatefulBuilder(builder: (c, set) => AlertDialog(
+      title: const Text('Fee type'),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Wrap(spacing: 6, runSpacing: 6, children: [for (final e in feeCategories.entries) ChoiceChip(label: Text(e.value), selected: pick == e.key, onSelected: (_) => set(() => pick = e.key))]),
+        const SizedBox(height: 10),
+        const Text('This only marks the student. Fee amounts do not change by themselves.', style: TextStyle(fontSize: 12.5)),
+      ]),
+      actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Save'))],
+    )));
+    if (ok != true || pick == cur) return;
+    try {
+      await db.rpc('set_fee_category', params: {'p_student': studentId, 'p_category': pick});
+      ref.invalidate(_feeCategoryProvider(studentId));
+      onChanged?.call();
+      if (context.mounted) toast(context, 'Fee type saved: ${feeCategories[pick]}.');
+    } catch (e) { if (context.mounted) toast(context, _msg(e)); }
+  }
+
+  Future<void> _waive(BuildContext context, WidgetRef ref) async {
+    final reason = TextEditingController(text: 'RTE admission');
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: const Text('Waive fees still to come?'),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const Text('Every unpaid fee of this student due today or later is marked “waived”. Fees already overdue are not touched.'),
+        const SizedBox(height: 12),
+        TextField(controller: reason, decoration: const InputDecoration(labelText: 'Reason')),
+      ]),
+      actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Waive'))],
+    ));
+    if (ok != true) return;
+    try {
+      final r = Map<String, dynamic>.from(await db.rpc('waive_future_fees', params: {'p_student': studentId, 'p_reason': reason.text.trim()}) as Map);
+      onChanged?.call();
+      if (context.mounted) toast(context, r['rows'] == 0 ? 'No fees still to come.' : '${r['rows']} fees (${inr(r['amount'] as num)}) waived.');
+    } catch (e) { if (context.mounted) toast(context, _msg(e)); }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = ref.watch(sessionProvider).value;
+    final cat = ref.watch(_feeCategoryProvider(studentId)).value;
+    if (cat == null) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    final can = _feeStaff(s) && !(s?.viewOnly ?? false);
+    return Padding(padding: const EdgeInsets.only(bottom: 10), child: Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+      Text('Fee type:', style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w700)),
+      cat == 'regular' ? const Pill('Regular', fg: Brand.muted, bg: Brand.surface2) : FeeCategoryPill(cat),
+      if (can) TextButton(onPressed: () => _change(context, ref, cat), child: const Text('Change')),
+      if (can && cat == 'rte') OutlinedButton.icon(onPressed: () => _waive(context, ref), icon: const Icon(Icons.volunteer_activism_rounded, size: 18), label: const Text('Waive fees still to come')),
+    ]));
+  }
+}
+
+// ================================================================== recent payments + cancel receipt
+final feePaymentsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.cacheFor();
+  final data = await db.from('payment').select('id,amount,mode,status,receipt_no,paid_at,student:student_id(full_name,admission_no,fee_category),receipt_cancel_request(status)')
+      .eq('status', 'success').order('paid_at', ascending: false).limit(100);
+  return List<Map<String, dynamic>>.from(data);
+});
+
+/// Accounts / office: ask for a receipt to be cancelled (reason required). The receipt stays valid until the Principal approves.
+Future<void> askCancelReceipt(BuildContext context, WidgetRef ref, Map<String, dynamic> p) async {
+  final reason = TextEditingController();
+  final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+    title: Text('Cancel receipt ${p['receipt_no'] ?? ''}?'),
+    content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text('${p['student']?['full_name'] ?? ''} · ${inr(p['amount'] as num)} · ${_dmy(p['paid_at'])}'),
+      const SizedBox(height: 12),
+      TextField(controller: reason, autofocus: true, maxLines: 2, decoration: const InputDecoration(labelText: 'Why should it be cancelled?')),
+      const SizedBox(height: 10),
+      const NoteBox('The Principal must approve. Until then the receipt stays valid. After approval the fees it paid become unpaid again.'),
+    ]),
+    actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Back')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Send to the Principal'))],
+  ));
+  if (ok != true) return;
+  if (reason.text.trim().length < 3) { if (context.mounted) toast(context, 'Please write the reason.'); return; }
+  try {
+    await db.rpc('receipt_cancel_request', params: {'p_payment': p['id'], 'p_reason': reason.text.trim()});
+    ref.invalidate(feePaymentsProvider);
+    if (context.mounted) toast(context, 'Sent to the Principal for approval.');
+  } catch (e) { if (context.mounted) toast(context, _msg(e)); }
+}
+
+/// "Recent payments" tab of the Fees desk.
+class RecentPaymentsPanel extends ConsumerWidget {
+  const RecentPaymentsPanel({super.key});
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    final s = ref.watch(sessionProvider).value;
+    return ref.watch(feePaymentsProvider).when(
+      loading: () => const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator())),
+      error: (e, _) => Padding(padding: const EdgeInsets.all(24), child: Text(_msg(e), style: const TextStyle(color: Brand.crimsonDeep))),
+      data: (rows) => Panel(padding: const EdgeInsets.all(12), child: rows.isEmpty ? Text('No payments yet.', style: TextStyle(color: cs.onSurfaceVariant)) : Column(children: [
+        for (final p in rows) Builder(builder: (_) {
+          final waiting = ((p['receipt_cancel_request'] as List?) ?? const []).any((k) => k['status'] == 'pending');
+          return ListTile(dense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+            onTap: () => openReceiptPdf(context, p['id'], receiptNo: p['receipt_no']),
+            leading: Icon(Icons.receipt_long_rounded, color: waiting ? Brand.amber : Brand.green),
+            title: Wrap(spacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              Text('${p['receipt_no']} · ${p['student']?['full_name'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
+              FeeCategoryPill(p['student']?['fee_category']),
+              if (waiting) const Pill('Cancel waiting for Principal', fg: Brand.amber, bg: Brand.amberTint),
+            ]),
+            subtitle: Text('${p['mode']} · ${_dmt(p['paid_at'])} · tap for PDF'),
+            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+              Text(inr(p['amount'] as num), style: const TextStyle(fontWeight: FontWeight.w800)),
+              if (_feeStaff(s) && !waiting) PopupMenuButton<String>(tooltip: 'More', onSelected: (_) => askCancelReceipt(context, ref, p),
+                  itemBuilder: (_) => const [PopupMenuItem(value: 'cancel', child: Text('Cancel this receipt…'))]),
+            ]));
+        }),
+      ])),
+    );
+  }
+}
+
+// ================================================================== fee reports + Excel
+typedef _RepKey = (String from, String to, String grade);
+
+final _collectionProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, _RepKey>((ref, k) async {
+  ref.cacheFor();
+  final r = await db.rpc('fee_report_collection', params: {'p_from': k.$1, 'p_to': k.$2, 'p_grade': k.$3.isEmpty ? null : k.$3});
+  return [for (final x in (r as List?) ?? const []) Map<String, dynamic>.from(x as Map)];
+});
+final _duesProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, grade) async {
+  ref.cacheFor();
+  final r = await db.rpc('fee_report_dues', params: {'p_grade': grade.isEmpty ? null : grade});
+  return [for (final x in (r as List?) ?? const []) Map<String, dynamic>.from(x as Map)];
+});
+final _cancelledProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, _RepKey>((ref, k) async {
+  ref.cacheFor();
+  final r = await db.rpc('fee_report_cancelled', params: {'p_from': k.$1, 'p_to': k.$2, 'p_grade': k.$3.isEmpty ? null : k.$3});
+  return [for (final x in (r as List?) ?? const []) Map<String, dynamic>.from(x as Map)];
+});
+
+class StaffFeeReportsScreen extends ConsumerStatefulWidget {
+  const StaffFeeReportsScreen({super.key});
+  @override
+  ConsumerState<StaffFeeReportsScreen> createState() => _StaffFeeReportsScreenState();
+}
+
+class _StaffFeeReportsScreenState extends ConsumerState<StaffFeeReportsScreen> {
+  int tab = 0;
+  String grade = '';
+  late DateTimeRange range = () { final n = DateTime.now(); final d = DateTime(n.year, n.month, n.day); return DateTimeRange(start: DateTime(d.year, d.month, 1), end: d); }();
+  bool busy = false;
+
+  _RepKey get _key => (_iso(range.start), _iso(range.end), grade);
+
+  String get _rangeText {
+    final f = DateFormat('d MMM yyyy');
+    return range.start == range.end ? f.format(range.start) : '${f.format(range.start)} – ${f.format(range.end)}';
+  }
+
+  Future<void> _pickRange() async {
+    final n = DateTime.now();
+    final r = await showDateRangePicker(context: context, initialDateRange: range, firstDate: DateTime(n.year - 3), lastDate: DateTime(n.year, n.month, n.day), helpText: 'Choose the dates');
+    if (r != null) setState(() => range = r);
+  }
+
+  Future<void> _download(List<Map<String, dynamic>> rows) async {
+    final className = grade.isEmpty ? 'All' : ((ref.read(gradesProvider).value ?? const []).where((g) => g['id'] == grade).firstOrNull?['code'] ?? '');
+    final String name; final List<String> head; final List<List<Object?>> data; final List<double> widths;
+    if (tab == 0) {
+      name = 'Collection'; head = ['Receipt no', 'Date', 'Student', 'Admission no', 'Class', 'Amount (₹)', 'Mode', 'Paid', 'Fee type'];
+      widths = [20, 12, 26, 14, 9, 13, 11, 9, 12];
+      data = [for (final r in rows) [r['receipt_no'], r['date'], r['student'], r['admission_no'], r['class'], r['amount'], r['mode'], r['by'], feeCategories[r['fee_category']] ?? '']];
+      data.add(['', '', 'Total', '', '', rows.fold<num>(0, (a, r) => a + (r['amount'] as num)), '', '', '']);
+    } else if (tab == 1) {
+      name = 'Dues'; head = ['Student', 'Admission no', 'Class', 'Phones', 'Overdue (₹)', 'Due since', 'Fees due', 'Fee type'];
+      widths = [26, 14, 9, 34, 13, 12, 50, 12];
+      data = [for (final r in rows) [r['student'], r['admission_no'], r['class'], r['phones'], r['overdue'], r['first_due'], r['items'], feeCategories[r['fee_category']] ?? '']];
+      data.add(['Total', '', '', '', rows.fold<num>(0, (a, r) => a + (r['overdue'] as num)), '', '', '']);
+    } else {
+      name = 'Cancelled receipts'; head = ['Receipt no', 'Paid on', 'Cancelled on', 'Student', 'Class', 'Amount (₹)', 'Mode', 'Reason', 'Asked by', 'Approved by'];
+      widths = [20, 12, 12, 26, 9, 13, 11, 40, 18, 18];
+      data = [for (final r in rows) [r['receipt_no'], r['paid_on'], r['cancelled_on'], r['student'], r['class'], r['amount'], r['mode'], r['reason'], r['asked_by'], r['approved_by']]];
+    }
+    final dates = tab == 1 ? 'as-on-${_iso(DateTime.now())}' : '${_iso(range.start)}-to-${_iso(range.end)}';
+    setState(() => busy = true);
+    try {
+      await saveBytes(buildXlsx(name, head, data, widths: widths), 'RCIS-fees-${name.toLowerCase().replaceAll(' ', '-')}-$className-$dates.xlsx');
+    } catch (e) { if (mounted) toast(context, 'Could not save the file: ${_msg(e)}'); }
+    if (mounted) setState(() => busy = false);
+  }
+
+  Future<void> _remindAll() async {
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: const Text('Remind everyone who hasn’t paid?'),
+      content: const Text('Every family with an overdue fee (all classes) gets one notification with the amount overdue. This can be sent once a day.'),
+      actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Send reminders'))],
+    ));
+    if (ok != true) return;
+    try {
+      final n = await db.rpc('fee_remind_overdue');
+      if (mounted) toast(context, 'Reminder sent to $n ${n == 1 ? 'family' : 'families'} ✓');
+    } catch (e) { if (mounted) toast(context, _msg(e)); }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final grades = ref.watch(gradesProvider).value ?? const <Map<String, dynamic>>[];
+    final AsyncValue<List<Map<String, dynamic>>> data = switch (tab) { 0 => ref.watch(_collectionProvider(_key)), 1 => ref.watch(_duesProvider(grade)), _ => ref.watch(_cancelledProvider(_key)) };
+    final rows = data.value ?? const <Map<String, dynamic>>[];
+    final narrow = isNarrow(context);
+
+    return StaffPage(title: 'Fee reports', subtitle: 'Collection, dues and cancelled receipts — download any of them as an Excel file.', body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      SegmentedButton<int>(showSelectedIcon: !narrow, segments: [
+        const ButtonSegment(value: 0, label: Text('Collection')),
+        const ButtonSegment(value: 1, label: Text('Dues')),
+        ButtonSegment(value: 2, label: Text(narrow ? 'Cancelled' : 'Cancelled receipts')),
+      ], selected: {tab}, onSelectionChanged: (v) => setState(() => tab = v.first)),
+      const SizedBox(height: 14),
+      Panel(padding: const EdgeInsets.all(12), child: PickRow(children: [
+        if (tab != 1) Expanded(child: OutlinedButton.icon(onPressed: _pickRange, icon: const Icon(Icons.date_range_rounded, size: 18), label: Text(_rangeText, overflow: TextOverflow.ellipsis)))
+        else Expanded(child: Text('Overdue as on today', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurfaceVariant))),
+        const SizedBox(width: 12),
+        Expanded(child: PickField<String>(label: 'Class', value: grade, items: [
+          const DropdownMenuItem(value: '', child: Text('All classes')),
+          for (final g in grades) DropdownMenuItem(value: g['id'] as String, child: Text(g['name'] ?? g['code'] ?? '')),
+        ], onChanged: (v) => setState(() => grade = v ?? ''))),
+        const SizedBox(width: 12),
+        FilledButton.icon(onPressed: busy || data.isLoading || rows.isEmpty ? null : () => _download(rows), icon: const Icon(Icons.download_rounded, size: 18), label: Text(busy ? 'Please wait…' : 'Download Excel')),
+      ])),
+      data.when(
+        loading: () => const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator())),
+        error: (e, _) => Padding(padding: const EdgeInsets.all(24), child: Text(_msg(e), style: const TextStyle(color: Brand.crimsonDeep))),
+        data: (rows) => switch (tab) { 0 => _collection(rows), 1 => _dues(rows), _ => _cancelled(rows) },
+      ),
+    ]));
+  }
+
+  Widget _empty(String t) => Panel(child: Text(t, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)));
+  Widget _sub(String t) => Text(t, style: TextStyle(fontSize: 12.5, color: Theme.of(context).colorScheme.onSurfaceVariant));
+
+  Widget _collection(List<Map<String, dynamic>> rows) {
+    if (rows.isEmpty) return _empty('No receipts on these dates.');
+    final total = rows.fold<num>(0, (a, r) => a + (r['amount'] as num));
+    final byMode = <String, num>{};
+    for (final r in rows) { byMode[r['mode']] = (byMode[r['mode']] ?? 0) + (r['amount'] as num); }
+    return Panel(title: '${rows.length} receipts · ${inr(total)}', trailing: Text(byMode.entries.map((e) => '${e.key} ${inr(e.value)}').join(' · '), style: TextStyle(fontSize: 12.5, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+      padding: const EdgeInsets.all(12), child: Column(children: [
+        for (final r in rows) ListTile(dense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+          title: Wrap(spacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            Text('${r['student']} · ${r['class'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)), FeeCategoryPill(r['fee_category'])]),
+          subtitle: _sub('${r['receipt_no']} · ${_dmy(r['date'])} · ${r['mode']} · ${r['by']}'),
+          trailing: Text(inr(r['amount'] as num), style: const TextStyle(fontWeight: FontWeight.w800))),
+      ]));
+  }
+
+  Widget _dues(List<Map<String, dynamic>> rows) {
+    final s = ref.watch(sessionProvider).value;
+    final total = rows.fold<num>(0, (a, r) => a + (r['overdue'] as num));
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (_feeStaff(s) && !(s?.viewOnly ?? false)) Panel(padding: const EdgeInsets.all(12), child: CardRow(children: [
+        const Icon(Icons.notifications_active_rounded, color: Brand.amber), const SizedBox(width: 10),
+        Expanded(child: _sub('Families are reminded by themselves 3 days before each due date. Use this for everyone who is already late.')),
+        const SizedBox(width: 10),
+        FilledButton.icon(onPressed: _remindAll, icon: const Icon(Icons.send_rounded, size: 18), label: const Text('Remind everyone who hasn’t paid')),
+      ])),
+      if (rows.isEmpty) _empty('No overdue fees ✓')
+      else Panel(title: '${rows.length} students · ${inr(total)} overdue', padding: const EdgeInsets.all(12), child: Column(children: [
+        for (final r in rows) ListTile(dense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+          title: Wrap(spacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            Text('${r['student']} · ${r['class'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)), FeeCategoryPill(r['fee_category'])]),
+          subtitle: _sub('${r['items'] ?? ''}${(r['phones'] ?? '').toString().isNotEmpty ? '\n${r['phones']}' : ''}'),
+          isThreeLine: (r['phones'] ?? '').toString().isNotEmpty,
+          trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text(inr(r['overdue'] as num), style: TextStyle(fontWeight: FontWeight.w800, color: context.tone(Brand.crimsonDeep))),
+            _sub('since ${_dmy(r['first_due'])}'),
+          ])),
+      ])),
+    ]);
+  }
+
+  Widget _cancelled(List<Map<String, dynamic>> rows) {
+    if (rows.isEmpty) return _empty('No receipts were cancelled on these dates.');
+    return Panel(title: '${rows.length} cancelled · ${inr(rows.fold<num>(0, (a, r) => a + (r['amount'] as num)))}', padding: const EdgeInsets.all(12), child: Column(children: [
+      for (final r in rows) ListTile(dense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+        title: Text('${r['receipt_no']} · ${r['student']} · ${r['class'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
+        subtitle: _sub('Reason: ${r['reason']}\nPaid ${_dmy(r['paid_on'])} · cancelled ${_dmy(r['cancelled_on'])} · asked by ${r['asked_by'] ?? '—'} · approved by ${r['approved_by'] ?? '—'}'),
+        isThreeLine: true,
+        trailing: Text(inr(r['amount'] as num), style: const TextStyle(fontWeight: FontWeight.w800, decoration: TextDecoration.lineThrough))),
+    ]));
+  }
+}
