@@ -86,16 +86,16 @@ const familyHelp = <HelpItem>[
     'Use the arrows at the top to see other days.',
   ], keywords: 'homework classwork assignment things to bring test project', route: '/diary', button: 'Open the diary', popular: true),
   HelpItem('d-exam', 'Diary', 'Where are the exam dates and portions?', [
-    'On Home, tap Exams.',
+    'On Home, tap Calendar, then the Exams tab.',
     'Each exam shows the date and the portions for each subject.',
   ], keywords: 'exam test portion syllabus timetable date periodic term', route: '/exams', button: 'Open exams'),
   HelpItem('d-tt', 'Diary', 'Where is the class timetable?', [
-    'On Home, tap Timetable. It shows each day’s periods.',
+    'On Home, tap Calendar, then the Timetable tab. It shows each day’s periods with times.',
   ], keywords: 'timetable periods schedule', route: '/timetable', button: 'Open timetable'),
-  HelpItem('d-ws', 'Diary', 'Where are the worksheets?', [
-    'On Home, tap Worksheets.',
-    'Tap a worksheet to open or download it.',
-  ], keywords: 'worksheet practice download pdf', route: '/worksheets', button: 'Open worksheets'),
+  HelpItem('d-att', 'Diary', 'Where can I see attendance?', [
+    'On Home, tap Attendance. You see the streak (days present in a row), this month day by day, and the year so far.',
+    'The Leave tab is where you ask for leave.',
+  ], keywords: 'attendance absent present streak leave', route: '/attendance', button: 'Open attendance'),
   // Notices
   HelpItem('n-notice', 'Notices', 'Where do I see school notices?', [
     'Tap Notices at the bottom of the screen.',
@@ -152,7 +152,7 @@ const familyHelp = <HelpItem>[
     'Choose the teacher and type your message. The teacher replies in the app.',
   ], keywords: 'message chat teacher contact talk ask', route: '/messages', button: 'Open messages'),
   HelpItem('m-leave', 'School', 'How do I apply for leave for my child?', [
-    'On Home, tap Leave.',
+    'On Home, tap Attendance, then the Leave tab.',
     'Tap Apply, choose the dates and write the reason.',
     'The class teacher sees it at once. You get a notification when it is approved.',
   ], keywords: 'leave absent sick holiday not coming', route: '/leave', button: 'Open leave'),
@@ -164,12 +164,12 @@ const familyHelp = <HelpItem>[
     'Write your message. The school office will reply.',
   ], keywords: 'feedback complaint suggestion problem', route: '/feedback', button: 'Open feedback'),
   HelpItem('m-toppers', 'School', 'Where are the Board Toppers and the Hall of Fame?', [
-    'On Home, tap Toppers.',
+    'On Home, tap Honours, then Toppers (or Hall of Fame).',
     'Choose Class X or Class XII and a year to see the top 3 and the subject centums.',
     'Tap Hall of Fame to see former students and where they are today.',
   ], keywords: 'toppers topper board results rank centum 100 hall of fame alumni old students', route: '/toppers', button: 'Open Toppers'),
   HelpItem('m-council', 'School', 'Where is the Student Council? How do I vote?', [
-    'On Home, tap Student Council to see this year’s council. Earlier years are the tabs at the top.',
+    'On Home, tap Honours, then Council to see this year’s council. Earlier years are the tabs at the top.',
     'When the elections open you get a notification and a red “Vote now” box appears there.',
     'Choose one candidate for each post, check your choices and tap “Submit my vote”. Your vote is secret and cannot be changed.',
   ], keywords: 'student council head boy head girl captain election vote voting candidates'),
@@ -186,6 +186,16 @@ const familyHelp = <HelpItem>[
     'Your child has moved up to the new class. The school is now making the new sections.',
     'When the school publishes them you get a notification with the section and class teacher.',
   ], keywords: 'section to be announced new class next year moved up promotion tba'),
+  // ---- Release F
+  HelpItem('d-mylist', 'Diary', 'What is “My list”?', ['Open Diary and tap My list.', 'Homework with a due date appears by itself. Tap + Add my own for anything else.', 'Tick when done. Ticked items go away the next day; late ones show in red.'], keywords: 'my list checklist homework tick todo', route: '/diary', button: 'Open diary'),
+  HelpItem('f-houses', 'School', 'Where can I see the house points?', ['Open Honours → Houses. The four flags rise to this year’s points; the leader has a crown.', 'Your child’s house is shown under the flags.'], keywords: 'house points athena ares artemis apollo flag', route: '/houses', button: 'Open Houses'),
+  HelpItem('f-thanks', 'School', 'How do I send a Teachers’ Day thank-you?', ['During Teachers’ Day week (2–8 September) tap “Say thank you to your teachers” on Home.', 'Tap a teacher, write a line or tap a ready line, then Send. One note per teacher each year.'], keywords: 'teachers day thank you note wall september', route: '/thanks', button: 'Open'),
+  HelpItem('f-review', 'School', 'What is the Year in Review?', ['From 15 May to 30 June a card on Home plays a short story of your child’s year.', 'Tap the right side for next, the left side for back. On the last card tap Share with family.'], keywords: 'year in review story share may', route: '/year-review', button: 'Play'),
+  HelpItem('forgot_password', 'Sign-in', 'I forgot the password', ['On the sign-in screen tap “Forgot password?”.', 'Type the admission number and the phone number registered with the school.', 'The class teacher gets your request and gives you a new password slip.'], keywords: 'forgot password reset new slip sign in'),
+  HelpItem('f-idcard', 'Children', 'Where is the ID card?', ['Open Profile → ID card.', 'Tap the card to turn it over. Show it at the gate or on the bus.'], keywords: 'id card identity gate bus', route: '/idcard', button: 'Open ID card'),
+  HelpItem('auto-dark', 'School', 'Why does the app turn dark in the evening?', ['The app uses its dark look from 6:15 pm to 6:15 am and the light look in the day, by itself.', 'To keep one look all the time: Settings → Appearance → Light or Dark.'], keywords: 'night dark theme light', route: '/settings', button: 'Open Settings'),
+  HelpItem('offline', 'School', 'Can I use the app without internet?', ['The diary, notices, timetable, ID card and fees open from the copy saved last time.', 'A thin bar at the top shows when that copy was saved.', 'A message typed without internet goes by itself when the internet is back.'], keywords: 'offline no internet network'),
+  HelpItem('f-tour', 'School', 'How do I see the app tour again?', ['Open Help (Profile → Help & feedback).', 'Tap “Take the tour again” at the top.'], keywords: 'tour guide intro walkthrough how to use app new'),
 ];
 
 // ------------------------------------------------------------------ teachers & office
@@ -337,4 +347,18 @@ const staffHelp = <HelpItem>[
     'Open Classes & fees → Classes → tap the class.',
     'Choose the class teacher and the teacher for each subject, then Save.',
   ], keywords: 'class teacher subject teacher assign section', route: '/staff/setup', button: 'Open Classes & fees'),
+  // ---- Release F
+  HelpItem('t-search', 'Getting started', 'How do I find a student quickly?', ['Click the search box at the top of any page, or press Ctrl + K (⌘ + K on a Mac).', 'Type 2–3 letters of the name, the admission number, a parent’s phone or a receipt number.', 'Use ↑ ↓ and Enter, or click the student. You only see students you are allowed to see.'], keywords: 'search find student phone receipt admission ctrl k'),
+  HelpItem('t-attendance', 'Class', 'How do I take attendance?', ['Open Attendance. Everyone starts as present.', 'Tap the students who are absent (tap again for late), then Save.', 'Families of absent students are told at once. You can correct the last 7 days; older days go to the office.'], keywords: 'attendance absent present late register', route: '/staff/attendance', button: 'Open Attendance'),
+  HelpItem('t-also-send', 'Class', 'Can I post the same homework to my other sections?', ['Yes. When you post in the diary, “Also send to” lists your other sections of the same grade for the same subject, already ticked.', 'Untick any you don’t want. Other grades are never offered.'], keywords: 'diary post other sections same homework', route: '/staff/diary', button: 'Open Diary'),
+  HelpItem('t-undo', 'Getting started', 'I deleted something by mistake', ['Tap Undo on the bar at the bottom right away.', 'Later: IT or the Principal can bring it back from School setup → Bin for 30 days.'], keywords: 'delete undo bin restore mistake'),
+  HelpItem('t-msg-edit', 'Parents', 'Can I edit or delete a message I sent?', ['Press and hold your message (right-click on a laptop) → Edit or Delete for everyone.', 'Allowed for 2 days after sending.'], keywords: 'message delete edit wrong unsend chat'),
+  HelpItem('t-notice-unsend', 'Notices', 'Can I take back a notice?', ['Tap ⋮ on the notice → Unsend, within 10 minutes. It disappears from every phone.', 'After that the office can delete it. You can always Edit it; families see “Updated”.'], keywords: 'notice unsend delete edit wrong'),
+  HelpItem('s-houses', 'Setup', 'How do I add house points?', ['Open Honours → Houses. Tap the house, type the points and a short reason, then Add.', 'Coordinators, the office and the Principal can add points. IT / the Principal can let other teachers add them under House in-charges.', 'A wrong entry: tap the bin icon next to it (Undo is offered).'], keywords: 'house points athena ares artemis apollo pe add', route: '/staff/houses', button: 'Open Houses'),
+  HelpItem('s-thanks', 'Class', 'Where are my Teachers’ Day thank-you notes?', ['During Teachers’ Day week a gold card on Today shows your notes. Tap it to open your wall.', 'The notes stay with you after the week.'], keywords: 'thank you notes teachers day wall', route: '/staff/thanks', button: 'Open my wall'),
+  HelpItem('staff_approvals', 'Office', 'Where do I approve things?', ['Open Approvals in the menu.', 'Password help, leave requests, receipts to cancel and certificates still to give are all in one list.', 'The number on the menu shows how many are waiting.'], keywords: 'approve approvals password leave receipt cancel certificate', route: '/staff/approvals', button: 'Open Approvals'),
+  HelpItem('t-inactive', 'Setup', 'A teacher has left. What do I do?', ['School setup → Staff → open the teacher → switch off “Working here”.', 'Choose who takes each of their classes, then Make inactive. Everything they wrote stays.'], keywords: 'staff left inactive resign handover classes'),
+  HelpItem('t-tour', 'Getting started', 'How do I see the app tour again?', ['Open Help at the bottom of the menu.', 'Tap “Take the tour again” at the top.'], keywords: 'tour guide intro walkthrough how to use new'),
+  HelpItem('o-cert', 'Office', 'How do I print a TC, Study, Bonafide or No dues certificate?', ['Open Certificates → type the student’s name or admission number (past students are found too).', 'Tap the certificate. What the app knows is filled in; yellow boxes are for you to type in. Every box can be changed.', 'Tap Print / PDF. The certificate gets its own number (for example RCISKN/TC/2026-27/0001) and is kept, so it can be printed again exactly the same from “Issued recently”.', 'A No dues certificate can be printed only when no fees are due till today.'], keywords: 'tc transfer certificate study bonafide no dues certificate print issue reprint leaving', route: '/staff/certificates', button: 'Open Certificates'),
+  HelpItem('s-idcards', 'Office', 'How do I print ID cards?', ['Open ID cards and pick a class, or All classes.', 'The "Not ready" list shows what is missing for each student (photo, blood group, parent phone, address, bus route).', 'Tap Print: the ready cards come on A4 at the real card size, fronts on one page and backs on the next. Print both sides, flip on long edge, actual size (100%).', 'For the card printer, tap Excel / photos pack.', 'When every student is ready, the page and the ID cards menu item glow gold.'], keywords: 'id card identity print vendor photo blood group', route: '/staff/id-cards', button: 'Open ID cards'),
 ];
