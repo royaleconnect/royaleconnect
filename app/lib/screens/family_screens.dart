@@ -7,8 +7,13 @@ import '../auth/session.dart';
 import '../core/data2.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
+import '../widgets/empty_state.dart';
 import 'academics_screens.dart' show AppPage;
+import '../widgets/royal_motion.dart' show loopWhileVisible;
 import '../widgets/royal_extras.dart' show GoldLoading;
+import '../widgets/hub_tabs.dart';
+import 'package:go_router/go_router.dart';
+import '../core/data3.dart';
 
 Widget _loading() => const GoldLoading();
 Widget _empty(BuildContext c, String t) => Center(child: Padding(padding: const EdgeInsets.all(32), child: Text(t, textAlign: TextAlign.center, style: TextStyle(color: Theme.of(c).colorScheme.onSurfaceVariant, height: 1.5))));
@@ -22,7 +27,14 @@ class StorageImage extends ConsumerWidget {
     final url = ref.watch(signedUrlProvider(path));
     final ph = Container(width: width, height: height, color: Theme.of(context).colorScheme.surfaceContainerHighest);
     return ClipRRect(borderRadius: radius ?? BorderRadius.zero, child: url.when(loading: () => ph, error: (_, __) => ph,
-        data: (u) => CachedNetworkImage(imageUrl: u, fit: fit, width: width, height: height, placeholder: (_, __) => ph, errorWidget: (_, __, ___) => ph)));
+        data: (u) {
+          // kept on the device by its file name (the web link changes every hour, the photo does not), and decoded
+          // only as large as it is shown, so lists of photos scroll smoothly
+          final dpr = MediaQuery.devicePixelRatioOf(context);
+          return CachedNetworkImage(imageUrl: u, cacheKey: path, fit: fit, width: width, height: height,
+              memCacheWidth: width == null || !width!.isFinite ? null : (width! * dpr).round(),
+              fadeInDuration: const Duration(milliseconds: 220), placeholder: (_, __) => ph, errorWidget: (_, __, ___) => ph);
+        }));
   }
 }
 
@@ -47,7 +59,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
   Widget _moments(ColorScheme cs) {
     final m = ref.watch(momentsProvider);
     final me = ref.watch(sessionProvider).value!.active!;
-    return m.when(loading: _loading, error: (e, _) => _empty(context, '$e'), data: (list) => list.isEmpty ? _empty(context, 'Photos the class teacher shares from the classroom appear here.') :
+    return m.when(loading: _loading, error: (e, _) => _empty(context, '$e'), data: (list) => list.isEmpty ? const EmptyState(kind: EmptyKind.photos, title: 'No class photos yet', line: 'Photos the class teacher shares from the classroom appear here.') :
       ListView.separated(padding: const EdgeInsets.all(20), itemCount: list.length, separatorBuilder: (_, __) => const SizedBox(height: 14), itemBuilder: (_, i) {
         final mo = list[i]; final paths = List<String>.from(mo['photo_paths'] ?? []);
         final likes = (mo['moment_like'] as List); final liked = likes.any((l) => l['student_id'] == me.id);
@@ -68,7 +80,7 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
 
   Widget _albums(ColorScheme cs) {
     final a = ref.watch(albumsProvider);
-    return a.when(loading: _loading, error: (e, _) => _empty(context, '$e'), data: (list) => list.isEmpty ? _empty(context, 'School event albums appear here.') :
+    return a.when(loading: _loading, error: (e, _) => _empty(context, '$e'), data: (list) => list.isEmpty ? const EmptyState(kind: EmptyKind.photos, title: 'No albums yet', line: 'School event albums appear here.') :
       ListView(padding: const EdgeInsets.all(20), children: [for (final al in list) ...[
         Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [Expanded(child: Text(al['title'], style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17))), if (al['event_date'] != null) Text(DateFormat('d MMM yyyy').format(DateTime.parse(al['event_date'])), style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant))])),
         Builder(builder: (_) { final photos = (List<Map<String, dynamic>>.from(al['album_photo'] ?? [])..sort((x, y) => (x['sort_order'] as int).compareTo(y['sort_order'] as int))).map((p) => p['path'] as String).toList();
@@ -97,8 +109,8 @@ class LeaveScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final leaves = ref.watch(leavesProvider);
     final cs = Theme.of(context).colorScheme;
-    return AppPage(title: 'Leave', actions: [TextButton.icon(onPressed: () => _apply(context, ref), icon: const Icon(Icons.add_rounded, color: Colors.white), label: const Text('Apply', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)))],
-      body: leaves.when(loading: _loading, error: (e, _) => _empty(context, '$e'), data: (list) => list.isEmpty ? _empty(context, 'No leave applied yet. Tap Apply to inform the class teacher.') :
+    return AppPage(title: 'Leave', hub: Hub.attendance, actions: [TextButton.icon(onPressed: () => _apply(context, ref), icon: const Icon(Icons.add_rounded, color: Colors.white), label: const Text('Apply', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)))],
+      body: leaves.when(loading: _loading, error: (e, _) => _empty(context, '$e'), data: (list) => list.isEmpty ? const EmptyState(kind: EmptyKind.calendar, title: 'No leave applied', line: 'Tap Apply to inform the class teacher.') :
         ListView(padding: const EdgeInsets.all(20), children: [for (final l in list) Container(margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(18)), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [Pill(l['status'], fg: (st[l['status']] ?? (Brand.muted, Brand.surface2)).$1, bg: (st[l['status']] ?? (Brand.muted, Brand.surface2)).$2), const Spacer(),
             Text(l['from_date'] == l['to_date'] ? DateFormat('d MMM yyyy').format(DateTime.parse(l['from_date'])) : '${DateFormat('d MMM').format(DateTime.parse(l['from_date']))} – ${DateFormat('d MMM yyyy').format(DateTime.parse(l['to_date']))}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13))]),
@@ -175,8 +187,31 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ])),
           const SizedBox(height: 12),
           const NoteBox('To correct any detail, message the class teacher or write to the school office. Changes are made by the office only.'),
+          const SizedBox(height: 12),
+          _ProfileActions(),
         ]);
       }));
+  }
+}
+
+/// ID card · switch child · password · help & feedback · call the school office.
+class _ProfileActions extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    final s = ref.watch(sessionProvider).value;
+    final settings = ref.watch(appSettingsProvider).value;
+    Widget tile(IconData ic, String t, String sub, VoidCallback onTap, {Color? colour}) => Card(margin: const EdgeInsets.only(bottom: 8), child: ListTile(
+      leading: CircleAvatar(backgroundColor: (colour ?? Brand.crimson).withValues(alpha: .12), child: Icon(ic, color: colour ?? Brand.crimsonDeep, size: 20)),
+      title: Text(t, style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text(sub, style: TextStyle(color: cs.onSurfaceVariant)),
+      trailing: const Icon(Icons.chevron_right_rounded), onTap: onTap));
+    return Column(children: [
+      if (featureOn(settings, 'idcard')) tile(Icons.badge_rounded, 'ID card', 'Show it at the gate or on the bus', () => context.push('/idcard'), colour: Brand.violet),
+      if ((s?.students.length ?? 0) > 1) tile(Icons.swap_horiz_rounded, 'Switch child', s!.students.map((x) => x.fullName.split(' ').first).join(' · '), () => context.push('/students')),
+      tile(Icons.lock_reset_rounded, 'Change password', 'And other settings', () => context.push('/settings'), colour: Brand.blue),
+      tile(Icons.help_outline_rounded, 'Help & feedback', 'How to use the app · send us your thoughts', () => context.push('/help'), colour: Brand.green),
+      tile(Icons.call_rounded, 'Call school office', '080-25435454 / 55', () => launchUrl(Uri.parse('tel:08025435454')), colour: Brand.amber),
+    ]);
   }
 }
 
@@ -221,7 +256,9 @@ class _SlowDrift extends StatefulWidget {
 }
 
 class _SlowDriftState extends State<_SlowDrift> with SingleTickerProviderStateMixin {
-  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(seconds: 14))..repeat(reverse: true);
+  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(seconds: 14));
+  @override
+  void didChangeDependencies() { super.didChangeDependencies(); loopWhileVisible(context, c, reverse: true); }
   @override
   void dispose() { c.dispose(); super.dispose(); }
   @override
