@@ -7,6 +7,7 @@ import 'core/data3.dart';
 import 'core/theme.dart';
 import 'router.dart';
 import 'widgets/common.dart';
+import 'widgets/hub_tabs.dart';
 
 /// Parents and students on a laptop or large tablet: the school menu sits on the left (like the staff panel)
 /// and the page fills the rest of the screen. Phones keep the tiles and bottom tabs.
@@ -14,11 +15,16 @@ class ParentFrame extends ConsumerWidget {
   final Widget child;
   const ParentFrame({super.key, required this.child});
 
+  // 12 items (11 without the bus). Pages that belong together open with tabs at the top:
+  // Calendar · Timetable · Exams — Attendance · Leave — Star · Toppers · Hall of Fame · Council · Houses.
   static const _groups = <(String, List<(String, String, IconData)>)>[
-    ('DAILY', [('/', 'Home', Icons.home_rounded), ('/desk', "Principal's Desk", Icons.auto_awesome_rounded), ('/diary', 'Class diary', Icons.menu_book_rounded), ('/announcements', 'Announcements', Icons.campaign_rounded), ('/messages', 'Messages', Icons.chat_bubble_rounded)]),
-    ('STUDIES', [('/calendar', 'Calendar', Icons.calendar_month_rounded), ('/timetable', 'Timetable', Icons.grid_view_rounded), ('/exams', 'Exams & portions', Icons.fact_check_rounded), ('/plan', 'Monthly plan', Icons.format_list_bulleted_rounded), ('/worksheets', 'Worksheets', Icons.task_rounded), ('/reports', 'Report cards', Icons.school_rounded)]),
-    ('SCHOOL', [('/fees', 'Fees & receipts', Icons.account_balance_wallet_rounded), ('/bus', 'Bus', Icons.directions_bus_rounded), ('/gallery', 'Moments & albums', Icons.photo_library_rounded), ('/star', 'Star of the month', Icons.star_rounded), ('/leave', 'Leave', Icons.event_available_rounded), ('/toppers', 'Board Toppers', Icons.emoji_events_rounded), ('/fame', 'Hall of Fame', Icons.workspace_premium_rounded), ('/council', 'Student Council', Icons.how_to_vote_rounded), ('/feedback', 'Feedback', Icons.rate_review_rounded), ('/help', 'Help', Icons.help_outline_rounded)]),
+    ('DAILY', [('/', 'Home', Icons.home_rounded), ('/diary', 'Diary', Icons.menu_book_rounded), ('/announcements', 'Notices', Icons.campaign_rounded), ('/messages', 'Messages', Icons.chat_bubble_rounded)]),
+    ('SCHOOL', [('/calendar', 'Calendar', Icons.calendar_month_rounded), ('/attendance', 'Attendance & leave', Icons.event_available_rounded), ('/reports', 'Reports', Icons.school_rounded),
+                ('/fees', 'Fees & receipts', Icons.account_balance_wallet_rounded), ('/bus', 'Bus', Icons.directions_bus_rounded), ('/gallery', 'Gallery', Icons.photo_library_rounded), ('honours', 'Honours', Icons.emoji_events_rounded)]),
+    ('ME', [('/profile', 'Profile', Icons.person_rounded)]),
   ];
+  static const _hubOf = {'/timetable': '/calendar', '/exams': '/calendar', '/leave': '/attendance', '/star': 'honours', '/toppers': 'honours', '/fame': 'honours', '/council': 'honours', '/houses': 'honours',
+    '/help': '/profile', '/feedback': '/profile', '/students': '/profile', '/idcard': '/profile', '/desk': '/'};
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -30,11 +36,13 @@ class ParentFrame extends ConsumerWidget {
     final unreadNotices = ref.watch(noticesProvider).value?.where((n) => !n.read).length ?? 0;
     final settings = ref.watch(appSettingsProvider).value;
     // pages IT has switched off are not shown
-    const switches = {'/messages': 'messages', '/bus': 'bus', '/gallery': 'gallery', '/star': 'star', '/worksheets': 'worksheets', '/plan': 'plan', '/leave': 'leave', '/toppers': 'toppers', '/fame': 'fame', '/council': 'council'};
-    bool allowed(String p) => switches[p] == null || featureOn(settings, switches[p]!);
+    const switches = {'/messages': 'messages', '/bus': 'bus', '/gallery': 'gallery'};
+    bool allowed(String p) => p == 'honours' ? const ['star', 'toppers', 'fame', 'council', 'houses'].any((k) => featureOn(settings, k)) : (switches[p] == null || featureOn(settings, switches[p]!));
     return AnimatedBuilder(animation: router.routerDelegate, builder: (context, _) {
       final loc = router.routerDelegate.currentConfiguration.uri.path;
-      bool on(String p) => p == '/' ? loc == '/' : (loc == p || loc.startsWith('$p/') || (p == '/announcements' && loc.startsWith('/notice')) || (p == '/messages' && loc.startsWith('/chat')) || (p == '/fees' && (loc.startsWith('/pay') || loc.startsWith('/receipt'))));
+      final top = '/${loc.split('/').where((x) => x.isNotEmpty).firstOrNull ?? ''}';
+      final hub = _hubOf[top];
+      bool on(String p) => hub != null ? hub == p : p == '/' ? loc == '/' : (loc == p || loc.startsWith('$p/') || (p == '/announcements' && loc.startsWith('/notice')) || (p == '/messages' && loc.startsWith('/chat')) || (p == '/fees' && (loc.startsWith('/pay') || loc.startsWith('/receipt'))));
       int badge(String p) => p == '/messages' ? unreadMsgs : p == '/announcements' ? unreadNotices : 0;
       return Row(children: [
         Material(child: Container(width: 256, decoration: const BoxDecoration(gradient: Brand.headerGradient), child: SafeArea(child: Column(children: [
@@ -60,7 +68,7 @@ class ParentFrame extends ConsumerWidget {
           Expanded(child: ListView(padding: const EdgeInsets.fromLTRB(10, 4, 10, 8), children: [
             for (final (g, items) in _groups) ...[
               Padding(padding: const EdgeInsets.fromLTRB(12, 14, 12, 4), child: Text(g, style: TextStyle(color: Colors.white.withValues(alpha: .6), fontSize: 10.5, letterSpacing: 1.6, fontWeight: FontWeight.w800))),
-              for (final (p, l, i) in items) if ((p != '/bus' || onBus) && allowed(p)) _Nav(l, i, selected: on(p), badge: badge(p), onTap: () => router.go(p)),
+              for (final (p, l, i) in items) if ((p != '/bus' || onBus) && allowed(p)) _Nav(l, i, selected: on(p), badge: badge(p), onTap: () => router.go(p == 'honours' ? hubStart(Hub.honours, settings) : p)),
             ],
           ])),
           Container(height: 1, margin: const EdgeInsets.symmetric(horizontal: 18), color: Colors.white.withValues(alpha: .15)),
