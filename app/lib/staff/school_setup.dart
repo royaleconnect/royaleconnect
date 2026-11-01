@@ -12,6 +12,8 @@ import '../widgets/common.dart';
 import 'import_excel.dart';
 import 'staff_data.dart';
 import 'staff_shell.dart';
+import '../core/cache.dart';
+import '../widgets/hub_tabs.dart';
 
 /// School setup: the school adds and changes its own records — no import sheet, no IT person needed.
 ///   Students · Staff · Classes · Fees · Bus routes
@@ -66,6 +68,7 @@ void _slip(BuildContext context, String title, String text) => showDialog(contex
 
 // ------------------------------------------------------------------ data
 final setupSectionsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.cacheFor();
   final data = await db.from('section')
       .select('id,name,class_teacher_id,academic_year_id,grade:grade_id(id,code,name,sort_order),class_teacher:class_teacher_id(display_name),enrolment(count),teaching_assignment(subject_id,staff_id)')
       .eq('status', 'active').eq('placeholder', false);
@@ -81,11 +84,13 @@ bool _isCrew(Map<String, dynamic> st) => List<String>.from(st['roles'] ?? const 
 
 /// Active teaching staff, for "class teacher" / "subject teacher" pickers.
 final _teachersProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.cacheFor();
   final rows = await ref.watch(staffListProvider.future);
   return rows.where((s) => s['active'] == true && !_isCrew(s)).toList();
 });
 
 final _feePlanProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, gradeId) async {
+  ref.cacheFor();
   final yearId = await gradeYearId(gradeId);
   final data = await db.from('fee_plan').select('id,amount,due_on,optional,fee_head:fee_head_id(id,name,kind,sort_order)')
       .eq('academic_year_id', yearId).eq('grade_id', gradeId);
@@ -97,6 +102,7 @@ final _feeHeadsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>
     List<Map<String, dynamic>>.from(await db.from('fee_head').select('id,name,kind').order('sort_order', ascending: true)));
 
 final _routeStudentsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, routeId) async {
+  ref.cacheFor();
   final data = await db.from('transport_enrolment').select('student_id,stop_id,student:student_id(full_name,admission_no),stop:stop_id(name,seq)').eq('route_id', routeId);
   final rows = List<Map<String, dynamic>>.from(data);
   rows.sort((a, b) => ((a['stop']?['seq'] ?? 0) as int).compareTo((b['stop']?['seq'] ?? 0) as int));
@@ -119,7 +125,7 @@ class _SchoolSetupScreenState extends ConsumerState<SchoolSetupScreen> {
     if (tabs.isEmpty) return const StaffPage(title: 'Classes & fees', body: NoteBox('Your role does not include this page.'));
     final t = tabs.contains(tab) ? tab! : tabs.first;
     return StaffPage(
-      title: 'Classes & fees',
+      title: 'Classes & fees', hub: Hub.schoolSetup,
       subtitle: 'Sections and their teachers, the fee plan for each grade, and loading lists from Excel. Every change is saved at once and recorded in the activity log.',
       body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
@@ -436,8 +442,16 @@ class _StaffEditorState extends ConsumerState<_StaffEditor> {
         ]),
       ],
       const SizedBox(height: 8),
-      SwitchListTile(contentPadding: EdgeInsets.zero, value: active, onChanged: (v) => setState(() => active = v),
-          title: const Text('Working here'), subtitle: Text(active ? 'Can sign in.' : 'Left — signed out everywhere and cannot sign in.')),
+      SwitchListTile(contentPadding: EdgeInsets.zero, value: active, onChanged: (v) async {
+            // making someone inactive: first choose who takes each of their classes, so no class is left without a teacher
+            if (!v && st != null && st!['active'] == true) {
+              final done = await showDialog<bool>(context: context, barrierDismissible: false, builder: (_) => HandoverDialog(staff: st!));
+              if (done == true && mounted) Navigator.pop(context, true);
+              return;
+            }
+            setState(() => active = v);
+          },
+          title: const Text('Working here'), subtitle: Text(active ? 'Can sign in.' : 'Inactive — signed out everywhere and cannot sign in. All their work stays.')),
       if (st != null) Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: busy ? null : () async {
         try {
           final r = await callFunction(ref, 'password', {'action': 'reset_staff', 'staff_id': st!['id']});
@@ -1046,5 +1060,79 @@ class _RouteStudentsState extends ConsumerState<_RouteStudents> {
     ], actions: [
       FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
     ]);
+  }
+}
+
+/// Making a staff member inactive. Shows every class and subject they still have, and asks who takes each one.
+/// Their diary notes, marks and messages all stay; they can be made active again any time.
+class HandoverDialog extends ConsumerStatefulWidget {
+  final Map<String, dynamic> staff;
+  const HandoverDialog({super.key, required this.staff});
+  @override
+  ConsumerState<HandoverDialog> createState() => _HandoverDialogState();
+}
+
+class _HandoverDialogState extends ConsumerState<HandoverDialog> {
+  Map<String, dynamic>? hold; final picks = <String, String>{}; bool busy = false; String? sameForAll;
+
+  @override
+  void initState() {
+    super.initState();
+    db.rpc('staff_holdings', params: {'p_staff': widget.staff['id']}).then((r) { if (mounted) setState(() => hold = Map<String, dynamic>.from(r as Map)); },
+        onError: (e) { if (mounted) toast(context, _msg(e)); });
+  }
+
+  List<Map<String, dynamic>> get _subjects => [for (final x in (hold?['subjects'] as List? ?? const [])) Map<String, dynamic>.from(x)];
+  List<Map<String, dynamic>> get _classes => [for (final x in (hold?['classes'] as List? ?? const [])) Map<String, dynamic>.from(x)];
+
+  Future<void> _go() async {
+    final keys = [for (final x in _subjects) 's:${x['id']}', for (final x in _classes) 'c:${x['section_id']}'];
+    if (keys.any((k) => picks[k] == null)) { toast(context, 'Choose who takes each class first.'); return; }
+    setState(() => busy = true);
+    try {
+      await db.rpc('staff_deactivate', params: {'p_staff': widget.staff['id'], 'p_moves': [
+        for (final x in _subjects) {'kind': 'subject', 'id': x['id'], 'to': picks['s:${x['id']}']},
+        for (final x in _classes) {'kind': 'class', 'section_id': x['section_id'], 'to': picks['c:${x['section_id']}']},
+      ]});
+      ref.invalidate(staffListProvider);
+      if (mounted) { toast(context, '${widget.staff['display_name'] ?? widget.staff['full_name']} is now inactive. Their classes have new teachers.'); Navigator.pop(context, true); }
+    } catch (e) { if (mounted) { toast(context, _msg(e)); setState(() => busy = false); } }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final teachers = [for (final t in ref.watch(staffListProvider).value ?? const <Map<String, dynamic>>[])
+        if (t['active'] == true && t['id'] != widget.staff['id'] && !_isCrew(t)) t];
+    Widget pick(String key, String label) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [
+      Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w700))),
+      const SizedBox(width: 10),
+      SizedBox(width: 230, child: DropdownButtonFormField<String>(isExpanded: true, value: picks[key], hint: const Text('Who takes it?'),
+          items: [for (final t in teachers) DropdownMenuItem(value: t['id'] as String, child: Text(t['display_name'] ?? t['full_name'] ?? '', overflow: TextOverflow.ellipsis))],
+          onChanged: (v) => setState(() => picks[key] = v!))),
+    ]));
+    final nothing = hold != null && _subjects.isEmpty && _classes.isEmpty;
+    return AlertDialog(
+      title: Text('Make ${widget.staff['display_name'] ?? widget.staff['full_name']} inactive'),
+      content: SizedBox(width: 560, child: hold == null ? const SizedBox(height: 80, child: Center(child: CircularProgressIndicator()))
+        : SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+            Text(nothing ? 'They have no classes this year. They will be signed out and cannot sign in. Everything they wrote stays.'
+                : 'They will be signed out and cannot sign in. Everything they wrote stays. First, choose who takes each of their classes:', style: TextStyle(color: cs.onSurfaceVariant)),
+            if (!nothing && teachers.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 12, bottom: 4), child: Row(children: [
+              const Text('Same teacher for all: '), const SizedBox(width: 8),
+              Expanded(child: DropdownButton<String>(isExpanded: true, value: sameForAll, hint: const Text('Optional'),
+                items: [for (final t in teachers) DropdownMenuItem(value: t['id'] as String, child: Text(t['display_name'] ?? t['full_name'] ?? ''))],
+                onChanged: (v) => setState(() { sameForAll = v; for (final x in _subjects) { picks['s:${x['id']}'] = v!; } for (final x in _classes) { picks['c:${x['section_id']}'] = v!; } }))),
+            ])),
+            if (_classes.isNotEmpty) ...[const SizedBox(height: 10), Text('CLASS TEACHER OF', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: Brand.amber)), const SizedBox(height: 6),
+              for (final x in _classes) pick('c:${x['section_id']}', x['label'] ?? '')],
+            if (_subjects.isNotEmpty) ...[const SizedBox(height: 10), Text('TEACHES', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: Brand.amber)), const SizedBox(height: 6),
+              for (final x in _subjects) pick('s:${x['id']}', x['label'] ?? '')],
+          ]))),
+      actions: [
+        TextButton(onPressed: busy ? null : () => Navigator.pop(context, false), child: const Text('Cancel')),
+        FilledButton(style: FilledButton.styleFrom(backgroundColor: Brand.crimson), onPressed: busy || hold == null ? null : _go, child: Text(busy ? 'Saving…' : 'Make inactive')),
+      ],
+    );
   }
 }
