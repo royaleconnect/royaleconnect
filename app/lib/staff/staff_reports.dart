@@ -7,6 +7,8 @@ import '../core/theme.dart';
 import '../widgets/common.dart';
 import 'staff_data.dart';
 import 'staff_shell.dart';
+import '../core/cache.dart';
+import '../widgets/hub_tabs.dart';
 
 /// Class teachers fill in everything on the report card except marks (marks come from Marks entry):
 /// attendance, height and weight, co-scholastic grades and remarks. Then preview the PDF and publish to families.
@@ -20,6 +22,7 @@ final _coAreasProvider = FutureProvider<List<String>>((ref) async {
 
 /// Report card names for a grade: Term I, Term II, plus every periodic test in the exam list.
 final _termsProvider = FutureProvider.autoDispose.family<List<String>, String>((ref, gradeId) async {
+  ref.cacheFor();
   final yearId = await gradeYearId(gradeId);
   final ex = await db.from('exam').select('name,term,max_marks').eq('grade_id', gradeId).eq('academic_year_id', yearId).order('starts_on', ascending: true);
   final out = <String>['Term I', 'Term II'];
@@ -35,6 +38,7 @@ final _termsProvider = FutureProvider.autoDispose.family<List<String>, String>((
 });
 
 final _cardsProvider = FutureProvider.autoDispose.family<Map<String, Map<String, dynamic>>, (String, String)>((ref, key) async {
+  ref.cacheFor();
   final (sectionId, term) = key;
   final yearId = await sectionYearId(sectionId);
   final studs = await ref.watch(sectionStudentsProvider(sectionId).future);
@@ -181,7 +185,7 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
     final published = rows.values.where((r) => r.status == 'published' || r.status == 'locked').length;
 
     return StaffPage(
-      title: 'Report cards',
+      title: 'Report cards', hub: Hub.staffExams,
       subtitle: 'Attendance, height & weight, co-scholastic grades and remarks. Marks come from Marks entry. Families see nothing until you publish.',
       body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Panel(padding: const EdgeInsets.all(12), child: PickRow(children: [
