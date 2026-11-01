@@ -10,6 +10,9 @@ import '../widgets/common.dart';
 import 'academics_screens.dart' show AppPage;
 import 'toppers_screen.dart' show Face;
 import '../widgets/royal_extras.dart' show GoldLoading;
+import '../core/cache.dart';
+import '../widgets/hub_tabs.dart';
+import '../widgets/r_refresh.dart';
 
 /// Student Council — this year's council (photos, line by line), earlier councils as year tabs,
 /// and voting when the school opens the elections. One vote per post; nobody can see who voted for whom.
@@ -17,12 +20,14 @@ String _msg(Object e) => e is PostgrestException ? e.message : e.toString().repl
 
 /// Councils with their posts and members, newest first (families see published ones; staff see all).
 final councilTermsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.cacheFor();
   final rows = await db.from('council_term').select('id,label,published,council_post(id,title,row_no,sort,council_member(id,full_name,class_label,photo_path,sort))').order('label', ascending: false);
   return List<Map<String, dynamic>>.from(rows);
 });
 
 /// The election this child can vote in right now (null when none is open).
 final openElectionProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
+  ref.cacheFor();
   final s = ref.watch(sessionProvider).value;
   final st = s?.active;
   if (s == null || s.kind != 'student' || st == null) return null;
@@ -33,7 +38,7 @@ final openElectionProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((
 class CouncilScreen extends StatelessWidget {
   const CouncilScreen({super.key});
   @override
-  Widget build(BuildContext context) => const AppPage(title: 'Student Council', body: CouncilView());
+  Widget build(BuildContext context) => const AppPage(title: 'Student Council', hub: Hub.honours, body: CouncilView());
 }
 
 class CouncilView extends ConsumerStatefulWidget {
@@ -63,7 +68,7 @@ class _CouncilViewState extends ConsumerState<CouncilView> {
             rows.putIfAbsent((p['row_no'] ?? 9) as int, () => []).add({...m, 'post': p['title']});
           }
         }
-        return Align(alignment: Alignment.topCenter, child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 640), child: RefreshIndicator(
+        return Align(alignment: Alignment.topCenter, child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 640), child: RRefresh(
           onRefresh: () async { ref.invalidate(councilTermsProvider); ref.invalidate(openElectionProvider); },
           child: ListView(padding: const EdgeInsets.fromLTRB(16, 14, 16, 32), children: [
             if (terms.length > 1) SizedBox(height: 40, child: ListView(scrollDirection: Axis.horizontal, children: [
