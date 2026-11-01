@@ -12,6 +12,8 @@ import '../widgets/common.dart';
 import 'staff_data.dart' show gradesProvider;
 import 'staff_screens_2.dart' show pickAndUpload;
 import 'staff_shell.dart';
+import '../core/cache.dart';
+import '../widgets/hub_tabs.dart';
 
 /// Student Council for staff: everyone sees the council; IT and the Principal manage the members and run the elections.
 String _msg(Object e) => e is PostgrestException ? e.message : e.toString().replaceFirst('Exception: ', '');
@@ -23,7 +25,7 @@ class StaffCouncilScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(sessionProvider).value!;
-    return StaffPage(title: 'Student Council', scroll: false, subtitle: 'The same page students and families see.',
+    return StaffPage(title: 'Student Council', scroll: false, hub: Hub.staffHonours, subtitle: 'The same page students and families see.',
       actions: [if (_canManage(s)) FilledButton.icon(onPressed: () => context.go('/staff/council/manage'), icon: const Icon(Icons.how_to_vote_rounded, size: 18), label: const Text('Members & elections'))],
       body: const CouncilView(staff: true));
   }
@@ -115,7 +117,7 @@ class _MembersTab extends ConsumerWidget {
       ],
     ));
     try {
-      if (r == 'delete') { await db.from('council_post').delete().eq('id', p!['id']); }
+      if (r == 'delete') { await db.from('council_post').delete().eq('id', p!['id']); if (context.mounted) showUndo(context, 'Post', () => ref.invalidate(councilTermsProvider)); }
       else if (r == 'save' && title.text.trim().isNotEmpty) {
         final data = {'term_id': term['id'], 'title': title.text.trim(), 'row_no': int.tryParse(row.text.trim()) ?? 3, 'sort': int.tryParse(order.text.trim()) ?? 100};
         if (p == null) { await db.from('council_post').insert(data); } else { await db.from('council_post').update(data).eq('id', p['id']); }
@@ -207,7 +209,11 @@ class _PersonDialogState extends ConsumerState<_PersonDialog> {
     ]))),
     actions: [
       if (widget.row != null) TextButton(onPressed: busy ? null : () async {
-        try { await db.from(widget.table).delete().eq('id', widget.row!['id']); if (context.mounted) Navigator.pop(context, true); } catch (e) { if (context.mounted) toast(context, _msg(e)); }
+        try {
+          final box = ProviderScope.containerOf(context, listen: false);
+          await db.from(widget.table).delete().eq('id', widget.row!['id']);
+          if (context.mounted) { showUndo(context, widget.table == 'council_member' ? 'Member' : 'Candidate', () => box.invalidate(councilTermsProvider)); Navigator.pop(context, true); }
+        } catch (e) { if (context.mounted) toast(context, _msg(e)); }
       }, child: const Text('Remove', style: TextStyle(color: Brand.crimson))),
       TextButton(onPressed: busy ? null : () => Navigator.pop(context, false), child: const Text('Cancel')),
       FilledButton(onPressed: busy ? null : _save, child: Text(busy ? 'Saving…' : 'Save')),
@@ -217,6 +223,7 @@ class _PersonDialogState extends ConsumerState<_PersonDialog> {
 
 // ================================================================== elections
 final _electionProvider = FutureProvider.autoDispose.family<Map<String, dynamic>?, String>((ref, termId) async {
+  ref.cacheFor();
   final e = await db.from('council_election').select('id,opens_at,closes_at,voter_grades,status,council_candidate(id,post_id,full_name,class_label,slogan,photo_path,sort)').eq('term_id', termId).maybeSingle();
   if (e == null) return null;
   final m = Map<String, dynamic>.from(e);
