@@ -10,6 +10,7 @@ import '../screens/toppers_screen.dart' show Face, ToppersView, FameWall;
 import '../widgets/common.dart';
 import 'staff_screens_2.dart' show pickAndUpload;
 import 'staff_shell.dart';
+import '../widgets/hub_tabs.dart';
 
 /// Office / IT / Principal: add Board Toppers (top 3 + centums, per year) and Hall of Fame entries.
 /// Families see them under Home → Toppers. No consent step is needed for topper photos (school decision).
@@ -30,7 +31,7 @@ class _StaffToppersScreenState extends ConsumerState<StaffToppersScreen> {
     final s = ref.watch(sessionProvider).value!;
     final canEdit = s.isOffice;
     return StaffPage(
-      title: 'Board Toppers & Hall of Fame', scroll: false,
+      title: 'Board Toppers & Hall of Fame', scroll: false, hub: Hub.staffHonours,
       subtitle: 'The same page families see in the app.',
       actions: [if (canEdit) FilledButton.icon(onPressed: () => context.go('/staff/toppers/edit'), icon: const Icon(Icons.edit_rounded, size: 18), label: const Text('Add or change'))],
       body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -234,7 +235,11 @@ class _TopperEditorState extends ConsumerState<_TopperEditor> {
 
   Future<void> _delete() async {
     setState(() => busy = true);
-    try { await db.from('board_topper').delete().eq('id', widget.row!['id']); if (mounted) Navigator.pop(context, true); }
+    try {
+      final box = ProviderScope.containerOf(context, listen: false); final bc = widget.boardClass;
+      await db.from('board_topper').delete().eq('id', widget.row!['id']);
+      if (mounted) { showUndo(context, 'Topper', () { box.invalidate(toppersProvider(bc)); box.invalidate(boardResultsProvider(bc)); }); Navigator.pop(context, true); }
+    }
     catch (e) { if (mounted) { toast(context, _msg(e)); setState(() => busy = false); } }
   }
 
@@ -360,7 +365,11 @@ class _FameEditorState extends ConsumerState<_FameEditor> {
     actions: [
       if (widget.row != null) TextButton(onPressed: busy ? null : () async {
         setState(() => busy = true);
-        try { await db.from('hall_of_fame').delete().eq('id', widget.row!['id']); if (context.mounted) Navigator.pop(context, true); }
+        try {
+          final box = ProviderScope.containerOf(context, listen: false);
+          await db.from('hall_of_fame').delete().eq('id', widget.row!['id']);
+          if (context.mounted) { showUndo(context, 'Hall of Fame entry', () => box.invalidate(hallOfFameProvider)); Navigator.pop(context, true); }
+        }
         catch (e) { if (context.mounted) { toast(context, _msg(e)); setState(() => busy = false); } }
       }, child: const Text('Delete', style: TextStyle(color: Brand.crimson))),
       TextButton(onPressed: busy ? null : () => Navigator.pop(context, false), child: const Text('Cancel')),
