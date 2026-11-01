@@ -15,6 +15,8 @@ import 'school_setup.dart' show StudentEditor, setupSectionsProvider;
 import 'staff_data.dart';
 import 'staff_screens_2.dart' show StaffStudentsScreen, pickAndUpload;
 import 'staff_shell.dart';
+import '../core/cache.dart';
+import 'certificates_page.dart' show pickCertificate, openCertificate;
 
 /// Students — one page for the office: current and past students, one search box
 /// (name, admission number — old or new — or a parent's phone), and each student's full record:
@@ -25,6 +27,7 @@ String _dmy(String? iso) => iso == null ? '' : DateFormat('d MMM yyyy').format(D
 const _recordRoles = ['office', 'it_admin', 'principal', 'vice_principal', 'accounts'];
 
 final _findProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, (String, bool)>((ref, k) async {
+  ref.cacheFor();
   final (q, past) = k;
   final r = await db.rpc('find_students', params: {'p_q': q.trim(), 'p_past': past, 'p_limit': 60});
   return [for (final x in r as List) Map<String, dynamic>.from(x)];
@@ -195,6 +198,7 @@ class _LinkReview extends ConsumerWidget {
 
 // ================================================================== the record
 final _recordProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, id) async {
+  ref.cacheFor();
   final st = Map<String, dynamic>.from(await db.from('student').select(
       'id,admission_no,full_name,dob,gender,blood_group,house,admission_type,address,father_name,mother_name,guardian_name,photo_path,active,left_on,leaving_reason,tc_issued_on,previous_student_id,'
       'family_phone(phone,label,is_primary),transport_enrolment(route:route_id(name,bus_reg_no),stop:stop_id(name))').eq('id', id).single());
@@ -296,6 +300,19 @@ class _DetailsTab extends ConsumerWidget {
           if (done == true) { ref.invalidate(_recordProvider(r['id'])); ref.invalidate(_docsProvider); ref.invalidate(_findProvider); ref.invalidate(_certsProvider); }
         }, icon: const Icon(Icons.logout_rounded, size: 18), label: const Text('Student is leaving')),
       ])),
+      if (!active && r['left_on'] != null && DateTime.now().difference(DateTime.parse(r['left_on'])).inDays <= 30) Panel(title: 'Left by mistake?', child: CardRow(children: [
+        Expanded(child: Text('Within 30 days of leaving, the student can be brought back: they become active again in the same class, with their bus seat.', style: TextStyle(color: cs.onSurfaceVariant))),
+        const SizedBox(width: 10),
+        OutlinedButton.icon(onPressed: () async {
+          try { await db.rpc('student_bring_back', params: {'p_student': r['id']}); try { await db.rpc('fees_bring_back', params: {'p_student': r['id']}); } catch (_) {} ref.invalidate(_recordProvider(r['id'])); ref.invalidate(_findProvider); if (context.mounted) toast(context, '${r['full_name']} is active again ✓'); }
+          catch (e) { if (context.mounted) toast(context, _msg(e)); }
+        }, icon: const Icon(Icons.undo_rounded, size: 18), label: const Text('Bring back')),
+      ])),
+      Panel(title: 'Certificates', child: CardRow(children: [
+        Expanded(child: Text('Print a Transfer Certificate, Study, Bonafide or No dues certificate — filled in from this record.', style: TextStyle(color: cs.onSurfaceVariant))),
+        const SizedBox(width: 10),
+        FilledButton.icon(onPressed: () => pickCertificate(context, r['id'] as String), icon: const Icon(Icons.workspace_premium_rounded, size: 18), label: const Text('Issue certificate')),
+      ])),
       Panel(title: 'Sign-in', child: Wrap(spacing: 8, runSpacing: 8, children: [
         if (active) OutlinedButton.icon(onPressed: () => _reset(context, ref), icon: const Icon(Icons.key_rounded, size: 18), label: const Text('New password slip')),
         OutlinedButton.icon(onPressed: () async {
@@ -335,6 +352,7 @@ class _DetailsTab extends ConsumerWidget {
 
 // ---------------------------------------------------------------- fees
 final _feesProvider = FutureProvider.autoDispose.family<(List<Map<String, dynamic>>, List<Map<String, dynamic>>), String>((ref, idsKey) async {
+  ref.cacheFor();
   final ids = idsKey.split(',');
   final l = await db.from('fee_ledger').select('id,title,amount,concession,due_on,status,paid_on,note,academic_year:academic_year_id(label,starts_on)').inFilter('student_id', ids).order('due_on', ascending: true);
   final p = await db.from('payment').select('id,amount,receipt_no,paid_at,mode').inFilter('student_id', ids).eq('status', 'success').order('paid_at', ascending: false);
@@ -385,6 +403,7 @@ class _FeesTab extends ConsumerWidget {
 
 // ---------------------------------------------------------------- marks
 final _marksProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, idsKey) async {
+  ref.cacheFor();
   final r = await db.from('mark').select('internal,external,absent,subject:subject_id(name),exam:exam_id(id,name,term,max_marks,starts_on,academic_year:academic_year_id(label))').inFilter('student_id', idsKey.split(','));
   return List<Map<String, dynamic>>.from(r);
 });
@@ -421,6 +440,7 @@ class _MarksTab extends ConsumerWidget {
 
 // ---------------------------------------------------------------- attendance (from the report cards)
 final _attendanceProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, idsKey) async {
+  ref.cacheFor();
   final r = await db.from('report_card').select('id,term,working_days,days_present,status,academic_year:academic_year_id(label)').inFilter('student_id', idsKey.split(',')).order('created_at', ascending: false);
   return List<Map<String, dynamic>>.from(r);
 });
@@ -452,6 +472,7 @@ class _AttendanceTab extends ConsumerWidget {
 const docKinds = {'tc': 'Transfer Certificate (TC)', 'marksheet': 'Marksheet', 'conduct': 'Conduct certificate', 'bonafide': 'Bonafide / Study certificate', 'birth': 'Birth certificate', 'other': 'Other'};
 
 final _docsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, idsKey) async {
+  ref.cacheFor();
   final r = await db.from('student_document').select('id,student_id,kind,title,file_path,file_name,uploaded_at,uploader:uploaded_by(display_name)')
       .inFilter('student_id', idsKey.split(',')).isFilter('deleted_at', null).order('uploaded_at', ascending: false);
   return List<Map<String, dynamic>>.from(r);
@@ -609,11 +630,30 @@ class LeavingDialog extends ConsumerStatefulWidget {
 
 class _LeavingDialogState extends ConsumerState<LeavingDialog> {
   DateTime day = DateTime.now();
-  String reason = 'Transfer (TC)';
+  String reason = 'Applied for TC';
   final other = TextEditingController();
   final files = <String, String>{};        // kind → uploaded path
   bool busy = false;
   String get sid => widget.student['id'];
+  static const _reasons = ['Applied for TC', 'Moving city', 'Not joined', 'Discontinued', 'Other'];
+  // fees: what is still to pay up to the last day (blocks leaving unless the Principal approves) and what comes after (cancelled)
+  Map<String, dynamic>? fees;
+  bool principalOk = false;
+
+  @override
+  void initState() { super.initState(); _loadFees(); }
+
+  Future<void> _loadFees() async {
+    setState(() => fees = null);
+    try {
+      final r = await db.rpc('leaving_fees', params: {'p_student': sid, 'p_last': DateFormat('yyyy-MM-dd').format(day)});
+      if (mounted) setState(() => fees = r == null ? const {} : Map<String, dynamic>.from(r as Map));
+    } catch (_) { if (mounted) setState(() => fees = const {}); }
+  }
+
+  num get _due => (fees?['due'] ?? 0) as num;
+  bool get _canOverride { final s = ref.read(sessionProvider).value; return s != null && (s.hasRole('principal') || s.hasRole('it_admin')); }
+  bool get _blocked => fees == null || (_due > 0 && !principalOk);
 
   Future<void> _pick(String kind) async {
     setState(() => busy = true);
@@ -626,8 +666,18 @@ class _LeavingDialogState extends ConsumerState<LeavingDialog> {
 
   Future<void> _confirm() async {
     if (reason == 'Other' && other.text.trim().isEmpty) { toast(context, 'Please write the reason.'); return; }
+    if (_blocked) return;
     setState(() => busy = true);
     try {
+      final last = DateFormat('yyyy-MM-dd').format(day);
+      // fees after the last day are cancelled (refused by the database if fees up to the last day are unpaid, unless the Principal approves)
+      await db.rpc('cancel_future_fees', params: {'p_student': sid, 'p_after': last, 'p_override': principalOk});
+      try {
+        await db.rpc('student_leave', params: {'p_student': sid, 'p_date': last, 'p_reason': reason == 'Other' ? other.text.trim() : reason});
+      } catch (e) {
+        try { await db.rpc('fees_bring_back', params: {'p_student': sid}); } catch (_) {}
+        rethrow;
+      }
       final me = myId(ref);
       const titles = {'tc': 'Transfer Certificate (TC)', 'conduct': 'Conduct certificate', 'other': 'Leaving document'};
       for (final e in files.entries) {
@@ -635,7 +685,6 @@ class _LeavingDialogState extends ConsumerState<LeavingDialog> {
           'file_name': e.value.split('/').last.replaceFirst(RegExp(r'^\d+_'), ''), 'uploaded_by': me}).select('id').single();
         await _log(ref, row['id'], 'upload');
       }
-      await db.rpc('student_leave', params: {'p_student': sid, 'p_date': DateFormat('yyyy-MM-dd').format(day), 'p_reason': reason == 'Other' ? other.text.trim() : reason});
       try { await callFunction(ref, 'password', {'action': 'signout_all', 'student_id': sid}); } catch (_) {}
       if (!mounted) return;
       Navigator.pop(context, true);
@@ -659,16 +708,21 @@ class _LeavingDialogState extends ConsumerState<LeavingDialog> {
         const SizedBox(height: 6),
         Align(alignment: Alignment.centerLeft, child: OutlinedButton.icon(onPressed: () async {
           final d = await showDatePicker(context: context, initialDate: day, firstDate: DateTime.now().subtract(const Duration(days: 365)), lastDate: DateTime.now().add(const Duration(days: 90)));
-          if (d != null) setState(() => day = d);
+          if (d != null) { setState(() { day = d; principalOk = false; }); _loadFees(); }
         }, icon: const Icon(Icons.event_rounded, size: 18), label: Text(DateFormat('EEE d MMMM yyyy').format(day)))),
         const SizedBox(height: 12),
         const Text('REASON', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, letterSpacing: .6)),
         const SizedBox(height: 6),
-        Wrap(spacing: 6, runSpacing: 6, children: [for (final x in const ['Transfer (TC)', 'Moving city', 'Other']) ChoiceChip(label: Text(x), selected: reason == x, onSelected: (_) => setState(() => reason = x))]),
+        Wrap(spacing: 6, runSpacing: 6, children: [for (final x in _reasons) ChoiceChip(label: Text(x), selected: reason == x, onSelected: (_) => setState(() => reason = x))]),
         if (reason == 'Other') Padding(padding: const EdgeInsets.only(top: 8), child: TextField(controller: other, decoration: const InputDecoration(labelText: 'Reason'))),
+        const SizedBox(height: 12),
+        const Text('FEES', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, letterSpacing: .6)),
+        const SizedBox(height: 6),
+        _feesBox(),
         const SizedBox(height: 12),
         const Text('CERTIFICATES (signed and scanned — PDF or photo)', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, letterSpacing: .6)),
         const SizedBox(height: 6),
+        Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: () => openCertificate(context, sid, 'tc'), icon: const Icon(Icons.print_rounded, size: 18), label: const Text('No TC yet? Print it from the app'))),
         slot('tc', 'Transfer Certificate (TC)'),
         slot('conduct', 'Conduct certificate'),
         slot('other', 'Another document (optional)'),
@@ -676,9 +730,32 @@ class _LeavingDialogState extends ConsumerState<LeavingDialog> {
       ]))),
       actions: [
         TextButton(onPressed: busy ? null : () => Navigator.pop(context, false), child: const Text('Cancel')),
-        FilledButton(onPressed: busy ? null : _confirm, child: Text(busy ? 'Please wait…' : 'Confirm — student has left')),
+        FilledButton(onPressed: busy || _blocked ? null : _confirm, child: Text(busy ? 'Please wait…' : 'Confirm — student has left')),
       ],
     );
+  }
+
+  Widget _feesBox() {
+    final cs = Theme.of(context).colorScheme;
+    if (fees == null) return const Padding(padding: EdgeInsets.all(8), child: LinearProgressIndicator());
+    final future = (fees!['future'] ?? 0) as num;
+    final items = List<Map<String, dynamic>>.from(((fees!['due_items'] as List?) ?? const []).map((x) => Map<String, dynamic>.from(x as Map)));
+    final later = future > 0 ? 'Fees after the last day (${inr(future)}) will be cancelled automatically.' : 'No fees after the last day.';
+    if (_due <= 0) {
+      return Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Brand.green.withValues(alpha: .08), borderRadius: BorderRadius.circular(12)),
+          child: Text('Nothing due up to the last day ✓  $later', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurface)));
+    }
+    return Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: Brand.crimson.withValues(alpha: .08), borderRadius: BorderRadius.circular(12), border: Border.all(color: Brand.crimson)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('Fees still due: ${inr(_due)}. Collect first, or ask the Principal to approve.', style: TextStyle(fontWeight: FontWeight.w800, color: context.tone(Brand.crimsonDeep))),
+        const SizedBox(height: 4),
+        for (final x in items) Text('• ${x['title']} · ${inr(x['amount'] as num)} · due ${_dmy(x['due_on'])}', style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+        const SizedBox(height: 4),
+        Text(later, style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+        if (_canOverride) CheckboxListTile(contentPadding: EdgeInsets.zero, dense: true, controlAffinity: ListTileControlAffinity.leading, value: principalOk,
+            onChanged: busy ? null : (v) => setState(() => principalOk = v ?? false),
+            title: const Text('Principal approves: let the student leave with these fees unpaid', style: TextStyle(fontWeight: FontWeight.w700))),
+      ]));
   }
 }
 
