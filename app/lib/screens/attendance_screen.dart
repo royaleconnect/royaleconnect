@@ -57,7 +57,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
               const SizedBox(height: 4),
               Text('${d['year_present']} of ${d['year_days']} days present', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
             ])),
-            Text('${((d['year_present'] ?? 0) * 100 / math.max(1, d['year_days'] ?? 1)).round()}%', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 26, color: Brand.green)),
+            Text('${(((d['year_present'] ?? 0) as num) * 100 / math.max<num>(1, (d['year_days'] ?? 1) as num)).round()}%', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 26, color: Brand.green)),
           ]))),
         ],
       ])),
