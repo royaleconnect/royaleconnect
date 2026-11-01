@@ -15,6 +15,8 @@ import '../core/theme.dart';
 import '../widgets/royal_motion.dart';
 import 'family_screens.dart' show StorageImage;
 import '../widgets/royal_extras.dart' show GoldLoading;
+import '../core/cache.dart';
+import '../widgets/r_refresh.dart';
 
 /// From the Principal's Desk.
 /// • The Principal's welcome shows full screen the first time anyone opens the app (one for families, one for staff).
@@ -43,6 +45,7 @@ class DeskMessage {
 
 /// Every message this person may see, newest first (the database already hides the others).
 final deskMessagesProvider = FutureProvider.autoDispose<List<DeskMessage>>((ref) async {
+  ref.cacheFor();
   ref.watch(sessionProvider);
   final rows = await db.from('principal_message').select().order('created_at', ascending: false).limit(200);
   return [for (final r in rows) DeskMessage.fromRow(Map<String, dynamic>.from(r))];
@@ -87,7 +90,7 @@ class DeskGate extends ConsumerWidget {
   const DeskGate({super.key, required this.child});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final m = ref.watch(deskPendingProvider).value;
+    final m = featureOn(ref.watch(appSettingsProvider).value, 'desk') ? ref.watch(deskPendingProvider).value : null;
     // the app stays underneath (nothing is rebuilt); the message fades in over it
     return Stack(children: [
       child,
@@ -512,7 +515,7 @@ class DeskListScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text("Principal's Desk")),
       floatingActionButton: admin ? FloatingActionButton.extended(onPressed: () => editor!(context, ref, null), icon: const Icon(Icons.edit_rounded), label: const Text('New message')) : null,
-      body: RefreshIndicator(
+      body: RRefresh(
         onRefresh: () async => ref.invalidate(deskMessagesProvider),
         child: list.when(
           loading: () => const GoldLoading(),
@@ -605,6 +608,7 @@ class DeskHomeCard extends ConsumerWidget {
   const DeskHomeCard({super.key, this.staff = false});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (!featureOn(ref.watch(appSettingsProvider).value, 'desk')) return const SizedBox.shrink();
     final all = ref.watch(deskMessagesProvider).value;
     if (all == null) return const SizedBox.shrink();
     final mine = all.where((m) => m.active && m.forMe(staff)).toList();
