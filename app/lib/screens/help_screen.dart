@@ -5,6 +5,8 @@ import '../auth/session.dart';
 import '../core/config.dart';
 import '../core/data.dart';
 import '../core/help_content.dart';
+import '../core/help_it.dart';
+import '../widgets/guided_tour.dart' show TakeTourAgainButton;
 import '../core/theme.dart';
 import '../staff/staff_shell.dart' show StaffPage, Panel;
 import '../widgets/common.dart';
@@ -39,8 +41,9 @@ class _HelpScreenState extends ConsumerState<HelpScreen> {
   String? topic, openId;
   final voted = <String>{};
 
-  List<HelpItem> get all => widget.staff ? staffHelp : familyHelp;
-  List<HelpTopic> get topics => widget.staff ? staffTopics : familyTopics;
+  bool get _itBook { final s = ref.read(sessionProvider).value; return widget.staff && s != null && (s.hasRole('it_admin') || s.hasRole('principal')); }
+  List<HelpItem> get all => widget.staff ? [...staffHelp, if (_itBook) ...itHandbookHelp] : familyHelp;
+  List<HelpTopic> get topics => widget.staff ? [...staffTopics, if (_itBook) itHandbookTopic] : familyTopics;
 
   void _vote(HelpItem h, bool yes) {
     setState(() => voted.add(h.id));
@@ -88,6 +91,7 @@ class _HelpScreenState extends ConsumerState<HelpScreen> {
     );
 
     final body = <Widget>[
+      if (query.isEmpty) const Padding(padding: EdgeInsets.only(bottom: 12), child: TakeTourAgainButton()),
       if (query.isEmpty) Wrap(spacing: 8, runSpacing: 8, children: [
         for (final t in topics) ChoiceChip(
           label: Text('${t.icon}  ${t.name}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
