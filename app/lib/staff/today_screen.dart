@@ -15,6 +15,10 @@ import 'staff_shell.dart';
 import '../screens/desk_screen.dart' show DeskHomeCard;
 import '../widgets/royal_motion.dart' show FadeRise;
 import '../widgets/royal_extras.dart' show FestiveBanner, FestiveSky;
+import '../core/cache.dart';
+import 'morning_brief.dart' show MorningBrief;
+import 'thanks_wall.dart' show ThanksWallCard;
+import 'password_requests.dart' show PasswordRequestsCard;
 
 /// "Today" — the first page every teacher sees: what is waiting for them, with the button to do it right there.
 /// IT, the Principal and the Vice Principal keep the whole-school dashboard.
@@ -22,6 +26,7 @@ String _iso(DateTime d) => DateFormat('yyyy-MM-dd').format(d);
 
 /// My class (as class teacher), its size, and the sections where I have not posted in the diary today.
 final _todayProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
+  ref.cacheFor();
   final s = ref.watch(sessionProvider).value!;
   final me = s.staff!['id'];
   final secs = await ref.watch(mySectionsProvider.future);
@@ -60,7 +65,6 @@ class TodayScreen extends ConsumerWidget {
     final inbox = (ref.watch(inboxProvider).value ?? const []).where((c) => ((c['staff_unread'] ?? 0) as int) > 0).toList();
     final now = DateTime.now();
     final upcoming = (ref.watch(calendarProvider).value ?? const []).where((e) => ((e['ends_on'] ?? e['starts_on']) as String).compareTo(_iso(now)) >= 0).take(5).toList();
-    final hour = now.hour;
     final myClass = today?['class'] as Map<String, dynamic>?;
     final notPosted = (today?['not_posted'] as List?) ?? const [];
     final narrow = isNarrow(context);
@@ -123,11 +127,14 @@ class TodayScreen extends ConsumerWidget {
           ]]));
 
     return FestiveSky(child: StaffPage(
-      title: '${hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'}, ${s.staff?['name'] ?? ''}',
+      title: 'Today',
       subtitle: [DateFormat('EEEE, d MMMM').format(now), if (myClass != null) sectionLabel(myClass), if (myClass != null) '${today?['students'] ?? 0} students'].join(' · '),
       body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         const FestiveBanner(),
+        const MorningBrief(),
+        const PasswordRequestsCard(),
         const FadeRise(delayMs: 120, child: DeskHomeCard(staff: true)),
+        const ThanksWallCard(),
         if (((today?['birthdays'] as List?) ?? const []).isNotEmpty) Container(
           margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFFFF6E0), Color(0xFFFFE3E3)]), border: Border.all(color: Brand.gold, width: 1.5), borderRadius: BorderRadius.circular(16)),
