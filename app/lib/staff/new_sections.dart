@@ -15,6 +15,8 @@ import '../widgets/common.dart';
 import 'school_settings.dart' show yearMovePlanProvider;
 import 'staff_data.dart';
 import 'staff_shell.dart';
+import '../core/cache.dart';
+import '../widgets/hub_tabs.dart';
 
 /// New sections for next year (IT and the Principal).
 ///   1 · Sections & class teachers   2 · Put students in sections (Excel list or one by one)   3 · Publish to families
@@ -25,6 +27,7 @@ final _yearsProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) as
 final _overviewProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, yearId) async =>
     [for (final x in (await db.rpc('plan_overview', params: {'p_year': yearId})) as List) Map<String, dynamic>.from(x)]);
 final _sectionsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, (String, String)>((ref, k) async {
+  ref.cacheFor();
   final rows = await db.from('section').select('id,name,status,class_teacher_id,class_teacher:class_teacher_id(display_name)')
       .eq('academic_year_id', k.$1).eq('grade_id', k.$2).eq('placeholder', false).order('name', ascending: true);
   return List<Map<String, dynamic>>.from(rows);
@@ -53,7 +56,7 @@ class _NewSectionsScreenState extends ConsumerState<NewSectionsScreen> {
         final y = years.firstWhere((x) => x['id'] == (yearId ?? yrs['default']), orElse: () => years.last);
         final plan = ref.watch(yearMovePlanProvider).value;
         return StaffPage(
-          title: 'New sections for ${y['label']}',
+          title: 'New sections for ${y['label']}', hub: Hub.schoolSetup,
           subtitle: 'Make the sections and class teachers, put the students in, then publish. Families see the new section only after you publish.',
           body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
