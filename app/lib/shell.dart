@@ -9,6 +9,7 @@ import 'screens/desk_screen.dart';
 import 'widgets/royal_extras.dart' show BirthdayGate;
 import 'auth/session.dart';
 import 'core/data2.dart' show profileProvider;
+import 'widgets/guided_tour.dart' show maybeShowTour;
 
 /// Bottom navigation. The Bus tab appears only for students with a transport enrolment.
 class AppShell extends ConsumerWidget {
@@ -32,8 +33,9 @@ class AppShell extends ConsumerWidget {
     final visible = [for (var i = 0; i < items.length; i++) if (i != 4 || onBus) i];
     final selected = visible.indexOf(shell.currentIndex).clamp(0, visible.length - 1);
     final s = ref.watch(sessionProvider).value;
+    if (s != null && !s.viewOnly) WidgetsBinding.instance.addPostFrameCallback((_) { if (context.mounted) maybeShowTour(context, 'family'); });
     final dob = ref.watch(profileProvider).value?['dob'] as String?;
-    return DeskGate(child: BirthdayGate(studentId: s?.viewOnly == true ? null : s?.active?.id, firstName: s?.active?.fullName.trim().split(RegExp(r'\s+')).first, dobIso: dob, child: Scaffold(
+    return DeskGate(child: BirthdayGate(studentId: s?.viewOnly == true || !featureOn(ref.watch(appSettingsProvider).value, 'birthdays') ? null : s?.active?.id, firstName: s?.active?.fullName.trim().split(RegExp(r'\s+')).first, dobIso: dob, child: Scaffold(
       body: shell,
       // Help: bottom right of Home, on phones and on the website
       floatingActionButton: shell.currentIndex == 0 ? HelpFab(onTap: () => context.push('/help')) : null,
