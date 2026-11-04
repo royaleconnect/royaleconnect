@@ -7,6 +7,7 @@ import 'core/data3.dart';
 import 'core/theme.dart';
 import 'router.dart';
 import 'widgets/common.dart';
+import 'widgets/guided_tour.dart' show TourTarget;
 import 'widgets/hub_tabs.dart';
 
 /// Parents and students on a laptop or large tablet: the school menu sits on the left (like the staff panel)
@@ -55,7 +56,7 @@ class ParentFrame extends ConsumerWidget {
             ])),
           ])),
           Container(height: 2, margin: const EdgeInsets.symmetric(horizontal: 18), decoration: const BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, Brand.gold, Colors.transparent]))),
-          if (st != null) Padding(padding: const EdgeInsets.fromLTRB(12, 12, 12, 4), child: Material(color: Colors.white.withValues(alpha: .13), borderRadius: BorderRadius.circular(14), child: InkWell(
+          if (st != null) Padding(padding: const EdgeInsets.fromLTRB(12, 12, 12, 4), child: TourTarget('f-child', child: Material(color: Colors.white.withValues(alpha: .13), borderRadius: BorderRadius.circular(14), child: InkWell(
             borderRadius: BorderRadius.circular(14), onTap: () => router.go((s?.students.length ?? 0) > 1 ? '/students' : '/profile'),
             child: Padding(padding: const EdgeInsets.all(10), child: Row(children: [
               Avatar(st.initials, bg: Colors.white, fg: Brand.crimsonDeep, size: 36), const SizedBox(width: 10),
@@ -64,11 +65,11 @@ class ParentFrame extends ConsumerWidget {
                 Text((s?.students.length ?? 0) > 1 ? '${st.cls} · switch child' : '${st.cls} · profile', style: TextStyle(color: Colors.white.withValues(alpha: .8), fontSize: 11.5)),
               ])),
               if ((s?.students.length ?? 0) > 1) const Icon(Icons.swap_horiz_rounded, color: Colors.white, size: 18),
-            ]))))),
+            ])))))),
           Expanded(child: ListView(padding: const EdgeInsets.fromLTRB(10, 4, 10, 8), children: [
             for (final (g, items) in _groups) ...[
               Padding(padding: const EdgeInsets.fromLTRB(12, 14, 12, 4), child: Text(g, style: TextStyle(color: Colors.white.withValues(alpha: .6), fontSize: 10.5, letterSpacing: 1.6, fontWeight: FontWeight.w800))),
-              for (final (p, l, i) in items) if ((p != '/bus' || onBus) && allowed(p)) _Nav(l, i, selected: on(p), badge: badge(p), onTap: () => router.go(p == 'honours' ? hubStart(Hub.honours, settings) : p)),
+              for (final (p, l, i) in items) if ((p != '/bus' || onBus) && allowed(p)) TourTarget('nav:$p', child: _Nav(l, i, selected: on(p), badge: badge(p), onTap: () => router.go(p == 'honours' ? hubStart(Hub.honours, settings) : p))),
             ],
           ])),
           Container(height: 1, margin: const EdgeInsets.symmetric(horizontal: 18), color: Colors.white.withValues(alpha: .15)),
