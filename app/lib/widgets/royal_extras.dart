@@ -443,20 +443,34 @@ List<(String, DateTime)> _festivalDays(int y) => [
       }[y],
     ];
 
-/// The festival being celebrated today: from its day for a week (the most recent one wins).
+/// How many days (before, after) its day each festival shows — the big ones about a week and a half, like Diwali.
+/// 2026: Dussehra 16–24 Oct · Halloween 30 Oct–2 Nov · Diwali 4–12 Nov · Children's Day 13–16 Nov · Christmas 21–29 Dec.
+/// Eid and Bakrid start 3 days early because the exact day depends on the moon.
+const _window = {
+  'diwali': (4, 4), 'dussehra': (4, 4), 'christmas': (4, 4), 'eid': (3, 4), 'bakrid': (3, 4),
+  'republic': (2, 2), 'independence': (2, 2),
+  'teachers': (1, 2), 'gandhi': (1, 2), 'children': (1, 2), 'halloween': (1, 2),
+};
+/// Small days that always give way when a main festival is on at the same time (Diwali at the end of October, Dussehra near 2 October).
+const _minor = {'halloween', 'gandhi'};
+
+/// The festival being celebrated today (when two overlap, the later festival wins).
 Festival? festivalToday([DateTime? now]) {
   final d = now ?? DateTime.now();
   final today = DateTime(d.year, d.month, d.day);
   (String, DateTime)? best;
-  for (final f in [..._festivalDays(d.year), ..._festivalDays(d.year - 1)]) {
+  for (final f in [..._festivalDays(d.year + 1), ..._festivalDays(d.year), ..._festivalDays(d.year - 1)]) {
+    final (before, after) = _window[f.$1] ?? (1, 2);
     final diff = today.difference(f.$2).inDays;
-    if (diff >= 0 && diff <= 6 && (best == null || f.$2.isAfter(best.$2))) best = f;
+    if (diff < -before || diff > after) continue;
+    final minor = _minor.contains(f.$1), bestMinor = best != null && _minor.contains(best.$1);
+    if (best == null || (bestMinor && !minor) || (minor == bestMinor && f.$2.isAfter(best.$2))) best = f;
   }
   if (best == null) return null;
   return festivals.firstWhere((f) => f.key == best!.$1);
 }
 
-/// The festive banner on Home (families) and Today (all staff), for the festival day and the 6 days after.
+/// The festive banner on Home (families) and Today (all staff), during the festival's days.
 class FestiveBanner extends ConsumerWidget {
   const FestiveBanner({super.key});
   @override
