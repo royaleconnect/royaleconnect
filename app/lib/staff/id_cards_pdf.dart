@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import '../core/sign_font.dart';
 
 /// Print-ready ID cards on A4: real card size (CR80, 54 × 85.6 mm), 9 cards a sheet (3 × 3) with crop marks.
 /// Fronts on one page, backs on the next page with the columns swapped left ↔ right,
@@ -21,7 +22,7 @@ class IdPdfCard {
 class IdPdfFonts {
   final pw.Font base, bold, serif, script;
   const IdPdfFonts(this.base, this.bold, this.serif, this.script);
-  factory IdPdfFonts.builtIn() => IdPdfFonts(pw.Font.helvetica(), pw.Font.helveticaBold(), pw.Font.timesBold(), pw.Font.timesBoldItalic());
+  factory IdPdfFonts.builtIn() => IdPdfFonts(pw.Font.helvetica(), pw.Font.helveticaBold(), pw.Font.timesBold(), signatureFont());
 }
 
 // ---------------------------------------------------------------- sheet layout (millimetres)
