@@ -232,6 +232,14 @@ final liveTripProvider = StreamProvider.autoDispose<Map<String, dynamic>?>((ref)
   }
 });
 
+/// When there is no trip running: the last trip of today, so the Bus page can say "Bus parked · last trip ended 4:10 pm".
+final lastTripProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
+  final t = await ref.watch(transportProvider.future);
+  if (t == null) return null;
+  final today = DateTime.now(); final start = DateTime(today.year, today.month, today.day).toUtc().toIso8601String();
+  return await db.from('trip').select('kind,ended_at').eq('route_id', t['route']['id']).neq('status', 'running').gte('started_at', start).order('ended_at', ascending: false).limit(1).maybeSingle();
+});
+
 final etaPrefProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final s = ref.watch(sessionProvider).value?.active;
   if (s == null) return {};
