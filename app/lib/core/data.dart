@@ -143,7 +143,7 @@ final paymentsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>(
   ref.cacheFor();
   final s = ref.watch(sessionProvider).value?.active;
   if (s == null) return [];
-  final data = await db.from('payment').select('id,amount,status,receipt_no,paid_at').eq('student_id', s.id).neq('status', 'created').order('created_at', ascending: false);
+  final data = await db.from('payment').select('id,amount,status,receipt_no,paid_at,cancelled_at,cancel_reason').eq('student_id', s.id).neq('status', 'created').order('created_at', ascending: false);
   return List<Map<String, dynamic>>.from(data);
 });
 
