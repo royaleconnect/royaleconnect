@@ -159,7 +159,8 @@ class StudentEditor extends ConsumerStatefulWidget {
 class StudentEditorState extends ConsumerState<StudentEditor> {
   bool loading = true, busy = false;
   final adm = TextEditingController(), name = TextEditingController(), father = TextEditingController(), mother = TextEditingController(),
-      guardian = TextEditingController(), address = TextEditingController(), blood = TextEditingController(), house = TextEditingController();
+      guardian = TextEditingController(), address = TextEditingController(), blood = TextEditingController(), house = TextEditingController(),
+      tongue = TextEditingController(), birthPlace = TextEditingController();
   final phones = [TextEditingController(), TextEditingController(), TextEditingController()];
   final labels = ['Father', 'Mother', 'Other'];
   DateTime? dob, tc;
@@ -179,12 +180,13 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
   Future<void> _load() async {
     try {
       final r = await db.from('student')
-          .select('id,admission_no,full_name,dob,gender,blood_group,house,admission_type,address,father_name,mother_name,guardian_name,photo_consent,active,tc_issued_on,'
+          .select('id,admission_no,full_name,dob,gender,blood_group,house,admission_type,address,father_name,mother_name,guardian_name,photo_consent,active,tc_issued_on,mother_tongue,place_of_birth,'
               'family_phone(phone,label,is_primary),enrolment(section_id,is_current),transport_enrolment(route_id,stop_id)')
           .eq('id', widget.studentId!).eq('enrolment.is_current', true).single();
       adm.text = r['admission_no'] ?? ''; name.text = r['full_name'] ?? '';
       father.text = r['father_name'] ?? ''; mother.text = r['mother_name'] ?? ''; guardian.text = r['guardian_name'] ?? '';
       address.text = r['address'] ?? ''; blood.text = r['blood_group'] ?? ''; house.text = r['house'] ?? '';
+      tongue.text = r['mother_tongue'] ?? ''; birthPlace.text = r['place_of_birth'] ?? '';
       dob = r['dob'] == null ? null : DateTime.parse(r['dob']);
       tc = r['tc_issued_on'] == null ? null : DateTime.parse(r['tc_issued_on']);
       gender = r['gender']; admissionType = r['admission_type'] ?? 'Day Scholar';
@@ -225,6 +227,8 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
       if (routeId != origRoute || stopId != origStop) {
         await db.rpc('admin_set_transport', params: {'p_student': id, 'p_route': routeId, 'p_stop': routeId == null ? null : stopId});
       }
+      // used on the TC and other certificates
+      try { await db.from('student').update({'mother_tongue': n(tongue), 'place_of_birth': n(birthPlace)}).eq('id', id); } catch (_) {}
       if (!active && tc != null) await db.from('student').update({'tc_issued_on': _iso(tc!)}).eq('id', id);
       // a student who leaves goes to Past students (the date is kept the first time only)
       if (!active) { try { await db.from('student').update({'left_on': _iso(tc ?? DateTime.now()), 'leaving_reason': tc != null ? 'Left with TC' : 'Left the school'}).eq('id', id).isFilter('left_on', null); } catch (_) {} }
@@ -298,6 +302,9 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
       const SizedBox(height: 10),
       two(TextField(controller: blood, textCapitalization: TextCapitalization.characters, decoration: const InputDecoration(labelText: 'Blood group', hintText: 'e.g. B+')),
           TextField(controller: house, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'House'))),
+      const SizedBox(height: 10),
+      two(TextField(controller: tongue, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Mother tongue', hintText: 'e.g. Kannada')),
+          TextField(controller: birthPlace, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Place of birth', hintText: 'e.g. Bengaluru'))),
 
       _label(context, 'SCHOOL BUS'),
       two(PickField<String?>(label: 'Bus route', value: route == null ? null : routeId, onChanged: (v) => setState(() { routeId = v; stopId = null; }),
