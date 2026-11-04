@@ -18,6 +18,7 @@ import 'my_list.dart' show MyListHomeSummary, myListProvider;
 import 'thanks_screen.dart' show ThanksHomeBanner;
 import 'year_review_screen.dart' show YearReviewHomeCard;
 import '../widgets/r_refresh.dart';
+import '../widgets/guided_tour.dart' show TourTarget;
 import 'now_next.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -69,9 +70,9 @@ class HomeScreen extends ConsumerWidget {
           const ThanksHomeBanner(),
           const YearReviewHomeCard(),
           FadeRise(delayMs: 200, child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: NeedsToday(fees: fees.value, unreadNotices: unreadNotices)),
+            Expanded(child: TourTarget('f-needs', child: NeedsToday(fees: fees.value, unreadNotices: unreadNotices))),
             const SizedBox(width: 18),
-            const Expanded(child: HomeStreak()),
+            const Expanded(child: TourTarget('f-streak', child: HomeStreak())),
           ])),
           const FadeRise(delayMs: 220, child: MyListHomeSummary()),
           ...?notices.value?.where((n) => n.urgent && !n.read).map((n) => Padding(padding: const EdgeInsets.only(bottom: 14), child: Material(color: Brand.crimson, borderRadius: BorderRadius.circular(16),
@@ -110,7 +111,7 @@ class HomeScreen extends ConsumerWidget {
         child: CustomScrollView(slivers: [
           SliverToBoxAdapter(child: BrandHeader(padding: const EdgeInsets.fromLTRB(20, 12, 20, 20), hairline: false, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              InkWell(onTap: () => context.push(s.students.length > 1 ? '/students' : '/profile'), borderRadius: BorderRadius.circular(999),
+              TourTarget('f-child', child: InkWell(onTap: () => context.push(s.students.length > 1 ? '/students' : '/profile'), borderRadius: BorderRadius.circular(999),
                   child: Container(padding: const EdgeInsets.fromLTRB(6, 6, 12, 6), decoration: BoxDecoration(color: Colors.white.withValues(alpha: .14), borderRadius: BorderRadius.circular(999)),
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
                         Avatar(st.initials, bg: Colors.white, fg: Brand.crimsonDeep, size: 34), const SizedBox(width: 10),
@@ -119,7 +120,7 @@ class HomeScreen extends ConsumerWidget {
                           Text('${st.grade ?? ''} · ${st.sectionText}', style: TextStyle(color: Colors.white.withValues(alpha: .9), fontSize: 11)),
                         ]),
                         if (s.students.length > 1) const Padding(padding: EdgeInsets.only(left: 6), child: Icon(Icons.expand_more_rounded, color: Colors.white, size: 18)),
-                      ]))),
+                      ])))),
               const Spacer(),
               if (on('messages')) ...[_HeaderIcon(Icons.chat_bubble_outline_rounded, unread, () => context.push('/messages')), const SizedBox(width: 8)],
               _HeaderIcon(Icons.notifications_none_rounded, unreadNotices, () => context.go('/announcements')),
@@ -141,8 +142,8 @@ class HomeScreen extends ConsumerWidget {
               const FadeRise(delayMs: 150, child: DeskHomeCard()),
               const ThanksHomeBanner(),
               const YearReviewHomeCard(),
-              FadeRise(delayMs: 200, child: NeedsToday(fees: fees.value, unreadNotices: unreadNotices)),
-              const FadeRise(delayMs: 230, child: HomeStreak()),
+              FadeRise(delayMs: 200, child: TourTarget('f-needs', child: NeedsToday(fees: fees.value, unreadNotices: unreadNotices))),
+              const FadeRise(delayMs: 230, child: TourTarget('f-streak', child: HomeStreak())),
               const FadeRise(delayMs: 245, child: MyListHomeSummary()),
               // urgent banner(s)
               ...?notices.value?.where((n) => n.urgent && !n.read).map((n) => Padding(padding: const EdgeInsets.only(bottom: 14), child: Material(color: Brand.crimson, borderRadius: BorderRadius.circular(16),
@@ -161,13 +162,13 @@ class HomeScreen extends ConsumerWidget {
               // tiles
               // 3 × 3 tiles: the main places, one tap each (the rest sits inside them as tabs)
               FadeRise(delayMs: 380, child: GridView.count(crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: .98, children: [
-                _Tile('Diary', Icons.menu_book_outlined, Brand.blue, Brand.blueTint, () => context.go('/diary')),
-                _Tile('Notices', Icons.campaign_outlined, Brand.crimsonDeep, Brand.crimsonTint, () => context.go('/announcements'), badge: unreadNotices),
+                TourTarget('f-diary', child: _Tile('Diary', Icons.menu_book_outlined, Brand.blue, Brand.blueTint, () => context.go('/diary'))),
+                TourTarget('f-notices', child: _Tile('Notices', Icons.campaign_outlined, Brand.crimsonDeep, Brand.crimsonTint, () => context.go('/announcements'), badge: unreadNotices)),
                 if (on('messages')) _Tile('Messages', Icons.chat_bubble_outline_rounded, Brand.amber, Brand.amberTint, () => context.push('/messages'), badge: unread),
                 _Tile('Calendar', Icons.calendar_month_outlined, Brand.green, Brand.greenTint, () => context.push('/calendar')),
                 _Tile('Attendance', Icons.event_available_outlined, Brand.violet, Brand.violetTint, () => context.push('/attendance')),
                 _Tile('Reports', Icons.school_outlined, Brand.crimsonDeep, Brand.crimsonTint, () => context.go('/reports')),
-                _Tile('Fees', Icons.account_balance_wallet_outlined, Brand.green, Brand.greenTint, () => context.go('/fees')),
+                TourTarget('f-fees', child: _Tile('Fees', Icons.account_balance_wallet_outlined, Brand.green, Brand.greenTint, () => context.go('/fees'))),
                 if (on('gallery')) _Tile('Gallery', Icons.image_outlined, Brand.blue, Brand.blueTint, () => context.push('/gallery')),
                 if (const ['star', 'toppers', 'fame', 'council', 'houses'].any(on)) _Tile('Honours', Icons.emoji_events_outlined, Brand.amber, Brand.amberTint, () => context.push(hubStart(Hub.honours, settings))),
               ])),
