@@ -9,7 +9,7 @@ import 'screens/desk_screen.dart';
 import 'widgets/royal_extras.dart' show BirthdayGate;
 import 'auth/session.dart';
 import 'core/data2.dart' show profileProvider;
-import 'widgets/guided_tour.dart' show maybeShowTour, TourTarget;
+import 'widgets/guided_tour.dart' show maybeShowTour, TourTarget, tourRequestProvider;
 
 /// Bottom navigation. The Bus tab appears only for students with a transport enrolment.
 class AppShell extends ConsumerWidget {
@@ -32,6 +32,7 @@ class AppShell extends ConsumerWidget {
     // branch index 4 is Bus; hide it (and remap) when the student is not on a bus
     final visible = [for (var i = 0; i < items.length; i++) if (i != 4 || onBus) i];
     final selected = visible.indexOf(shell.currentIndex).clamp(0, visible.length - 1);
+    ref.watch(tourRequestProvider);   // "Take the tour again" from Help
     final s = ref.watch(sessionProvider).value;
     if (s != null && !s.viewOnly) WidgetsBinding.instance.addPostFrameCallback((_) { if (context.mounted) maybeShowTour(context, 'family'); });
     final dob = ref.watch(profileProvider).value?['dob'] as String?;
