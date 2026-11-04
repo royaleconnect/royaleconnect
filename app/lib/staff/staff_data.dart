@@ -135,7 +135,7 @@ Future<void> markDone(String conversationId, bool done) => db.from('conversation
 // ---------------------------------------------------------------- announcements
 final staffAnnouncementsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   ref.cacheFor();
-  final data = await db.from('announcement').select('id,category,title,body,attachments,sent_at,scheduled_for,audience_all,audience_grade_ids,audience_section_ids,author_id,author:author_id(display_name),created_at').order('created_at', ascending: false).limit(100);
+  final data = await db.from('announcement').select('id,category,title,body,attachments,sent_at,scheduled_for,audience_all,audience_grade_ids,audience_section_ids,audience_bus_only,audience_route_ids,author_id,author:author_id(display_name),created_at').order('created_at', ascending: false).limit(100);
   final rows = [for (final r in data) Map<String, dynamic>.from(r)];
   // "Seen by X of Y": how many of the students in the audience have opened it
   try {
