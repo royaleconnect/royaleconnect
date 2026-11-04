@@ -14,6 +14,7 @@ import '../widgets/royal_extras.dart' show CountUpText, GoldLoading, FestiveBann
 import 'health_dot.dart';
 import 'year_end.dart';
 import 'password_requests.dart' show PasswordRequestsCard;
+import '../widgets/guided_tour.dart' show TourTarget;
 import '../widgets/staff_birthday.dart';
 
 /// First screen for the IT admin, Principal and Vice Principal: the whole school at a glance.
@@ -82,7 +83,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
       title: '$greet${s.staff?['name'] != null ? ', ${s.staff!['name']}' : ''}',
       subtitle: '${DateFormat('EEEE d MMMM yyyy').format(DateTime.now())} · the whole school at a glance${dash.value?['generated_at'] != null ? ' · updated ${DateFormat('h:mm a').format(DateTime.parse(dash.value!['generated_at']).toLocal())}' : ''}',
       actions: [
-        const HealthDot(),
+        const TourTarget('staff-health', child: HealthDot()),
         FilledButton.icon(onPressed: () => _monthly(context), icon: const Icon(Icons.picture_as_pdf_rounded, size: 18), label: const Text('Monthly report')),
         OutlinedButton.icon(onPressed: () { ref.invalidate(adminDashProvider); ref.invalidate(adminOverviewProvider); ref.invalidate(_adoptionProvider); ref.invalidate(yearEndProvider); }, icon: const Icon(Icons.refresh_rounded, size: 18), label: const Text('Refresh')),
       ],
