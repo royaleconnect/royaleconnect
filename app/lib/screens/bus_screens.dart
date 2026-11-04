@@ -64,6 +64,15 @@ class _BusScreenState extends ConsumerState<BusScreen> {
     ]));
   }
 
+  /// "Bus parked · last trip ended 4:10 pm" — so nobody mistakes an old position for a live one
+  String? _parked(Map<String, dynamic>? t) {
+    if (t != null) return null;
+    final last = ref.watch(lastTripProvider).value;
+    final e = last?['ended_at'];
+    if (e == null) return null;
+    return 'Bus parked · ${'${last!['kind']}'.startsWith('morning') ? 'morning' : 'afternoon'} trip ended ${DateFormat('h:mm a').format(DateTime.parse(e).toLocal()).toLowerCase()}';
+  }
+
   Widget _livePill(Map<String, dynamic>? t) => Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: t == null ? Colors.white.withValues(alpha: .14) : Brand.green, borderRadius: BorderRadius.circular(999)),
       child: Row(mainAxisSize: MainAxisSize.min, children: [Container(width: 8, height: 8, decoration: BoxDecoration(color: t == null ? Colors.white54 : Colors.white, shape: BoxShape.circle)), const SizedBox(width: 6),
         Text(t == null ? 'Not running' : '${'${t['kind']}'.startsWith('morning') ? 'Morning' : 'Afternoon'} trip live', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800))]));
@@ -73,7 +82,7 @@ class _BusScreenState extends ConsumerState<BusScreen> {
     final next = t?['next_stop_seq'] as int?;
     return ListView(padding: const EdgeInsets.all(20), children: [
       Container(padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(18)), child: Row(children: [
-        Expanded(child: Text(t == null ? 'Next ${morning ? 'morning' : 'afternoon'} trip starts ${(morning ? r['morning_start'] : r['afternoon_start'])?.toString().substring(0, 5) ?? ''}' : 'Bus is ${next == null ? 'on the way' : 'heading to stop $next'} · updated ${t['last_fix_at'] == null ? '—' : DateFormat('h:mm a').format(DateTime.parse(t['last_fix_at']).toLocal())}', style: const TextStyle(fontWeight: FontWeight.w700, height: 1.4))),
+        Expanded(child: Text(t == null ? '${_parked(t) == null ? '' : '${_parked(t)}\n'}Next ${morning ? 'morning' : 'afternoon'} trip starts ${(morning ? r['morning_start'] : r['afternoon_start'])?.toString().substring(0, 5) ?? ''}' : 'Bus is ${next == null ? 'on the way' : 'heading to stop $next'} · updated ${t['last_fix_at'] == null ? '—' : DateFormat('h:mm a').format(DateTime.parse(t['last_fix_at']).toLocal())}', style: const TextStyle(fontWeight: FontWeight.w700, height: 1.4))),
         IconButton.filledTonal(onPressed: () => callNumber(r['driver']?['phone']), icon: const Icon(Icons.call_rounded), tooltip: 'Call driver'),
         IconButton.filledTonal(onPressed: () => callNumber(r['conductor']?['phone']), icon: const Icon(Icons.support_agent_rounded), tooltip: 'Call bus assistant'),
       ])),
@@ -112,7 +121,7 @@ class _BusScreenState extends ConsumerState<BusScreen> {
     String title, sub;
     int? etaMin;   // minutes to your stop (gold ring), only while the bus is coming to it
     if (t == null) {
-      title = 'The bus is not on a trip right now';
+      title = _parked(t) ?? 'The bus is not on a trip right now';
       sub = 'Next ${morning ? 'morning' : 'afternoon'} trip starts ${(morning ? r['morning_start'] : r['afternoon_start'])?.toString().substring(0, 5) ?? ''}. You get a notification when it starts.';
     } else if (lat == null || lng == null) {
       title = 'Trip started · waiting for the bus location';
@@ -139,8 +148,8 @@ class _BusScreenState extends ConsumerState<BusScreen> {
             Text(sub, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
           ])),
         ]),
-        if (age != null) Text(age < 15 ? '● Live · updated ${age < 2 ? 'just now' : '$age s ago'}' : '● Last update ${age ~/ 60 > 0 ? '${age ~/ 60} min' : '$age s'} ago — the bus may be in a low-network area',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: context.tone(age < 15 ? Brand.green : Brand.amber))),
+        if (age != null) Text(age < 15 ? '● Live · updated ${age < 2 ? 'just now' : '$age s ago'}' : age >= 600 ? '● Old location — no update for ${age ~/ 60} min. The bus phone may be off or out of network; call the driver if you are worried.' : '● Last update ${age ~/ 60 > 0 ? '${age ~/ 60} min' : '$age s'} ago — the bus may be in a low-network area',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: context.tone(age < 15 ? Brand.green : age >= 600 ? Brand.crimson : Brand.amber))),
         const SizedBox(height: 10),
         Row(children: [
           Expanded(child: OutlinedButton.icon(onPressed: r['driver']?['phone'] == null ? null : () => callNumber(r['driver']['phone']), icon: const Icon(Icons.call_rounded, size: 18), label: const Text('Driver'))),
