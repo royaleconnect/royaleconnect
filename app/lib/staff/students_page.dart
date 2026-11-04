@@ -16,7 +16,7 @@ import 'staff_data.dart';
 import 'staff_screens_2.dart' show StaffStudentsScreen, pickAndUpload;
 import 'staff_shell.dart';
 import '../core/cache.dart';
-import 'certificates_page.dart' show pickCertificate, openCertificate;
+import 'certificates_page.dart' show pickCertificate, openCertificate, certificateIssuedTick;
 
 /// Students — one page for the office: current and past students, one search box
 /// (name, admission number — old or new — or a parent's phone), and each student's full record:
@@ -198,6 +198,7 @@ class _LinkReview extends ConsumerWidget {
 
 // ================================================================== the record
 final _recordProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, id) async {
+  ref.watch(certificateIssuedTick);
   ref.cacheFor();
   final st = Map<String, dynamic>.from(await db.from('student').select(
       'id,admission_no,full_name,dob,gender,blood_group,house,admission_type,address,father_name,mother_name,guardian_name,photo_path,active,left_on,leaving_reason,tc_issued_on,previous_student_id,'
