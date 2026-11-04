@@ -9,7 +9,7 @@ import 'screens/desk_screen.dart';
 import 'widgets/royal_extras.dart' show BirthdayGate;
 import 'auth/session.dart';
 import 'core/data2.dart' show profileProvider;
-import 'widgets/guided_tour.dart' show maybeShowTour;
+import 'widgets/guided_tour.dart' show maybeShowTour, TourTarget;
 
 /// Bottom navigation. The Bus tab appears only for students with a transport enrolment.
 class AppShell extends ConsumerWidget {
@@ -38,15 +38,15 @@ class AppShell extends ConsumerWidget {
     return DeskGate(child: BirthdayGate(studentId: s?.viewOnly == true || !featureOn(ref.watch(appSettingsProvider).value, 'birthdays') ? null : s?.active?.id, firstName: s?.active?.fullName.trim().split(RegExp(r'\s+')).first, dobIso: dob, child: Scaffold(
       body: shell,
       // Help: bottom right of Home, on phones and on the website
-      floatingActionButton: shell.currentIndex == 0 ? HelpFab(onTap: () => context.push('/help')) : null,
+      floatingActionButton: shell.currentIndex == 0 ? TourTarget('f-help', child: HelpFab(onTap: () => context.push('/help'))) : null,
       // On a laptop the side menu (parent_layout.dart) replaces the bottom tabs.
       bottomNavigationBar: MediaQuery.sizeOf(context).width >= 960 ? null : NavigationBar(
         selectedIndex: selected,
         onDestinationSelected: (i) => shell.goBranch(visible[i], initialLocation: visible[i] == shell.currentIndex),
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        destinations: [for (final i in visible) NavigationDestination(
+        destinations: [for (final i in visible) TourTarget('nav:${const ['/', '/fees', '/diary', '/announcements', '/bus', '/reports'][i]}', child: NavigationDestination(
           icon: i == 0 && unread > 0 ? Badge(label: Text('$unread'), child: Icon(items[i].$2)) : Icon(items[i].$2),
-          selectedIcon: Icon(items[i].$1), label: items[i].$3)],
+          selectedIcon: Icon(items[i].$1), label: items[i].$3))],
       ),
     )));
   }
