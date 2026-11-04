@@ -12,7 +12,7 @@ import '../core/data3.dart' show appSettingsProvider, staffAccessOf, yearLabelPr
 import '../widgets/hub_tabs.dart';
 import 'staff_search.dart' show StaffSearchBar, StaffSearchShortcuts, showStaffSearch;
 import 'approvals_page.dart' show approvalsCountProvider;
-import '../widgets/guided_tour.dart' show maybeShowTour, tourRoleFor;
+import '../widgets/guided_tour.dart' show maybeShowTour, tourRoleFor, TourTarget;
 import '../widgets/staff_birthday.dart';
 import 'id_cards_page.dart' show idCardsAllReadyProvider;
 
@@ -139,12 +139,12 @@ class StaffShell extends ConsumerWidget {
             Expanded(child: ListView(padding: const EdgeInsets.symmetric(horizontal: 10), children: [
               for (final (i, m) in menu.indexed) ...[
                 if (i == 0 || menu[i - 1].group != m.group) Padding(padding: const EdgeInsets.fromLTRB(12, 14, 12, 4), child: Text(m.group, style: TextStyle(color: Colors.white.withValues(alpha: .6), fontSize: 10.5, letterSpacing: 1.6, fontWeight: FontWeight.w800))),
-                _NavTile(m, selected: loc == m.path || (m.path != '/staff' && loc.startsWith(m.path)), badge: badge(m.path), glow: m.path == '/staff/id-cards' && idReady, onTap: () => m.path == '/staff/me' ? context.push(m.path) : context.go(m.path)),
+                TourTarget('nav:${m.path}', child: _NavTile(m, selected: loc == m.path || (m.path != '/staff' && loc.startsWith(m.path)), badge: badge(m.path), glow: m.path == '/staff/id-cards' && idReady, onTap: () => m.path == '/staff/me' ? context.push(m.path) : context.go(m.path))),
               ],
             ])),
             _MeTile(s, onSignOut: () async { await ref.read(sessionProvider.notifier).signOut(); if (context.mounted) context.go('/login'); }),
           ]))),
-          Expanded(child: ColoredBox(color: cs.surfaceContainerHighest.withValues(alpha: .35), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [const StaffSearchBar(), Expanded(child: content)]))),
+          Expanded(child: ColoredBox(color: cs.surfaceContainerHighest.withValues(alpha: .35), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [const TourTarget('staff-search', child: StaffSearchBar()), Expanded(child: content)]))),
         ]), floatingActionButton: help);
       }
       // phone / tablet
@@ -152,13 +152,13 @@ class StaffShell extends ConsumerWidget {
       return Scaffold(
         appBar: AppBar(backgroundColor: Brand.crimsonDeep, foregroundColor: Colors.white, elevation: 0,
           title: Text(menu.firstWhere((m) => loc == m.path || (m.path != '/staff' && loc.startsWith(m.path)), orElse: () => menu.first).label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
-          actions: [IconButton(onPressed: () => showStaffSearch(context), icon: const Icon(Icons.search_rounded), tooltip: 'Search a student'), IconButton(onPressed: () => _more(context, ref, s, menu, loc, badge), icon: const Icon(Icons.menu_rounded), tooltip: 'Menu')]),
+          actions: [TourTarget('staff-search', child: IconButton(onPressed: () => showStaffSearch(context), icon: const Icon(Icons.search_rounded), tooltip: 'Search a student')), TourTarget('staff-menu', child: IconButton(onPressed: () => _more(context, ref, s, menu, loc, badge), icon: const Icon(Icons.menu_rounded), tooltip: 'Menu'))]),
         body: content,
         floatingActionButton: help,
         bottomNavigationBar: NavigationBar(
           selectedIndex: quick.indexWhere((m) => loc == m.path || (m.path != '/staff' && loc.startsWith(m.path))).clamp(0, quick.length - 1),
           onDestinationSelected: (i) => context.go(quick[i].path),
-          destinations: [for (final m in quick) NavigationDestination(icon: badge(m.path) > 0 ? Badge(label: Text('${badge(m.path)}'), child: Icon(m.icon)) : Icon(m.icon), label: const {'Parent feedback': 'Feedback', 'School calendar': 'Calendar', 'Class diary': 'Diary', 'Leave requests': 'Leave', 'Exams & portions': 'Exams', 'Marks entry': 'Marks'}[m.label] ?? m.label.split(' ').first)],
+          destinations: [for (final m in quick) TourTarget('nav:${m.path}', child: NavigationDestination(icon: badge(m.path) > 0 ? Badge(label: Text('${badge(m.path)}'), child: Icon(m.icon)) : Icon(m.icon), label: const {'Parent feedback': 'Feedback', 'School calendar': 'Calendar', 'Class diary': 'Diary', 'Leave requests': 'Leave', 'Exams & portions': 'Exams', 'Marks entry': 'Marks'}[m.label] ?? m.label.split(' ').first))],
         ),
       );
     }))));
