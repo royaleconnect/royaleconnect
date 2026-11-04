@@ -14,6 +14,9 @@ import '../core/theme.dart';
 import '../widgets/common.dart';
 import 'staff_shell.dart';
 
+/// goes up each time a certificate is printed, so an open student record refreshes (TC issued date, mother tongue…)
+final certificateIssuedTick = StateProvider<int>((_) => 0);
+
 /// Certificates — the office prints a Transfer Certificate, Study, Bonafide or No-dues certificate.
 /// Find the student → tap the certificate → the form looks like the paper; what the app knows is filled in,
 /// the rest are boxes to type in → Print / PDF. Every printed certificate gets a number and its exact
@@ -342,6 +345,7 @@ class _CertificateFormScreenState extends ConsumerState<CertificateFormScreen> {
     try {
       final number = await db.rpc('certificate_issue', params: {'p_student': widget.studentId, 'p_kind': widget.kind, 'p_data': v}) as String;
       ref.invalidate(certificateRecentProvider);
+      ref.read(certificateIssuedTick.notifier).state++;   // the student record shows the new TC date at once
       if (!mounted) return;
       final data = Map<String, dynamic>.from(v);
       Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => PdfDocScreen(
