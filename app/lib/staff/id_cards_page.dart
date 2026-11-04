@@ -9,6 +9,7 @@ import '../core/brand_images.dart';
 import '../core/cache.dart';
 import '../core/data.dart';
 import '../core/school_docs.dart' show PdfDocScreen;
+import '../core/sign_font.dart';
 import '../core/theme.dart';
 import '../core/xlsx_writer.dart';
 import '../screens/idcard_screen.dart' show IdCard, IdCardData, IdCardFace;
@@ -103,7 +104,7 @@ Future<IdPdfFonts> _fonts() async {
       pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSans-Regular.ttf')),
       pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSans-Bold.ttf')),
       pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSerif-Bold.ttf')),
-      pw.Font.timesBoldItalic(),
+      signatureFont(),
     );
   } catch (_) {
     return IdPdfFonts.builtIn();
