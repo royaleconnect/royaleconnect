@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../auth/session.dart';
 import '../core/data.dart' show viewOnlyMode;
@@ -85,7 +86,20 @@ final _shownThisRun = <String>{};
 
 /// Call once the first screen after sign-in is on screen. Shows the tour only the first time on this device for this role.
 /// Never shown while an admin is using "View as family".
+/// "Take the tour again" asks for the tour here; the main screen (Home / Today) picks it up once it is showing.
+final tourRequestProvider = StateProvider<String?>((_) => null);
+
 Future<void> maybeShowTour(BuildContext context, String role) async {
+  // asked for again from Help: run it now that Home is on screen
+  try {
+    final c = ProviderScope.containerOf(context, listen: false);
+    if (c.read(tourRequestProvider) == role) {
+      c.read(tourRequestProvider.notifier).state = null;
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      if (context.mounted) await showTour(context, role);
+      return;
+    }
+  } catch (_) {}
   if (viewOnlyMode || _shownThisRun.contains(role) || !tourSteps.containsKey(role)) return;
   _shownThisRun.add(role);
   final prefs = await SharedPreferences.getInstance();
@@ -123,7 +137,10 @@ Future<void> showTour(BuildContext context, String role, {List<TourStep>? steps}
 }
 
 Rect? _rectOfId(String id) {
-  final ro = _targets[id]?.currentContext?.findRenderObject();
+  final ctx = _targets[id]?.currentContext;
+  // a part on a page that is hidden behind another page (or a tab not showing) does not count
+  if (ctx == null || !TickerMode.of(ctx)) return null;
+  final ro = ctx.findRenderObject();
   if (ro is! RenderBox || !ro.hasSize || !ro.attached) return null;
   final r = ro.localToGlobal(Offset.zero) & ro.size;
   return r.isEmpty ? null : r;
@@ -269,7 +286,12 @@ class TakeTourAgainButton extends ConsumerWidget {
     final s = ref.watch(sessionProvider).value;
     if (s == null || s.viewOnly) return const SizedBox.shrink();
     return Align(alignment: Alignment.centerLeft, child: OutlinedButton.icon(
-      onPressed: () => showTour(context, tourRoleFor(s)),
+      onPressed: () {
+        // the tour points at Home (families) or Today (staff), so go there first and start it there
+        final role = tourRoleFor(s);
+        ref.read(tourRequestProvider.notifier).state = role;
+        context.go(s.isStaff ? '/staff' : '/');
+      },
       icon: const Icon(Icons.tour_rounded, size: 18),
       label: const Text('Take the tour again'),
     ));
