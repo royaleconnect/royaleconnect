@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -123,13 +124,24 @@ Future<void> showTour(BuildContext context, String role, {List<TourStep>? steps}
     }
   } catch (_) {}
   if (list.isEmpty) return;
+  final layer = TourLayer._live;
+  if (layer != null && layer.mounted) {
+    final done = Completer<void>();
+    late final VoidCallback close;
+    close = () { layer.show(null); if (!done.isCompleted) done.complete(); };
+    layer.show(_TourOverlay(steps: list, onClose: close));
+    await done.future;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_key(role), true);
+    return;
+  }
   await showGeneralDialog<void>(
     context: context,
     barrierDismissible: false,
     barrierLabel: 'Tour',
     barrierColor: Colors.transparent,
     transitionDuration: const Duration(milliseconds: 260),
-    pageBuilder: (_, __, ___) => _TourOverlay(steps: list),
+    pageBuilder: (c, __, ___) => _TourOverlay(steps: list, onClose: () => Navigator.of(c).pop()),
     transitionBuilder: (_, a, __, child) => FadeTransition(opacity: CurvedAnimation(parent: a, curve: Curves.easeOut), child: child),
   );
   final prefs = await SharedPreferences.getInstance();
@@ -146,9 +158,35 @@ Rect? _rectOfId(String id) {
   return r.isEmpty ? null : r;
 }
 
+/// A layer over the WHOLE app window — above the laptop side menu and the phone-width frame — so the tour can
+/// light up any part of the screen at its true position. Wrapped around everything in main.dart.
+class TourLayer extends StatefulWidget {
+  final Widget child;
+  const TourLayer({super.key, required this.child});
+  static _TourLayerState? _live;
+  @override
+  State<TourLayer> createState() => _TourLayerState();
+}
+
+class _TourLayerState extends State<TourLayer> {
+  Widget? top;
+  void show(Widget? w) { if (mounted) setState(() => top = w); }
+  @override
+  void initState() { super.initState(); TourLayer._live = this; }
+  @override
+  void dispose() { if (TourLayer._live == this) TourLayer._live = null; super.dispose(); }
+  @override
+  Widget build(BuildContext context) => Stack(textDirection: TextDirection.ltr, fit: StackFit.expand, children: [
+        widget.child,
+        if (top != null) Positioned.fill(child: TweenAnimationBuilder<double>(tween: Tween(begin: 0, end: 1), duration: const Duration(milliseconds: 260),
+            builder: (_, v, c) => Opacity(opacity: v, child: c), child: top)),
+      ]);
+}
+
 class _TourOverlay extends StatefulWidget {
   final List<TourStep> steps;
-  const _TourOverlay({required this.steps});
+  final VoidCallback onClose;
+  const _TourOverlay({required this.steps, required this.onClose});
   @override
   State<_TourOverlay> createState() => _TourOverlayState();
 }
@@ -174,21 +212,29 @@ class _TourOverlayState extends State<_TourOverlay> with SingleTickerProviderSta
   void _go(int n) { setState(() => i = n); _bringIntoView(); }
 
   Rect? _rectOf(List<String> ids) {
-    for (final id in ids) { final r = _rectOfId(id); if (r != null) return r.inflate(6); }
+    Rect? r;
+    for (final id in ids) { r = _rectOfId(id); if (r != null) break; }
     // on a phone the staff menu sits behind the Menu button: point there
-    if (ids.any((id) => id.startsWith('nav:/staff/'))) { final r = _rectOfId('staff-menu'); if (r != null) return r.inflate(6); }
-    return null;
+    if (r == null && ids.any((id) => id.startsWith('nav:/staff/'))) r = _rectOfId('staff-menu');
+    if (r == null) return null;
+    // the parts are measured from the window's corner; this overlay may start elsewhere (e.g. right of a side menu)
+    final me = context.findRenderObject();
+    if (me is RenderBox && me.hasSize && me.attached) r = r.shift(-me.localToGlobal(Offset.zero));
+    return r.inflate(6);
   }
 
+  // rebuilt with every tick of the gold pulse, so the ring follows its part while the page settles or scrolls
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => AnimatedBuilder(animation: pulse, builder: (context, _) => _frame(context));
+
+  Widget _frame(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final step = widget.steps[i];
     final last = i == widget.steps.length - 1;
     final size = MediaQuery.sizeOf(context);
     var hole = _rectOf(step.at);
     // a part that is still off the screen gets a card in the middle instead
-    if (hole != null && (hole.bottom < 0 || hole.top > size.height || hole.height > size.height * .6)) hole = null;
+    if (hole != null && (hole.bottom < 0 || hole.top > size.height || hole.right < 0 || hole.left > size.width || hole.height > size.height * .6)) hole = null;
     if (MediaQuery.of(context).disableAnimations && pulse.isAnimating) pulse.stop();
     final card = ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420), child: Material(
       color: cs.surface, elevation: 10, shadowColor: Colors.black38, borderRadius: BorderRadius.circular(22),
@@ -214,13 +260,13 @@ class _TourOverlayState extends State<_TourOverlay> with SingleTickerProviderSta
           ]),
           const SizedBox(height: 10),
           Row(children: [
-            if (!last) TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Skip')),
+            if (!last) TextButton(onPressed: () => widget.onClose(), child: const Text('Skip')),
             const Spacer(),
             if (i > 0) TextButton(onPressed: () => _go(i - 1), child: const Text('Back')),
             const SizedBox(width: 6),
             FilledButton(
               style: FilledButton.styleFrom(minimumSize: const Size(0, 42), padding: const EdgeInsets.symmetric(horizontal: 20)),
-              onPressed: () => last ? Navigator.of(context).pop() : _go(i + 1),
+              onPressed: () => last ? widget.onClose() : _go(i + 1),
               child: Text(last ? 'Done' : 'Next')),
           ]),
         ])),
