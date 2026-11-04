@@ -14,9 +14,22 @@ import '../core/theme.dart';
 class TourStep {
   final String title, text;
   final IconData icon;
-  /// optional: the part of the screen to light up (a plain centred card is shown when it is not on screen)
-  final GlobalKey? target;
-  const TourStep(this.title, this.text, this.icon, {this.target});
+  /// the parts of the screen this step points at (the first one on screen is used); none = a card in the middle
+  final List<String> at;
+  /// skip this step when none of its parts is on screen (e.g. Bus for a student who does not take the bus)
+  final bool optional;
+  const TourStep(this.title, this.text, this.icon, {this.at = const [], this.optional = false});
+}
+
+/// The parts of the app a tour can point at. A screen marks a part with `TourTarget('id', child: …)`.
+final _targets = <String, GlobalKey>{};
+GlobalKey tourKey(String id) => _targets.putIfAbsent(id, () => GlobalKey(debugLabel: 'tour:$id'));
+
+class TourTarget extends StatelessWidget {
+  final String id; final Widget child;
+  const TourTarget(this.id, {super.key, required this.child});
+  @override
+  Widget build(BuildContext context) => KeyedSubtree(key: tourKey(id), child: child);
 }
 
 /// Which tour a signed-in person gets.
@@ -29,35 +42,41 @@ String tourRoleFor(Session s) {
 
 const tourSteps = <String, List<TourStep>>{
   'family': [
-    TourStep('Welcome to Royale Connect', 'A quick look around — it takes less than a minute. The top of Home, “Needs you today”, shows only what needs you: a fee due, a form to sign, a reply. When it says “All done”, you can relax.', Icons.home_rounded),
-    TourStep('Everything else, one tap away', 'Below that, the tiles open the timetable, calendar, exams, photos and more.', Icons.grid_view_rounded),
-    TourStep('Diary and My list', 'Diary shows each day’s homework and class notes. Tap the star on anything you want to remember — it goes to My list, and you can tick it off when it is done.', Icons.menu_book_rounded),
-    TourStep('Attendance and leave', 'See your child’s attendance month by month. Asking for leave takes two taps — the class teacher is told at once.', Icons.fact_check_rounded),
-    TourStep('Fees', 'See what is due, pay online with UPI or card, and download every receipt.', Icons.account_balance_wallet_rounded),
-    TourStep('Profile', 'Tap Profile for the ID card, Help & feedback, and Call school office. You can take this tour again from Help.', Icons.person_rounded),
+    TourStep('Your child', 'Tap here for the profile and the ID card. With two children, tap to switch between them.', Icons.person_rounded, at: ['f-child']),
+    TourStep('Needs you today', 'Only what needs you: a fee due, a notice to read, homework for tomorrow. When it says “All done”, you are free.', Icons.task_alt_rounded, at: ['f-needs']),
+    TourStep('Attendance streak', 'Days present in a row. A gold celebration at 30 and 60 days.', Icons.local_fire_department_rounded, at: ['f-streak'], optional: true),
+    TourStep('Notices', 'Every school notice comes here, with a notification on your phone. Urgent ones show in red at the top of Home.', Icons.campaign_rounded, at: ['f-notices', 'nav:/announcements']),
+    TourStep('Diary', 'Today’s homework and notes from the teachers, plus My list to tick off what is done.', Icons.menu_book_rounded, at: ['f-diary', 'nav:/diary']),
+    TourStep('Fees', 'See what is due, pay online and download receipts.', Icons.account_balance_wallet_rounded, at: ['f-fees', 'nav:/fees']),
+    TourStep('Bus', 'Watch the bus live and get an alert 10 and 5 minutes before it reaches your stop.', Icons.directions_bus_rounded, at: ['f-bus', 'nav:/bus'], optional: true),
+    TourStep('Help', 'Any question? Tap here, or call the school office from Profile. You can see this tour again from Help.', Icons.help_outline_rounded, at: ['f-help', 'nav:/profile']),
   ],
   'teacher': [
-    TourStep('Today', 'Your first page shows what needs you first: parent messages, leave requests, and classes still waiting for today’s diary.', Icons.today_rounded),
-    TourStep('Diary', 'Post homework once. “Also send to” sends the same note to your other sections of the same grade — they are ticked for you.', Icons.menu_book_rounded),
-    TourStep('Attendance', 'Class teachers: everyone starts as present. Just tap the children who are absent, then Save. Families of absent children get a gentle note.', Icons.fact_check_rounded),
-    TourStep('Exams & marks', 'Portions, marks entry and report cards are together under Exams & marks.', Icons.grading_rounded),
-    TourStep('Messages', 'Reply to parents here. Sent something by mistake? Press and hold your message to edit or delete it, within 2 days.', Icons.chat_bubble_rounded),
-    TourStep('Honours', 'Toppers, Student Council and Houses live under Honours. Stuck anywhere? Help is at the bottom of the menu.', Icons.emoji_events_rounded),
+    TourStep('Today', 'Your first page shows what needs you first: parent messages, leave requests and classes still waiting for today’s diary.', Icons.today_rounded, at: ['nav:/staff']),
+    TourStep('Diary', 'Post homework once. “Also send to” sends the same note to your other sections of the same grade — they are ticked for you.', Icons.menu_book_rounded, at: ['nav:/staff/diary']),
+    TourStep('Attendance', 'Everyone starts as present. Tap only the children who are absent, then Save. Their families are told at once.', Icons.fact_check_rounded, at: ['nav:/staff/attendance'], optional: true),
+    TourStep('Exams & marks', 'Portions, marks entry and report cards are together here.', Icons.grading_rounded, at: ['nav:/staff/exams']),
+    TourStep('Messages', 'Reply to parents here. Sent something by mistake? Press and hold your message to edit or delete it, within 2 days.', Icons.chat_bubble_rounded, at: ['nav:/staff/messages']),
+    TourStep('Find a student', 'Type 2–3 letters of a name, admission number or phone here (or press Ctrl + K).', Icons.search_rounded, at: ['staff-search'], optional: true),
+    TourStep('Help', 'Short answers to every question. You can take this tour again from here.', Icons.help_outline_rounded, at: ['nav:/staff/help']),
   ],
   'office': [
-    TourStep('Approvals', 'Everything waiting for a yes or no is in one place: leave, notices from teachers and receipt changes.', Icons.task_alt_rounded),
-    TourStep('Fees & receipts', 'Record a payment, print the receipt, and see who still owes fees. Reminders to families go by themselves.', Icons.account_balance_wallet_rounded),
-    TourStep('Students', 'Find any student by name, admission number or a parent’s phone. The full record opens with one tap.', Icons.people_alt_rounded),
-    TourStep('Notices', 'Send to the whole school, a grade, a section or bus families. Unsend within 10 minutes, edit later (families see “Updated”), and keep an important notice on top until a date.', Icons.campaign_rounded),
-    TourStep('Help is always here', 'Help, at the bottom of the menu, has short answers. You can take this tour again from there.', Icons.help_outline_rounded),
+    TourStep('Approvals', 'Everything waiting for a yes or no is in one place: password help, leave, receipt cancellations, certificates.', Icons.inbox_rounded, at: ['nav:/staff/approvals'], optional: true),
+    TourStep('Fees & receipts', 'Record a payment, print the receipt, see who still owes fees and download reports in Excel. Reminders to families go by themselves.', Icons.account_balance_wallet_rounded, at: ['nav:/staff/fees']),
+    TourStep('Students', 'Find any student by name, admission number or a parent’s phone. The full record opens with one tap.', Icons.people_alt_rounded, at: ['nav:/staff/students']),
+    TourStep('Certificates', 'TC, Study, Bonafide and No dues certificates, filled in from the records, ready to print.', Icons.workspace_premium_rounded, at: ['nav:/staff/certificates'], optional: true),
+    TourStep('ID cards', 'Print ID cards class by class. It glows gold when every card is ready.', Icons.badge_rounded, at: ['nav:/staff/id-cards'], optional: true),
+    TourStep('Notices', 'Send to the whole school, a grade, a section or bus families. Unsend within 10 minutes; edit later.', Icons.campaign_rounded, at: ['nav:/staff/announcements']),
+    TourStep('Help', 'Short answers to every question. You can take this tour again from here.', Icons.help_outline_rounded, at: ['nav:/staff/help']),
   ],
   'leader': [
-    TourStep('The whole school at a glance', 'Your first page shows students, today’s attendance, fees and notices — and the Data checker, which lists anything missing, like a photo or a phone number.', Icons.dashboard_rounded),
-    TourStep('School setup', 'School setup has tabs: Staff, Classes & fees, and Sections on/off — switch a section of the family app on or off for everyone.', Icons.tune_rounded),
-    TourStep('Bin and Branches', 'Deleted something by mistake? The Bin keeps everything for 30 days — bring it back with one tap. Branches is ready for the day a new branch opens.', Icons.delete_outline_rounded),
-    TourStep('Principal’s Desk', 'A message from the Principal to all families, beautifully presented, from Principal’s Desk.', Icons.auto_awesome_rounded),
-    TourStep('Weekly summary', 'Every Monday at 8 am: “Your week at Royale” — five lines about the week, and what needs you. Tap it to open.', Icons.insights_rounded),
-    TourStep('The small dot', 'The dot at the top of your first page shows the app’s health. Green: all is well. Amber or red: tap it to see what to check.', Icons.circle),
+    TourStep('The whole school at a glance', 'Your first page shows students, today’s attendance, fees and notices, and the Data checker, which lists anything missing, like a photo or a phone number.', Icons.dashboard_rounded, at: ['nav:/staff']),
+    TourStep('The small dot', 'The dot at the top shows the app’s health. Green: all is well. Amber or red: tap it to see what to check.', Icons.circle, at: ['staff-health'], optional: true),
+    TourStep('Approvals', 'Receipt cancellations and other things waiting for your yes or no.', Icons.inbox_rounded, at: ['nav:/staff/approvals'], optional: true),
+    TourStep('Principal’s Desk', 'Your welcome and event messages to families and staff, shown full screen once to everyone.', Icons.auto_awesome_rounded, at: ['nav:/staff/desk'], optional: true),
+    TourStep('School setup', 'Staff, classes & fees, sections on/off, the Bin (bring back anything deleted within 30 days) and branches — all as tabs here.', Icons.tune_rounded, at: ['nav:/staff/setup']),
+    TourStep('Weekly summary', 'Every Monday at 8 am: “Your week at Royale”, five lines about the week and what needs you.', Icons.insights_rounded),
+    TourStep('Help', 'Short answers, and the IT handbook. You can take this tour again from here.', Icons.help_outline_rounded, at: ['nav:/staff/help']),
   ],
 };
 
@@ -78,7 +97,17 @@ Future<void> maybeShowTour(BuildContext context, String role) async {
 
 /// Always shows the tour (Help → "Take the tour again"). Marks it as seen when it closes (finished or skipped).
 Future<void> showTour(BuildContext context, String role, {List<TourStep>? steps}) async {
-  final list = steps ?? tourSteps[role] ?? const <TourStep>[];
+  var list = [...(steps ?? tourSteps[role] ?? const <TourStep>[])];
+  // a step whose part is not on this screen (e.g. Bus for a child who does not take the bus) is left out
+  list = [for (final t in list) if (!t.optional || t.at.any((id) => _rectOfId(id) != null)) t];
+  // the Principal's first look: a welcome with her name, then her tour
+  try {
+    final s = ProviderScope.containerOf(context, listen: false).read(sessionProvider).value;
+    if (role == 'leader' && s != null && s.hasRole('principal') && steps == null) {
+      final name = (s.staff?['name'] ?? s.staff?['display_name'] ?? '').toString();
+      list.insert(0, TourStep('Welcome${name.isEmpty ? '' : ', $name'}', 'Royale Connect brings families, teachers and the office together in one place. Here is a one-minute look at what is ready for you.', Icons.auto_awesome_rounded));
+    }
+  } catch (_) {}
   if (list.isEmpty) return;
   await showGeneralDialog<void>(
     context: context,
@@ -93,6 +122,13 @@ Future<void> showTour(BuildContext context, String role, {List<TourStep>? steps}
   await prefs.setBool(_key(role), true);
 }
 
+Rect? _rectOfId(String id) {
+  final ro = _targets[id]?.currentContext?.findRenderObject();
+  if (ro is! RenderBox || !ro.hasSize || !ro.attached) return null;
+  final r = ro.localToGlobal(Offset.zero) & ro.size;
+  return r.isEmpty ? null : r;
+}
+
 class _TourOverlay extends StatefulWidget {
   final List<TourStep> steps;
   const _TourOverlay({required this.steps});
@@ -100,14 +136,31 @@ class _TourOverlay extends StatefulWidget {
   State<_TourOverlay> createState() => _TourOverlayState();
 }
 
-class _TourOverlayState extends State<_TourOverlay> {
+class _TourOverlayState extends State<_TourOverlay> with SingleTickerProviderStateMixin {
   int i = 0;
+  late final AnimationController pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))..repeat();
+  @override
+  void dispose() { pulse.dispose(); super.dispose(); }
+  @override
+  void initState() { super.initState(); WidgetsBinding.instance.addPostFrameCallback((_) => _bringIntoView()); }
 
-  Rect? _rectOf(GlobalKey? k) {
-    final ro = k?.currentContext?.findRenderObject();
-    if (ro is! RenderBox || !ro.hasSize || !ro.attached) return null;
-    final o = ro.localToGlobal(Offset.zero);
-    return (o & ro.size).inflate(6);
+  /// scroll the page so the part this step talks about is on screen, then light it up
+  Future<void> _bringIntoView() async {
+    for (final id in widget.steps[i].at) {
+      final c = _targets[id]?.currentContext;
+      if (c == null || !c.mounted) continue;
+      try { await Scrollable.ensureVisible(c, alignment: .3, duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic); } catch (_) {}
+      break;
+    }
+    if (mounted) setState(() {});
+  }
+  void _go(int n) { setState(() => i = n); _bringIntoView(); }
+
+  Rect? _rectOf(List<String> ids) {
+    for (final id in ids) { final r = _rectOfId(id); if (r != null) return r.inflate(6); }
+    // on a phone the staff menu sits behind the Menu button: point there
+    if (ids.any((id) => id.startsWith('nav:/staff/'))) { final r = _rectOfId('staff-menu'); if (r != null) return r.inflate(6); }
+    return null;
   }
 
   @override
@@ -115,8 +168,11 @@ class _TourOverlayState extends State<_TourOverlay> {
     final cs = Theme.of(context).colorScheme;
     final step = widget.steps[i];
     final last = i == widget.steps.length - 1;
-    final hole = _rectOf(step.target);
     final size = MediaQuery.sizeOf(context);
+    var hole = _rectOf(step.at);
+    // a part that is still off the screen gets a card in the middle instead
+    if (hole != null && (hole.bottom < 0 || hole.top > size.height || hole.height > size.height * .6)) hole = null;
+    if (MediaQuery.of(context).disableAnimations && pulse.isAnimating) pulse.stop();
     final card = ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420), child: Material(
       color: cs.surface, elevation: 10, shadowColor: Colors.black38, borderRadius: BorderRadius.circular(22),
       child: Container(
@@ -143,11 +199,11 @@ class _TourOverlayState extends State<_TourOverlay> {
           Row(children: [
             if (!last) TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Skip')),
             const Spacer(),
-            if (i > 0) TextButton(onPressed: () => setState(() => i--), child: const Text('Back')),
+            if (i > 0) TextButton(onPressed: () => _go(i - 1), child: const Text('Back')),
             const SizedBox(width: 6),
             FilledButton(
               style: FilledButton.styleFrom(minimumSize: const Size(0, 42), padding: const EdgeInsets.symmetric(horizontal: 20)),
-              onPressed: () => last ? Navigator.of(context).pop() : setState(() => i++),
+              onPressed: () => last ? Navigator.of(context).pop() : _go(i + 1),
               child: Text(last ? 'Done' : 'Next')),
           ]),
         ])),
@@ -155,23 +211,30 @@ class _TourOverlayState extends State<_TourOverlay> {
     ));
     // the card sits under the lit-up part when there is room, otherwise in the middle
     Widget placed;
+    var below = true;
     if (hole == null) {
       placed = Positioned.fill(child: Center(child: Padding(padding: const EdgeInsets.all(20), child: card)));
     } else {
-      final below = hole.bottom + 16 < size.height - 260;
-      placed = Positioned(left: 16, right: 16, top: below ? hole.bottom + 14 : null, bottom: below ? null : size.height - hole.top + 14,
-          child: Align(alignment: Alignment.topCenter, child: card));
+      below = hole.bottom + 16 < size.height - 300;
+      // on a laptop the card sits beside a menu item on the left; on a phone, under or over the lit-up part
+      final side = hole.right < size.width * .35 && size.width >= 900;
+      placed = side
+          ? Positioned(left: hole.right + 18, top: (hole.center.dy - 90).clamp(16.0, size.height - 320), child: SizedBox(width: 400, child: card))
+          : Positioned(left: 16, right: 16, top: below ? hole.bottom + 16 : null, bottom: below ? null : size.height - hole.top + 16,
+              child: Align(alignment: Alignment.topCenter, child: card));
+      if (side) below = false;
     }
     return Stack(children: [
-      Positioned.fill(child: CustomPaint(painter: _Dim(hole, Colors.black.withValues(alpha: .55)))),
+      Positioned.fill(child: AnimatedBuilder(animation: pulse, builder: (_, __) => CustomPaint(
+          painter: _Dim(hole, Colors.black.withValues(alpha: .58), pulse.value, cs.surface, hole == null ? null : (hole.right < size.width * .35 && size.width >= 900 ? 'right' : below ? 'down' : 'up'))))),
       placed,
     ]);
   }
 }
 
 class _Dim extends CustomPainter {
-  final Rect? hole; final Color color;
-  _Dim(this.hole, this.color);
+  final Rect? hole; final Color color; final double t; final Color card; final String? arrow;
+  _Dim(this.hole, this.color, [this.t = 0, this.card = Colors.white, this.arrow]);
   @override
   void paint(Canvas canvas, Size size) {
     final p = Path()..addRect(Offset.zero & size);
@@ -181,11 +244,21 @@ class _Dim extends CustomPainter {
     }
     canvas.drawPath(p, Paint()..color = color);
     if (hole != null) {
-      canvas.drawRRect(RRect.fromRectAndRadius(hole!, const Radius.circular(14)), Paint()..color = Brand.gold..style = PaintingStyle.stroke..strokeWidth = 2);
+      final h = hole!;
+      canvas.drawRRect(RRect.fromRectAndRadius(h, const Radius.circular(14)), Paint()..color = Brand.gold2..style = PaintingStyle.stroke..strokeWidth = 2.2);
+      // a soft gold ring that keeps pulsing outwards
+      canvas.drawRRect(RRect.fromRectAndRadius(h.inflate(2 + 10 * t), Radius.circular(14 + 10 * t)),
+          Paint()..color = Brand.gold2.withValues(alpha: (1 - t) * .8)..style = PaintingStyle.stroke..strokeWidth = 2);
+      // the little arrow from the card to the lit-up part
+      final a = Path();
+      if (arrow == 'down') { final x = h.center.dx.clamp(30.0, size.width - 30); a..moveTo(x - 9, h.bottom + 17)..lineTo(x, h.bottom + 8)..lineTo(x + 9, h.bottom + 17)..close(); }
+      if (arrow == 'up') { final x = h.center.dx.clamp(30.0, size.width - 30); a..moveTo(x - 9, h.top - 17)..lineTo(x, h.top - 8)..lineTo(x + 9, h.top - 17)..close(); }
+      if (arrow == 'right') { final y = h.center.dy; a..moveTo(h.right + 19, y - 9)..lineTo(h.right + 10, y)..lineTo(h.right + 19, y + 9)..close(); }
+      canvas.drawPath(a, Paint()..color = card);
     }
   }
   @override
-  bool shouldRepaint(_Dim o) => o.hole != hole || o.color != color;
+  bool shouldRepaint(_Dim o) => o.hole != hole || o.color != color || o.t != t || o.arrow != arrow;
 }
 
 /// For Help: "Take the tour again".
