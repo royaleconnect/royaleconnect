@@ -219,13 +219,19 @@ class ReceiptsScreen extends ConsumerWidget {
         error: (e, _) => Center(child: Text('$e')),
         data: (rows) => rows.isEmpty ? const Center(child: Text('No payments yet.')) : ListView.separated(padding: const EdgeInsets.all(20), itemCount: rows.length, separatorBuilder: (_, __) => const SizedBox(height: 8), itemBuilder: (_, i) {
           final m = rows[i];
+          final cancelled = m['status'] == 'cancelled' || m['cancelled_at'] != null;
+          final when = m['paid_at'] == null ? '${m['status']}' : DateFormat('d MMM yyyy').format(DateTime.parse(m['paid_at']).toLocal());
           return Material(color: cs.surface, borderRadius: BorderRadius.circular(16), child: ListTile(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            leading: const Icon(Icons.receipt_long_rounded, color: Brand.green),
-            title: Text(m['receipt_no'] ?? 'Pending', style: const TextStyle(fontWeight: FontWeight.w800)),
-            subtitle: Text(m['paid_at'] == null ? m['status'] : DateFormat('d MMM yyyy').format(DateTime.parse(m['paid_at']).toLocal())),
-            trailing: Text(inr(m['amount'] as num), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-            onTap: () { if (m['status'] == 'success') { openReceiptPdf(context, m['id'], receiptNo: m['receipt_no']); } else { context.push('/receipt/${m['id']}'); } },
+            leading: Icon(cancelled ? Icons.block_rounded : Icons.receipt_long_rounded, color: cancelled ? cs.onSurfaceVariant : Brand.green),
+            title: Row(children: [
+              Flexible(child: Text(m['receipt_no'] ?? 'Pending', style: TextStyle(fontWeight: FontWeight.w800, decoration: cancelled ? TextDecoration.lineThrough : null))),
+              if (cancelled) ...[const SizedBox(width: 8), const Pill('Cancelled', fg: Brand.crimson, bg: Brand.crimsonTint)],
+            ]),
+            // a cancelled receipt says why, so the family is not left guessing
+            subtitle: Text(cancelled ? '$when · ${(m['cancel_reason'] ?? '').toString().trim().isEmpty ? 'Cancelled by the school office' : 'Reason: ${m['cancel_reason']}'}' : when),
+            trailing: Text(inr(m['amount'] as num), style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: cancelled ? cs.onSurfaceVariant : null, decoration: cancelled ? TextDecoration.lineThrough : null)),
+            onTap: () { if (cancelled) return; if (m['status'] == 'success') { openReceiptPdf(context, m['id'], receiptNo: m['receipt_no']); } else { context.push('/receipt/${m['id']}'); } },
           ));
         }))),
     ]));
