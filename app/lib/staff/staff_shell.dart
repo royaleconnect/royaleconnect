@@ -12,7 +12,7 @@ import '../core/data3.dart' show appSettingsProvider, staffAccessOf, yearLabelPr
 import '../widgets/hub_tabs.dart';
 import 'staff_search.dart' show StaffSearchBar, StaffSearchShortcuts, showStaffSearch;
 import 'approvals_page.dart' show approvalsCountProvider;
-import '../widgets/guided_tour.dart' show maybeShowTour, tourRoleFor, TourTarget;
+import '../widgets/guided_tour.dart' show maybeShowTour, tourRoleFor, TourTarget, tourRequestProvider;
 import '../widgets/staff_birthday.dart';
 import 'id_cards_page.dart' show idCardsAllReadyProvider;
 
@@ -110,6 +110,7 @@ class StaffShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(sessionProvider).value;
     if (s == null || !s.isStaff) return const SizedBox.shrink();
+    ref.watch(tourRequestProvider);   // "Take the tour again" from Help
     WidgetsBinding.instance.addPostFrameCallback((_) { if (context.mounted) maybeShowTour(context, tourRoleFor(s)); });
     final menu = visibleMenu(s, ref.watch(appSettingsProvider).value);
     final loc0 = GoRouterState.of(context).matchedLocation;
