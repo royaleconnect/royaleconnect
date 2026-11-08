@@ -15,7 +15,15 @@ class StudentsScreen extends ConsumerWidget {
     final t = Theme.of(context).textTheme;
     if (s == null) return const SizedBox.shrink();
     final picked = ref.watch(childPickedProvider);
-    Future<void> open(String id) async { await ref.read(sessionProvider.notifier).selectStudent(id); ref.read(childPickedProvider.notifier).done(); if (context.mounted) context.go('/'); }
+    // The first choice after opening goes through '/splash', so a link the app was opened with (the web payment return
+    // page, a notification) is still opened after the family picks a child; with no such link it lands on Home.
+    Future<void> open(String id) async {
+      final first = !picked;
+      await ref.read(sessionProvider.notifier).selectStudent(id);
+      ref.read(childPickedProvider.notifier).done();
+      final next = linkAfterChildPicked; linkAfterChildPicked = null;
+      if (context.mounted) context.go(next ?? (first ? '/splash' : '/'));
+    }
     return Scaffold(body: Column(children: [
       BrandHeader(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
