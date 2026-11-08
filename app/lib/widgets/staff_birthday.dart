@@ -10,6 +10,7 @@ import '../core/theme.dart';
 import '../staff/staff_shell.dart' show Panel, toast;
 import 'royal_extras.dart' show EmojiDrift, DriftMode;
 import 'royal_motion.dart' show ConfettiBurst, FadeRise, GoldText, GoldParticles;
+import '../core/errors.dart';
 
 /// Staff birthdays.
 ///  • the birthday person: a full-screen wish on their birthday (or "belated" within 7 days), once a year — [StaffBirthdayGate]
@@ -149,7 +150,7 @@ class StaffBirthdaysPanel extends ConsumerWidget {
       await db.rpc('set_staff_dob', params: {'p_staff': x['id'], 'p_dob': DateFormat('yyyy-MM-dd').format(d)});
       ref.invalidate(staffBirthdaysProvider);
       if (context.mounted) toast(context, 'Saved ✓');
-    } catch (e) { if (context.mounted) toast(context, 'Could not save: $e'); }
+    } catch (e) { if (context.mounted) toast(context, friendlyError(e)); }
   }
 
   @override
