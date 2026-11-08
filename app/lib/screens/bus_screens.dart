@@ -154,10 +154,12 @@ class _BusScreenState extends ConsumerState<BusScreen> {
     final pin = b['pin'] == null ? null : Map<String, dynamic>.from(b['pin'] as Map);
     final home = pin == null ? null : LatLng(_d(pin['lat'])!, _d(pin['lng'])!);
     final lat = _d(t?['last_lat']), lng = _d(t?['last_lng']);
+    // laptops and tablets: the cards sit at the bottom left (460 px wide), so the map stays in view
+    final wide = MediaQuery.sizeOf(context).width >= 700;
     return Stack(children: [
       Positioned.fill(child: BusMap(
         stops: const [], busLat: lat, busLng: lng, trail: trail, running: t != null, home: home,
-        padding: const EdgeInsets.only(bottom: 260),
+        padding: wide ? const EdgeInsets.only(left: 480) : const EdgeInsets.only(bottom: 260),
         onTap: placing && !saving ? (p) => _save(sid, p.latitude, p.longitude, 'Saved ✓ Your pickup point is on the map') : null,
       )),
       if (placing) Positioned(left: 12, right: 12, top: 12, child: Material(color: Brand.crimsonDeep, borderRadius: BorderRadius.circular(14), child: Padding(
@@ -166,7 +168,7 @@ class _BusScreenState extends ConsumerState<BusScreen> {
           const Expanded(child: Text('Tap the map where your pickup point is', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700))),
           TextButton(onPressed: () => setState(() => placing = false), child: const Text('Cancel', style: TextStyle(color: Colors.white))),
         ])))),
-      Positioned(left: 12, right: 12, bottom: 12, child: SafeArea(top: false, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Positioned(left: 12, right: wide ? null : 12, width: wide ? 460 : null, bottom: 12, child: SafeArea(top: false, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         _statusCard(b, t, pin, cs),
         const SizedBox(height: 10),
         _pinCard(sid, pin, cs),
@@ -258,7 +260,9 @@ class _BusScreenState extends ConsumerState<BusScreen> {
         Text(from, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
       ])),
       saving ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
-          : FilledButton.tonal(onPressed: () => _change(sid), child: Text(pin == null ? 'Set' : 'Change')),
+          // a small button: the app's buttons are full-width by default, which squeezed the words beside it into one letter per line
+          : FilledButton.tonal(onPressed: () => _change(sid), style: FilledButton.styleFrom(minimumSize: const Size(84, 44), padding: const EdgeInsets.symmetric(horizontal: 18)),
+              child: Text(pin == null ? 'Set' : 'Change')),
     ]));
   }
 
