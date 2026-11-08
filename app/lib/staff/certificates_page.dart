@@ -13,6 +13,8 @@ import '../core/school_docs.dart' show PdfDocScreen;
 import '../core/theme.dart';
 import '../widgets/common.dart';
 import 'staff_shell.dart';
+import '../auth/session.dart';
+import '../core/errors.dart';
 
 /// goes up each time a certificate is printed, so an open student record refreshes (TC issued date, mother tongue…)
 final certificateIssuedTick = StateProvider<int>((_) => 0);
@@ -142,6 +144,7 @@ const _tcRows = <(int, String, List<String>)>[
 // ------------------------------------------------------------------ letterhead (same words as the MCB certificate)
 const _schoolName = 'Royale Concorde International School';
 const _schoolAddress = "6TH 'B' MAIN, HRBR LAYOUT, KALYAN NAGAR, BANGALORE-560043";
+const _schoolPhones = 'Ph: 080-25435454/55 · Mob: 9535216115';
 const _schoolAffiliation = 'CBSE Affiliation No: 830135';
 
 // ================================================================== data
@@ -342,6 +345,16 @@ class _CertificateFormScreenState extends ConsumerState<CertificateFormScreen> {
       if (go != true) return;
     }
     setState(() => busy = true);
+    // a TC is a legal paper: the office asks, the Principal approves (Principal and IT issue directly)
+    final se = ref.read(sessionProvider).value;
+    if (widget.kind == 'tc' && !(se?.hasRole('principal') ?? false) && !(se?.hasRole('it_admin') ?? false)) {
+      try {
+        await db.rpc('tc_request', params: {'p_student': widget.studentId, 'p_data': v, 'p_note': v['reason']});
+        if (!mounted) return;
+        Navigator.pop(context); toast(context, 'Sent to the Principal ✓ · You will be told when the TC is approved.');
+      } catch (e) { if (mounted) { setState(() => busy = false); toast(context, friendlyError(e)); } }
+      return;
+    }
     try {
       final number = await db.rpc('certificate_issue', params: {'p_student': widget.studentId, 'p_kind': widget.kind, 'p_data': v}) as String;
       ref.invalidate(certificateRecentProvider);
@@ -458,6 +471,7 @@ class _CertificateFormScreenState extends ConsumerState<CertificateFormScreen> {
         const SizedBox(height: 4),
         Text(_schoolAddress, textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
         Text(_schoolAffiliation, textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+        Text(_schoolPhones, textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
       ])),
       const SizedBox(width: 30),
     ]);
@@ -599,6 +613,7 @@ Future<Uint8List> buildCertificatePdf(String kind, String number, Map<String, dy
       pw.Text(_schoolAddress, textAlign: pw.TextAlign.center, style: pw.TextStyle(font: k.base, fontSize: 11, color: _pInk)),
       pw.SizedBox(height: 2),
       pw.Text(_schoolAffiliation, textAlign: pw.TextAlign.center, style: pw.TextStyle(font: k.base, fontSize: 11, color: _pInk)),
+      pw.Text(_schoolPhones, textAlign: pw.TextAlign.center, style: pw.TextStyle(font: k.base, fontSize: 10, color: _pInk)),
     ])),
     pw.SizedBox(width: 88),
   ]);
