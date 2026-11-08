@@ -9,7 +9,11 @@ class AppConfig {
 
   static const schoolName = 'Royale Concorde International School';
   static const schoolShort = 'RCIS';
-  static const officePhone = '080-0000-0000'; // TODO: real office number from the school
+  /// The number the 'Call office' buttons dial.
+  static const officePhone = '08025435454';
+  /// How the school's numbers are written everywhere (screens, receipts, report cards, ID cards, certificates).
+  static const officePhones = 'Ph: 080-25435454/55 · Mob: 9535216115';
+  static const officePhonesShort = '080-25435454/55 · 9535216115';
   static const appName = 'Royale Connect';
   /// Public web address of the app (QR codes on receipts and report cards point here). Change when app.rcis.in is ready.
   static const webUrl = 'https://royaleconnect.github.io/royaleconnect';
