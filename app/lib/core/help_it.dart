@@ -50,7 +50,7 @@ const itHandbookHelp = <HelpItem>[
     'Choose what you are bringing in (students, staff, fees, bus…) and pick the file. Columns are matched for you — check them.',
     'The app lists any problems first. Nothing is saved until you tap Import.',
     'New people get password slips at the end. Print them in one go.',
-  ], keywords: 'import excel xlsx csv upload mcb myclassboard bulk students staff fees list sheet', route: '/staff/setup', button: 'Open Classes & fees'),
+  ], keywords: 'import excel xlsx csv upload mcb myclassboard bulk students staff fees list sheet', route: '/staff/setup', button: 'Open School setup'),
   HelpItem('it-down', 'IT handbook', 'What do I do if the app is down?', [
     'First check your own internet: open any other website.',
     'Look at the health dot at the top of your first page. Tap it to see what is not working.',
