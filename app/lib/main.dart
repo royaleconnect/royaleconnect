@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'auth/session.dart';
 import 'core/config.dart';
 import 'core/data.dart' show pingAppSeen;
+import 'core/freshness.dart';
 import 'core/offline.dart';
 import 'core/push.dart';
 import 'core/theme.dart';
@@ -24,16 +25,26 @@ class RoyaleConnectApp extends ConsumerStatefulWidget {
   ConsumerState<RoyaleConnectApp> createState() => _RoyaleConnectAppState();
 }
 
-class _RoyaleConnectAppState extends ConsumerState<RoyaleConnectApp> {
+class _RoyaleConnectAppState extends ConsumerState<RoyaleConnectApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     Push.start(ref);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final s = ref.read(sessionProvider).value;
       Push.sync(s);
       if (s != null) pingAppSeen(s.token);
     });
+  }
+
+  @override
+  void dispose() { WidgetsBinding.instance.removeObserver(this); super.dispose(); }
+
+  /// Back from another app (or the phone was locked): fetch the family's data again, quietly.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) refreshFamilyData(ref);
   }
 
   @override
@@ -56,13 +67,15 @@ class _RoyaleConnectAppState extends ConsumerState<RoyaleConnectApp> {
         routerConfig: ref.watch(routerProvider),
         scaffoldMessengerKey: appMessengerKey,
         // Staff: full-width panel. Parents on a laptop (960 px and wider): side menu + full page.
-        // Everything else on a big screen (sign-in pages, small tablets) is framed at phone width, centred.
+        // Parents on a tablet (600–959 px, e.g. an upright iPad): the full width, Home in two columns.
+        // Everything else on a big screen (the child picker, consent) is framed at phone width, centred.
         builder: (context, child) => TourLayer(child: _ViewAsBanner(child: OfflineBanner(child: AnimatedBuilder(animation: ref.watch(routerProvider).routerDelegate, builder: (context, _) => LayoutBuilder(builder: (_, c) {
           final sess = ref.watch(sessionProvider).value;
           final loc = ref.read(routerProvider).routerDelegate.currentConfiguration.uri.path;
           final family = sess != null && sess.kind == 'student' && !sess.mustChangePassword && sess.active != null && ref.watch(splashDoneProvider) && (sess.students.length == 1 || (sess.activeStudentId != null && ref.watch(childPickedProvider)));
           if (isStaff || c.maxWidth <= 600 || loc == '/splash' || _authPages.contains(loc)) return child!;      // opening screen and sign-in pages fill any screen
           if (family && c.maxWidth >= 960) return ParentFrame(child: child!);
+          if (family) return child!;
           final dark = Theme.of(context).brightness == Brightness.dark;
           return DecoratedBox(
             decoration: BoxDecoration(gradient: RadialGradient(radius: 1.2, colors: dark ? const [Color(0xFF1E1A20), Color(0xFF0E0C10)] : const [Color(0xFFFFFDF8), Color(0xFFF1E9DB)])),
