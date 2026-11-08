@@ -7,6 +7,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'config.dart';
 import 'data.dart' show db;
+import '../core/errors.dart';
 
 /// Fee receipts and report cards as A4 PDFs, made on the phone from the school's data.
 /// Each carries a QR code that opens the public /verify page, so anyone can check it is genuine.
@@ -31,7 +32,7 @@ Future<SchoolInfo> loadSchoolInfo() async {
     name: v('school_name', AppConfig.schoolName),
     address: v('school_address', 'Kalyan Nagar · 6th ‘B’ Main, II Block, HRBR Layout, Bengaluru 560043'),
     email: v('school_email', ''),
-    phone: v('school_phone', ''),
+    phone: v('school_phone', AppConfig.officePhones),
     affiliation: v('cbse_affiliation_no', ''),
     code: v('cbse_school_code', ''),
     internalMax: int.tryParse(v('internal_assessment_max', '20')) ?? 20,
@@ -363,7 +364,7 @@ Future<Uint8List> buildReportCardPdf(String reportCardId) async {
     pageFormat: PdfPageFormat.a4,
     margin: const pw.EdgeInsets.fromLTRB(40, 34, 40, 30),
     build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
-      _header(k, contact: false),
+      _header(k),
       _title(k, 'PERFORMANCE RECORD', '${term.toUpperCase()} · $year'),
       _infoBox(k, [
         ('Name', (st['full_name'] as String).toUpperCase()), ('Class', _cls(en)),
@@ -459,7 +460,7 @@ class _PdfDocScreenState extends State<PdfDocScreen> {
       allowPrinting: true,
       allowSharing: true,
       loadingWidget: const Center(child: CircularProgressIndicator()),
-      onError: (context, e) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('Could not make the PDF.\n$e', textAlign: TextAlign.center))),
+      onError: (context, e) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('Could not make the PDF. ${friendlyError(e)}', textAlign: TextAlign.center))),
     ),
   );
 }
@@ -469,6 +470,34 @@ String _safe(String s) => s.replaceAll(RegExp(r'[^A-Za-z0-9]+'), '-').replaceAll
 void openReceiptPdf(BuildContext context, String paymentId, {String? receiptNo}) => Navigator.of(context).push(MaterialPageRoute(
   builder: (_) => PdfDocScreen(title: 'Fee receipt', fileName: 'RCIS-receipt-${_safe(receiptNo ?? paymentId)}.pdf', make: () => buildReceiptPdf(paymentId)),
 ));
+
+/// The short version of a report card for the results envelope: each subject with its grade, and the overall grade.
+/// Same rules as the PDF (the term's main exam, or the test of that name). Subjects without marks are left out.
+Future<({String term, String year, List<(String, String)> grades, String? overall})> reportCardSummary(String reportCardId) async {
+  final rc = await db.from('report_card').select('id,academic_year_id,term,academic_year:academic_year_id(label)').eq('id', reportCardId).single();
+  final yearId = rc['academic_year_id'] as String;
+  final term = rc['term'] as String;
+  final year = '${rc['academic_year']?['label'] ?? AppConfig.academicYearLabel}';
+  final grades = _Grades(List<Map<String, dynamic>>.from(await db.from('grading_scale').select('min_pct,max_pct,grade_label').eq('academic_year_id', yearId).order('min_pct', ascending: false)));
+  final data = Map<String, dynamic>.from(await db.rpc('report_card_data', params: {'rc_id': reportCardId}) as Map);
+  final exams = List<Map<String, dynamic>>.from(data['exams'] ?? const []);
+  final byName = exams.where((e) => '${e['name']}'.toLowerCase() == term.toLowerCase()).toList();
+  final inTerm = exams.where((e) => '${e['term']}'.toLowerCase() == term.toLowerCase()).toList()
+    ..sort((a, b) => (b['max_marks'] as num).compareTo(a['max_marks'] as num));
+  final exam = byName.isNotEmpty ? byName.first : (inTerm.isEmpty ? null : inTerm.first);
+  final maxMarks = (exam?['max_marks'] as num?) ?? 100;
+  final out = <(String, String)>[];
+  num sum = 0; var counted = 0;
+  for (final m in List<Map<String, dynamic>>.from(data['marks'] ?? const [])) {
+    if (m['exam_id'] != exam?['id'] || m['absent'] == true) continue;
+    final i = m['internal'] as num?, e = m['external'] as num?;
+    if (e == null && (byName.isEmpty || i == null)) continue;
+    final t = (i ?? 0) + (e ?? 0);
+    out.add(('${m['subject'] ?? ''}', grades.of(t * 100 / maxMarks)));
+    sum += t; counted++;
+  }
+  return (term: term, year: year, grades: out, overall: counted == 0 ? null : grades.of(sum * 100 / (counted * maxMarks)));
+}
 
 void openReportCardPdf(BuildContext context, String reportCardId, {String? name}) => Navigator.of(context).push(MaterialPageRoute(
   builder: (_) => PdfDocScreen(title: 'Report card', fileName: 'RCIS-report-card-${_safe(name ?? reportCardId)}.pdf', make: () => buildReportCardPdf(reportCardId)),
