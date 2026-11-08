@@ -9,6 +9,8 @@ import 'router.dart';
 import 'widgets/common.dart';
 import 'widgets/guided_tour.dart' show TourTarget;
 import 'widgets/hub_tabs.dart';
+import 'screens/family_today.dart' show unreadFamilyNotices;
+import 'screens/my_list.dart' show diaryTabProvider;
 
 /// Parents and students on a laptop or large tablet: the school menu sits on the left (like the staff panel)
 /// and the page fills the rest of the screen. Phones keep the tiles and bottom tabs.
@@ -34,7 +36,7 @@ class ParentFrame extends ConsumerWidget {
     final st = s?.active;
     final onBus = ref.watch(transportProvider).value != null;
     final unreadMsgs = ref.watch(unreadMessagesProvider).value ?? 0;
-    final unreadNotices = ref.watch(noticesProvider).value?.where((n) => !n.read).length ?? 0;
+    final unreadNotices = unreadFamilyNotices(ref);   // the same list the Notices page shows (a sibling's bus notices left out)
     final settings = ref.watch(appSettingsProvider).value;
     // pages IT has switched off are not shown
     const switches = {'/messages': 'messages', '/bus': 'bus', '/gallery': 'gallery'};
@@ -69,7 +71,7 @@ class ParentFrame extends ConsumerWidget {
           Expanded(child: ListView(padding: const EdgeInsets.fromLTRB(10, 4, 10, 8), children: [
             for (final (g, items) in _groups) ...[
               Padding(padding: const EdgeInsets.fromLTRB(12, 14, 12, 4), child: Text(g, style: TextStyle(color: Colors.white.withValues(alpha: .6), fontSize: 10.5, letterSpacing: 1.6, fontWeight: FontWeight.w800))),
-              for (final (p, l, i) in items) if ((p != '/bus' || onBus) && allowed(p)) TourTarget('nav:$p', child: _Nav(l, i, selected: on(p), badge: badge(p), onTap: () => router.go(p == 'honours' ? hubStart(Hub.honours, settings) : p))),
+              for (final (p, l, i) in items) if ((p != '/bus' || onBus) && allowed(p)) TourTarget('nav:$p', child: _Nav(l, i, selected: on(p), badge: badge(p), onTap: () { if (p == '/diary') ref.read(diaryTabProvider.notifier).state = 0; router.go(p == 'honours' ? hubStart(Hub.honours, settings) : p); })),
             ],
           ])),
           Container(height: 1, margin: const EdgeInsets.symmetric(horizontal: 18), color: Colors.white.withValues(alpha: .15)),
