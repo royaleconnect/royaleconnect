@@ -4,9 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 import '../auth/session.dart';
 import '../core/data.dart';
+import '../core/errors.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
 import 'import_excel.dart';
@@ -30,7 +30,7 @@ const _tabNames = {'students': 'Students', 'staff': 'Staff', 'classes': 'Classes
 const _tabIcons = {'students': Icons.school_rounded, 'staff': Icons.badge_rounded, 'classes': Icons.class_rounded, 'fees': Icons.currency_rupee_rounded, 'transport': Icons.directions_bus_rounded, 'import': Icons.upload_file_rounded};
 const setupRoles = ['office', 'accounts', 'transport_incharge', 'it_admin', 'principal', 'vice_principal'];
 
-String _msg(Object e) => e is PostgrestException ? e.message : e.toString().replaceFirst('Exception: ', '');
+String _msg(Object e) => friendlyError(e);
 String _iso(DateTime d) => DateFormat('yyyy-MM-dd').format(d);
 String _time12(dynamic t) {
   if (t == null || t.toString().length < 5) return '—';
@@ -122,10 +122,10 @@ class _SchoolSetupScreenState extends ConsumerState<SchoolSetupScreen> {
   Widget build(BuildContext context) {
     final s = ref.watch(sessionProvider).value!;
     final tabs = [for (final e in _tabRoles.entries) if (e.value.any(s.hasRole)) e.key];
-    if (tabs.isEmpty) return const StaffPage(title: 'Classes & fees', body: NoteBox('Your role does not include this page.'));
+    if (tabs.isEmpty) return const StaffPage(title: 'School setup', body: NoteBox('Your role does not include this page.'));
     final t = tabs.contains(tab) ? tab! : tabs.first;
     return StaffPage(
-      title: 'Classes & fees', hub: Hub.schoolSetup,
+      title: 'School setup', hub: Hub.schoolSetup,
       subtitle: 'Sections and their teachers, the fee plan for each grade, and loading lists from Excel. Every change is saved at once and recorded in the activity log.',
       body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
@@ -167,6 +167,9 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
   String? gender, sectionId, routeId, stopId, origRoute, origStop;
   String admissionType = 'Day Scholar';
   bool consent = false, active = true, addFees = true;
+  // name, date of birth and parents' names as saved: a change by the office goes to the Principal (Data correction)
+  String origName = '', origFather = '', origMother = ''; DateTime? origDob;
+  Map<String, dynamic>? pendingCorrection;
 
   bool get isNew => widget.studentId == null;
 
@@ -195,6 +198,8 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
       for (var i = 0; i < ph.length && i < 3; i++) { phones[i].text = ph[i]['phone'] ?? ''; labels[i] = ph[i]['label'] ?? labels[i]; }
       final en = r['enrolment'] as List?;
       if (en != null && en.isNotEmpty) sectionId = en.first['section_id'];
+      origName = name.text.trim(); origFather = father.text.trim(); origMother = mother.text.trim(); origDob = dob;
+      try { final pc = await db.rpc('student_pending_correction', params: {'p_student': widget.studentId}); if (pc is Map) pendingCorrection = Map<String, dynamic>.from(pc); } catch (_) {}
       final te = r['transport_enrolment'];
       final t = te is List ? (te.isEmpty ? null : te.first) : te;
       if (t != null) { routeId = origRoute = t['route_id']; stopId = origStop = t['stop_id']; }
@@ -215,6 +220,20 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
     }
     if (list.isEmpty) { toast(context, 'Add at least one parent phone number — notifications and sign-in depend on it.'); return; }
     if (routeId != null && stopId == null) { toast(context, 'Pick the bus stop too.'); return; }
+    // name, date of birth, father's or mother's name changed by the office → the Principal approves first
+    final s = ref.read(sessionProvider).value;
+    final direct = s != null && (s.hasRole('principal') || s.hasRole('it_admin'));
+    final changed = isNew ? <String>[] : [
+      if (name.text.trim() != origName) 'name',
+      if (dob != origDob) 'date of birth',
+      if (father.text.trim() != origFather) 'father’s name',
+      if (mother.text.trim() != origMother) 'mother’s name',
+    ];
+    String? reason;
+    if (!direct && changed.isNotEmpty) {
+      reason = await _askReason(changed);
+      if (reason == null) return;
+    }
     setState(() => busy = true);
     try {
       String? n(TextEditingController c) => c.text.trim().isEmpty ? null : c.text.trim();
@@ -223,19 +242,19 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
         'blood_group': n(blood), 'house': n(house), 'admission_type': admissionType, 'address': n(address),
         'father_name': n(father), 'mother_name': n(mother), 'guardian_name': n(guardian), 'photo_consent': consent, 'active': active,
         'section_id': sectionId, 'phones': list, 'add_fees': addFees,
+        'mother_tongue': n(tongue), 'place_of_birth': n(birthPlace),   // used on the TC and other certificates
+        if (reason != null) 'correction_reason': reason,
       }}) as String;
       if (routeId != origRoute || stopId != origStop) {
         await db.rpc('admin_set_transport', params: {'p_student': id, 'p_route': routeId, 'p_stop': routeId == null ? null : stopId});
       }
-      // used on the TC and other certificates
-      try { await db.from('student').update({'mother_tongue': n(tongue), 'place_of_birth': n(birthPlace)}).eq('id', id); } catch (_) {}
       if (!active && tc != null) await db.from('student').update({'tc_issued_on': _iso(tc!)}).eq('id', id);
       // a student who leaves goes to Past students (the date is kept the first time only)
       if (!active) { try { await db.from('student').update({'left_on': _iso(tc ?? DateTime.now()), 'leaving_reason': tc != null ? 'Left with TC' : 'Left the school'}).eq('id', id).isFilter('left_on', null); } catch (_) {} }
       if (!active) { try { await callFunction(ref, 'password', {'action': 'signout_all', 'student_id': id}); } catch (_) {} }
       String? pw;
       if (isNew) {
-        try { pw = (await callFunction(ref, 'password', {'action': 'reset', 'student_id': id, 'via': 'print'}))['first_use_password']?.toString(); } catch (_) {}
+        try { pw = ((await db.rpc('class_login_reset', params: {'p_student': id})) as Map)['password']?.toString(); } catch (_) {}
       }
       if (!mounted) return;
       final nav = Navigator.of(context); final outer = nav.context;
@@ -243,11 +262,27 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
       if (pw != null && outer.mounted) {
         _slip(outer, 'Admitted — password slip', 'Royale Connect — first-use password\n\nStudent: ${name.text.trim()}\nAdmission no: ${adm.text.trim().toUpperCase()}\nPassword: $pw\n\nSign in with the admission number and this password, then set your own password. This slip is the only copy.');
       } else if (outer.mounted) {
-        toast(outer, 'Saved.');
+        toast(outer, reason != null ? 'Saved ✓ · The ${changed.join(', ')} change is waiting for the Principal’s approval.' : 'Saved ✓');
       }
     } catch (e) {
       if (mounted) { toast(context, _msg(e)); setState(() => busy = false); }
     }
+  }
+
+  /// "Why is this being corrected?" — the Principal sees the reason next to the change.
+  Future<String?> _askReason(List<String> changed) async {
+    final c = TextEditingController();
+    final ok = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
+      title: const Text('Sent to the Principal'),
+      content: SizedBox(width: 440, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('The ${changed.join(', ')} appear${changed.length == 1 ? 's' : ''} on certificates, so the Principal approves the change first. Everything else is saved now.'),
+        const SizedBox(height: 12),
+        TextField(controller: c, autofocus: true, textCapitalization: TextCapitalization.sentences, decoration: const InputDecoration(labelText: 'Why? (e.g. parent asked, birth certificate seen)')),
+      ])),
+      actions: [TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Back')), FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Send'))],
+    ));
+    if (ok != true) return null;
+    return c.text.trim().isEmpty ? 'Correction asked by the office' : c.text.trim();
   }
 
   @override
@@ -262,6 +297,9 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
     Widget two(Widget a, Widget b) => narrow ? Column(children: [a, const SizedBox(height: 10), b]) : Row(children: [Expanded(child: a), const SizedBox(width: 10), Expanded(child: b)]);
 
     return _form(context, title: isNew ? 'New admission' : 'Student details', maxWidth: 620, children: [
+      if (pendingCorrection != null) Padding(padding: const EdgeInsets.only(top: 12), child: NoteBox(
+          'Waiting for the Principal: ${((pendingCorrection!['changes'] as Map?) ?? const {}).entries.map((e) => '${const {'full_name': 'name', 'dob': 'date of birth', 'father_name': 'father’s name', 'mother_name': 'mother’s name'}[e.key] ?? e.key} → ${(e.value as Map?)?['to'] ?? '—'}').join(' · ')}',
+          icon: Icons.hourglass_top_rounded, iconColor: Brand.amber)),
       _label(context, 'STUDENT'),
       two(TextField(controller: adm, textCapitalization: TextCapitalization.characters, decoration: const InputDecoration(labelText: 'Admission number *', hintText: 'e.g. RC/1234/2026')),
           TextField(controller: name, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Full name *'))),
@@ -281,7 +319,7 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
           PickField<String>(label: 'Admission type', value: admissionType, onChanged: (v) => setState(() => admissionType = v ?? 'Day Scholar'),
               items: [for (final a in {'Day Scholar', 'Day Boarder', 'Boarder', admissionType}) DropdownMenuItem(value: a, child: Text(a))])),
       if (isNew) CheckboxListTile(contentPadding: EdgeInsets.zero, value: addFees, onChanged: (v) => setState(() => addFees = v ?? true),
-          title: const Text('Add this year’s fees for the class'), subtitle: const Text('From the fee plan in Classes & fees → Fees. Concessions can be set in the Fees desk.')),
+          title: const Text('Add this year’s fees for the class'), subtitle: const Text('From the fee plan in School setup → Fees. Concessions can be set in Fees & receipts.')),
 
       _label(context, 'PARENTS’ PHONES — SIGN-IN AND NOTIFICATIONS'),
       for (var i = 0; i < 3; i++) Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [
@@ -420,7 +458,7 @@ class _StaffEditorState extends ConsumerState<_StaffEditor> {
       if (pw != null && outer.mounted) {
         _slip(outer, 'Staff added — one-time password', '${name.text.trim()}\n${email.text.trim().toLowerCase()}\n\nPassword: $pw\n\nSign in at “School staff? Sign in here” with this email and password, then set your own password.');
       } else if (outer.mounted) {
-        toast(outer, 'Saved.');
+        toast(outer, 'Saved ✓');
       }
     } catch (e) {
       if (mounted) { toast(context, _msg(e)); setState(() => busy = false); }
@@ -655,7 +693,7 @@ class _FeesTabState extends ConsumerState<_FeesTab> {
           ]);
         }),
       ])),
-      const NoteBox('Changing the plan does not touch any student until you press “Give to all … students”. New admissions get the plan automatically. Concessions for one student stay in the Fees desk.'),
+      const NoteBox('Changing the plan does not touch any student until you press “Give to all … students”. New admissions get the plan automatically. Concessions for one student stay in Fees & receipts.'),
     ]);
   }
 }
