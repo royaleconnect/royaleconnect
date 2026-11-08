@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../auth/session.dart';
 import '../core/data.dart';
+import '../core/errors.dart';
 import '../core/data2.dart';
 import '../core/theme.dart';
 import '../widgets/auth_layout.dart';
@@ -12,7 +13,7 @@ import '../widgets/empty_state.dart';
 import 'staff_data.dart';
 import 'staff_shell.dart';
 import 'staff_screens_2.dart' show pickAndUploadMany;
-import 'admin_dashboard.dart';
+import 'today_screen.dart' show staffTodayProvider;
 import '../widgets/chat_bubble.dart';
 import '../widgets/paper_plane.dart';
 
@@ -21,7 +22,7 @@ String _dm(String? iso) => iso == null ? '' : DateFormat('d MMM').format(DateTim
 String _dmy(String? iso) => iso == null ? '' : DateFormat('d MMM yyyy').format(DateTime.parse(iso).toLocal());
 String _dmt(String? iso) => iso == null ? '' : DateFormat('d MMM, h:mm a').format(DateTime.parse(iso).toLocal());
 Widget _loading() => const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()));
-Widget _err(Object e) => Padding(padding: const EdgeInsets.all(24), child: Text('$e', style: const TextStyle(color: Brand.crimsonDeep)));
+Widget _err(Object e) => Padding(padding: const EdgeInsets.all(24), child: Text(friendlyError(e), style: const TextStyle(color: Brand.crimsonDeep)));
 String _cls(Map<String, dynamic>? student) { final en = (student?['enrolment'] as List?) ?? []; if (en.isEmpty) return ''; final s = en.first['section']; return '${s?['grade']?['code'] ?? ''}-${s?['name'] ?? ''}'; }
 
 // ---------------------------------------------------------------- staff login
@@ -56,7 +57,7 @@ class _StaffLoginScreenState extends ConsumerState<StaffLoginScreen> {
   Future<void> _go() async {
     setState(() { busy = true; error = null; });
     try { await ref.read(sessionProvider.notifier).loginStaff(email.text, pw.text); if (mounted) context.go(ref.read(sessionProvider).value?.kind == 'crew' ? '/driver' : '/staff'); }
-    on AuthError catch (e) { setState(() => error = e.message); } catch (e) { setState(() => error = 'Could not complete sign-in: $e'); }
+    on AuthError catch (e) { setState(() => error = e.message); } catch (e) { setState(() => error = friendlyError(e)); }
     if (mounted) setState(() => busy = false);
   }
 }
@@ -82,47 +83,11 @@ class _StaffSetPasswordScreenState extends ConsumerState<StaffSetPasswordScreen>
         if (a.text.length < 8) { setState(() => error = 'Use at least 8 characters.'); return; }
         if (a.text != b.text) { setState(() => error = "The two passwords don't match."); return; }
         setState(() { busy = true; error = null; });
-        try { await ref.read(sessionProvider.notifier).changeStaffPassword(a.text); if (mounted) context.go('/staff'); } on AuthError catch (e) { setState(() => error = e.message); } catch (e) { setState(() => error = '$e'); }
+        try { await ref.read(sessionProvider.notifier).changeStaffPassword(a.text); if (mounted) context.go('/staff'); } on AuthError catch (e) { setState(() => error = e.message); } catch (e) { setState(() => error = friendlyError(e)); }
         if (mounted) setState(() => busy = false);
       }),
     ],
   );
-}
-
-// ---------------------------------------------------------------- overview
-class StaffOverviewScreen extends ConsumerWidget {
-  const StaffOverviewScreen({super.key});
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final s = ref.watch(sessionProvider).value!;
-    if (isSchoolAdmin(s)) return const AdminDashboard();   // IT admin / principal / vice principal: whole-school dashboard
-    final ov = ref.watch(staffOverviewProvider);
-    final secs = ref.watch(mySectionsProvider);
-    final cs = Theme.of(context).colorScheme;
-    final hour = DateTime.now().hour;
-    Widget stat(String n, String l, IconData i, Color c, String path) => Expanded(child: Material(color: cs.surface, borderRadius: BorderRadius.circular(18), child: InkWell(onTap: () => context.go(path), borderRadius: BorderRadius.circular(18), child: Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: cs.outline.withValues(alpha: .6))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Icon(i, color: c), const SizedBox(height: 10), Text(n, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800)), Text(l, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant, fontWeight: FontWeight.w700))])))));
-    return StaffPage(title: '${hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'}, ${s.staff?['name'] ?? ''}', subtitle: DateFormat('EEEE, d MMMM yyyy').format(DateTime.now()), body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      ov.when(loading: _loading, error: (e, _) => _err(e), data: (m) {
-        final tiles = [
-          stat('${m['unread']}', 'Unread messages', Icons.chat_bubble_rounded, Brand.blue, '/staff/messages'),
-          stat('${m['leaves']}', 'Leave requests waiting', Icons.event_busy_rounded, Brand.amber, '/staff/leave'),
-          stat('${m['diary_today']}', 'Diary entries today', Icons.menu_book_rounded, Brand.green, '/staff/diary'),
-          if (s.isOffice) stat('${m['feedback']}', 'New feedback', Icons.rate_review_rounded, Brand.violet, '/staff/feedback'),
-        ];
-        Widget line(List<Widget> ts) => IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (final (i, t) in ts.indexed) ...[if (i > 0) const SizedBox(width: 12), t]]));
-        if (isNarrow(context) && tiles.length == 4) return Column(children: [line(tiles.sublist(0, 2)), const SizedBox(height: 12), line(tiles.sublist(2))]);
-        return line(tiles);
-      }),
-      const SizedBox(height: 18),
-      Panel(title: 'Your sections', child: secs.when(loading: _loading, error: (e, _) => _err(e), data: (list) => list.isEmpty ? Text('No sections assigned yet. The office sets class teachers and subject teachers under Students.', style: TextStyle(color: cs.onSurfaceVariant)) :
-        Wrap(spacing: 8, runSpacing: 8, children: [for (final sec in list) Chip(avatar: Icon(sec['class_teacher_id'] == s.staff?['id'] ? Icons.star_rounded : Icons.class_rounded, size: 16, color: Brand.crimsonDeep), label: Text(sectionLabel(sec) + (sec['class_teacher_id'] == s.staff?['id'] ? ' · class teacher' : ''), style: const TextStyle(color: Brand.crimsonDeep, fontWeight: FontWeight.w800)), backgroundColor: Brand.crimsonTint, side: BorderSide.none)]))),
-      Panel(title: 'Quick actions', child: Wrap(spacing: 10, runSpacing: 10, children: [
-        for (final (l, i, p) in [('Post diary', Icons.menu_book_rounded, '/staff/diary'), ('Send announcement', Icons.campaign_rounded, '/staff/announcements'), ('Approve leave', Icons.event_busy_rounded, '/staff/leave'), ('Share class moment', Icons.photo_camera_rounded, '/staff/moments'), ('Enter marks', Icons.grading_rounded, '/staff/marks')])
-          OutlinedButton.icon(style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)), onPressed: () => context.go(p), icon: Icon(i, size: 18), label: Text(l)),
-      ])),
-    ]));
-  }
 }
 
 // ---------------------------------------------------------------- messages (inbox + thread)
@@ -223,7 +188,7 @@ class _ThreadState extends ConsumerState<_Thread> {
         const SizedBox(width: 8),
         IconButton.filled(style: IconButton.styleFrom(backgroundColor: Brand.crimson), onPressed: busy ? null : () async {
           final b = text.text.trim(); if (b.isEmpty) return; setState(() => busy = true);
-          try { await staffSend(widget.conversationId, b); text.clear(); ref.invalidate(messagesProvider(widget.conversationId)); ref.invalidate(inboxProvider); } catch (e) { if (mounted) toast(context, 'Could not send: $e'); }
+          try { await staffSend(widget.conversationId, b); text.clear(); ref.invalidate(messagesProvider(widget.conversationId)); ref.invalidate(inboxProvider); } catch (e) { if (mounted) toast(context, 'Could not send: ${friendlyError(e)}'); }
           if (mounted) setState(() => busy = false);
         }, icon: const Icon(Icons.send_rounded)),
       ])),
@@ -240,8 +205,9 @@ class StaffAnnouncementsScreen extends ConsumerWidget {
     final s = ref.watch(sessionProvider).value!;
     final list = ref.watch(staffAnnouncementsProvider);
     final cs = Theme.of(context).colorScheme;
-    return StaffPage(title: 'Announcements', subtitle: s.isOffice ? 'Whole school, grades or sections. Urgent bypasses quiet hours — use only when necessary.' : 'To your own sections. School-wide notices go through the office.',
-      actions: [FilledButton.icon(onPressed: () => _compose(context, ref, s), icon: const Icon(Icons.add_rounded), label: const Text('New announcement'))],
+    final who = _NoticeRule.of(s);
+    return StaffPage(title: 'Notices', subtitle: who.subtitle,
+      actions: [FilledButton.icon(onPressed: () => _compose(context, ref, s), icon: const Icon(Icons.add_rounded), label: const Text('New notice'))],
       body: list.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty ? const Panel(child: EmptyState(kind: EmptyKind.notices, title: 'No notices sent yet', line: 'Notices you send appear here with who has read them.', compact: true)) : Column(children: [for (final a in rows) Panel(padding: const EdgeInsets.all(14), child: CardRow(children: [
         Pill(cats[a['category']] ?? a['category'], fg: a['category'] == 'urgent' ? Colors.white : Brand.crimsonDeep, bg: a['category'] == 'urgent' ? Brand.crimson : Brand.crimsonTint), const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -256,36 +222,46 @@ class StaffAnnouncementsScreen extends ConsumerWidget {
   }
 
   void _compose(BuildContext context, WidgetRef ref, Session s) {
-    String cat = 'general', title = '', body = ''; bool all = s.isOffice; final grades = <String>{}, sections = <String>{}; DateTime? when; bool busy = false, uploading = false; final files = <Map<String, dynamic>>[];
-    DateTime? pinUntil; String bus = '';   // bus: '' = everyone chosen · 'bus' = only bus students · otherwise one route id
-    showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, set) => AlertDialog(insetPadding: EdgeInsets.symmetric(horizontal: isNarrow(context) ? 12 : 40, vertical: 24), title: const Text('New announcement'), content: SizedBox(width: 560, child: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-      Wrap(spacing: 8, children: [for (final e in cats.entries) if (e.key != 'urgent' || s.isOffice) ChoiceChip(label: Text(e.value), selected: cat == e.key, onSelected: (_) => set(() => cat = e.key))]),
+    final who = _NoticeRule.of(s);
+    String cat = 'general', title = '', body = ''; bool all = who.whole || who.busOnly; final grades = <String>{}, sections = <String>{}; DateTime? when; bool busy = false, uploading = false; final files = <Map<String, dynamic>>[];
+    DateTime? pinUntil; String bus = who.busOnly ? 'bus' : '';   // bus: '' = everyone chosen · 'bus' = only bus students · otherwise one route id
+    final me = s.staff?['id'];
+    showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, set) => AlertDialog(insetPadding: EdgeInsets.symmetric(horizontal: isNarrow(context) ? 12 : 40, vertical: 24), title: const Text('New notice'), content: SizedBox(width: 560, child: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+      Wrap(spacing: 8, children: [for (final e in cats.entries) if (e.key != 'urgent' || who.urgent) ChoiceChip(label: Text(e.value), selected: cat == e.key, onSelected: (_) => set(() => cat = e.key))]),
       if (cat == 'urgent') const Padding(padding: EdgeInsets.only(top: 8), child: NoteBox('Urgent rings every phone immediately, even at night. For closures, safety and emergencies only.', icon: Icons.warning_amber_rounded, iconColor: Brand.crimson)),
       const SizedBox(height: 12),
       TextField(onChanged: (v) => title = v, decoration: const InputDecoration(labelText: 'Title')), const SizedBox(height: 10),
       TextField(onChanged: (v) => body = v, minLines: 4, maxLines: 10, decoration: const InputDecoration(labelText: 'Message')), const SizedBox(height: 10),
       Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
         for (final f in files) InputChip(avatar: Icon(f['mime'] == 'application/pdf' ? Icons.picture_as_pdf_rounded : Icons.image_rounded, size: 18, color: Brand.crimson), label: Text(f['name'], overflow: TextOverflow.ellipsis), onDeleted: () => set(() => files.remove(f))),
-        OutlinedButton.icon(onPressed: uploading || files.length >= 10 ? null : () async { set(() => uploading = true); try { final up = await pickAndUploadMany(ctx, 'announcements'); set(() => files.addAll(up)); } catch (e) { if (ctx.mounted) toast(ctx, 'Upload failed: $e'); } set(() => uploading = false); },
+        OutlinedButton.icon(onPressed: uploading || files.length >= 10 ? null : () async { set(() => uploading = true); try { final up = await pickAndUploadMany(ctx, 'announcements'); set(() => files.addAll(up)); } catch (e) { if (ctx.mounted) toast(ctx, 'Upload failed: ${friendlyError(e)}'); } set(() => uploading = false); },
           icon: uploading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.attach_file_rounded, size: 18), label: Text(uploading ? 'Uploading…' : 'Attach PDFs / photos')),
       ]),
       const SizedBox(height: 12),
-      const Text('Audience', style: TextStyle(fontWeight: FontWeight.w800)),
-      if (s.isOffice) CheckboxListTile(value: all, onChanged: (v) => set(() => all = v ?? false), title: const Text('Whole school'), contentPadding: EdgeInsets.zero, controlAffinity: ListTileControlAffinity.leading),
+      const Text('Who gets it', style: TextStyle(fontWeight: FontWeight.w800)),
+      if (who.whole) CheckboxListTile(value: all, onChanged: (v) => set(() => all = v ?? false), title: const Text('Whole school'), contentPadding: EdgeInsets.zero, controlAffinity: ListTileControlAffinity.leading),
+      if (who.busOnly) const Padding(padding: EdgeInsets.only(top: 4), child: Text('Families whose children use the school bus.', style: TextStyle(fontSize: 13))),
       if (!all) ...[
-        if (s.isOffice) Consumer(builder: (_, r, __) => r.watch(gradesProvider).when(loading: () => const SizedBox(), error: (e, _) => _err(e), data: (gs) => Wrap(spacing: 6, children: [for (final g in gs) FilterChip(label: Text(g['code']), selected: grades.contains(g['id']), onSelected: (v) => set(() => v ? grades.add(g['id']) : grades.remove(g['id'])))]))),
+        // grades: the whole school's (office) or only the coordinator's own grades
+        if (who.grades) Consumer(builder: (_, r, __) {
+          final mine = {for (final sec in r.watch(mySectionsProvider).value ?? const <Map<String, dynamic>>[]) sec['grade']?['id']};
+          return r.watch(gradesProvider).when(loading: () => const SizedBox(), error: (e, _) => _err(e), data: (gs) => Wrap(spacing: 6, children: [
+            for (final g in gs) if (who.whole || mine.contains(g['id'])) FilterChip(label: Text(g['code']), selected: grades.contains(g['id']), onSelected: (v) => set(() => v ? grades.add(g['id']) : grades.remove(g['id'])))]));
+        }),
         const SizedBox(height: 6),
-        Consumer(builder: (_, r, __) => r.watch(mySectionsProvider).when(loading: () => const SizedBox(), error: (e, _) => _err(e), data: (ss) => Wrap(spacing: 6, children: [for (final sec in ss) FilterChip(label: Text(sectionLabel(sec)), selected: sections.contains(sec['id']), onSelected: (v) => set(() => v ? sections.add(sec['id']) : sections.remove(sec['id'])))]))),
+        // sections: a class teacher sees only her own class
+        Consumer(builder: (_, r, __) => r.watch(mySectionsProvider).when(loading: () => const SizedBox(), error: (e, _) => _err(e), data: (ss) => Wrap(spacing: 6, children: [
+          for (final sec in ss) if (who.whole || who.grades || sec['class_teacher_id'] == me) FilterChip(label: Text(sectionLabel(sec)), selected: sections.contains(sec['id']), onSelected: (v) => set(() => v ? sections.add(sec['id']) : sections.remove(sec['id'])))]))),
       ],
-      // office: send only to bus families (all routes, or one route) among the classes chosen above
-      if (s.isOffice) Consumer(builder: (_, r, __) {
+      // office / transport: send only to bus families (all routes, or one route)
+      if (who.bus) Consumer(builder: (_, r, __) {
         final routes = [for (final x in r.watch(routesProvider).value ?? const <Map<String, dynamic>>[]) if (x['active'] != false) x];
         if (routes.isEmpty) return const SizedBox.shrink();
         return Padding(padding: const EdgeInsets.only(top: 10), child: DropdownButtonFormField<String>(
           value: bus, isExpanded: true, decoration: const InputDecoration(labelText: 'Bus', isDense: true),
           items: [
-            const DropdownMenuItem(value: '', child: Text('Everyone chosen above')),
-            const DropdownMenuItem(value: 'bus', child: Text('Only students who use the school bus')),
+            if (!who.busOnly) const DropdownMenuItem(value: '', child: Text('Everyone chosen above')),
+            DropdownMenuItem(value: 'bus', child: Text(who.busOnly ? 'All bus families' : 'Only students who use the school bus')),
             for (final ro in routes) DropdownMenuItem(value: ro['id'] as String, child: Text('Only bus route: ${ro['name']}', overflow: TextOverflow.ellipsis)),
           ],
           onChanged: (v) => set(() => bus = v ?? '')));
@@ -306,12 +282,33 @@ class StaffAnnouncementsScreen extends ConsumerWidget {
       FilledButton(onPressed: busy ? null : () async {
         if (title.trim().isEmpty || body.trim().isEmpty) { toast(ctx, 'Title and message are needed.'); return; }
         if (!all && grades.isEmpty && sections.isEmpty) { toast(ctx, 'Choose who should receive it.'); return; }
+        if (cat == 'urgent' && !who.urgent) cat = 'general';
         set(() => busy = true);
-        try { await postAnnouncement(ref, category: cat, title: title.trim(), body: body.trim(), all: all, gradeIds: grades.toList(), sectionIds: sections.toList(), scheduledFor: when, attachments: List.of(files), pinnedUntil: pinUntil, busOnly: bus == 'bus', routeIds: bus.isEmpty || bus == 'bus' ? const [] : [bus]); ref.invalidate(staffAnnouncementsProvider); if (ctx.mounted) { Navigator.pop(ctx); toast(context, when == null ? 'Sent.' : 'Scheduled.'); if (when == null && context.mounted) showPaperPlane(context); } }
-        catch (e) { set(() => busy = false); if (ctx.mounted) toast(ctx, 'Not allowed or failed: $e'); }
+        try { await postAnnouncement(ref, category: cat, title: title.trim(), body: body.trim(), all: all, gradeIds: grades.toList(), sectionIds: sections.toList(), scheduledFor: when, attachments: List.of(files), pinnedUntil: pinUntil, busOnly: bus == 'bus', routeIds: bus.isEmpty || bus == 'bus' ? const [] : [bus]); ref.invalidate(staffAnnouncementsProvider); if (ctx.mounted) { Navigator.pop(ctx); toast(context, when == null ? 'Sent ✓' : 'Scheduled ✓'); if (when == null && context.mounted) showPaperPlane(context); } }
+        catch (e) { set(() => busy = false); if (ctx.mounted) toast(ctx, friendlyError(e)); }
       }, child: Text(when == null ? 'Send' : 'Schedule')),
     ])));
   }
+}
+
+/// Who a person may send notices to (the database checks it again):
+/// office / IT / Principal / VP — whole school, grades, sections, bus families, urgent;
+/// coordinator — her own grades (not urgent); class teacher — only her own class; transport in-charge — bus families.
+class _NoticeRule {
+  final bool whole, grades, bus, busOnly, urgent;
+  const _NoticeRule({this.whole = false, this.grades = false, this.bus = false, this.busOnly = false, this.urgent = false});
+  factory _NoticeRule.of(Session s) {
+    if (s.isOffice) return const _NoticeRule(whole: true, grades: true, bus: true, urgent: true);
+    final coord = s.hasRole('coordinator'), ct = s.hasRole('class_teacher'), tr = s.hasRole('transport_incharge');
+    if (coord) return _NoticeRule(grades: true, bus: tr);
+    if (ct) return _NoticeRule(bus: tr);
+    if (tr) return const _NoticeRule(bus: true, busOnly: true);
+    return const _NoticeRule();
+  }
+  String get subtitle => whole ? 'Whole school, grades or sections. Urgent rings every phone at once — use only when necessary.'
+      : grades ? 'To the families of your grades. School-wide notices go through the office.'
+      : busOnly ? 'To bus families — all routes or one route.'
+      : 'To the families of your class. School-wide notices go through the office.';
 }
 
 // ---------------------------------------------------------------- class diary (teacher)
@@ -327,10 +324,14 @@ class _StaffDiaryScreenState extends ConsumerState<StaffDiaryScreen> {
   Widget build(BuildContext context) {
     final secs = ref.watch(mySectionsProvider);
     final cs = Theme.of(context).colorScheme;
-    return secs.when(loading: () => const StaffPage(title: 'Class diary', body: SizedBox()), error: (e, _) => StaffPage(title: 'Class diary', body: _err(e)), data: (list) {
+    return secs.when(loading: () => const StaffPage(title: 'Diary', body: SizedBox()), error: (e, _) => StaffPage(title: 'Diary', body: _err(e)), data: (list) {
       sectionId ??= list.isEmpty ? null : list.first['id'];
+      if (list.isEmpty) {
+        return const StaffPage(title: 'Diary', subtitle: 'Homework, things to bring, tests. Parents see it the moment you post.',
+          body: Panel(child: EmptyState(kind: EmptyKind.homework, title: 'No classes yet', line: 'When the office gives you a class or a subject, it appears here and you can post homework.', compact: true)));
+      }
       final entries = sectionId == null ? null : ref.watch(staffDiaryProvider((sectionId!, _d(day))));
-      return StaffPage(title: 'Class diary', subtitle: 'Homework, things to bring, tests. Parents see it the moment you post.',
+      return StaffPage(title: 'Diary', subtitle: 'Homework, things to bring, tests. Parents see it the moment you post.',
         actions: [if (sectionId != null) FilledButton.icon(onPressed: () => _compose(context, list), icon: const Icon(Icons.add_rounded), label: const Text('Post entry'))],
         body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Panel(padding: const EdgeInsets.all(12), child: PickRow(children: [
@@ -396,7 +397,7 @@ class _StaffDiaryScreenState extends ConsumerState<StaffDiaryScreen> {
             toast(context, 'Sent to ${names.join(', ')}');
           }
         }
-        catch (e) { set(() => busy = false); if (ctx.mounted) toast(ctx, 'Could not post: $e'); }
+        catch (e) { set(() => busy = false); if (ctx.mounted) toast(ctx, 'Could not post: ${friendlyError(e)}'); }
       }, child: const Text('Post')),
     ])));
   }
@@ -410,7 +411,7 @@ class StaffLeaveScreen extends ConsumerWidget {
     final list = ref.watch(staffLeavesProvider);
     final cs = Theme.of(context).colorScheme;
     const col = {'pending': (Brand.amber, Brand.amberTint), 'approved': (Brand.green, Brand.greenTint), 'declined': (Brand.crimsonDeep, Brand.crimsonTint)};
-    return StaffPage(title: 'Leave requests', subtitle: 'Class teachers see their own section; the office sees all.', body: list.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty ? const Panel(child: EmptyState(kind: EmptyKind.calendar, title: 'No leave requests', line: 'Nothing waiting for you.', compact: true)) : Column(children: [for (final l in rows) Panel(padding: const EdgeInsets.all(14), child: CardRow(children: [
+    return StaffPage(title: 'Leave requests', subtitle: 'Approve or decline — the family is told at once.', body: list.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty ? const Panel(child: EmptyState(kind: EmptyKind.calendar, title: 'No leave requests', line: 'Nothing waiting for you.', compact: true)) : Column(children: [for (final l in rows) Panel(padding: const EdgeInsets.all(14), child: CardRow(children: [
       Pill(l['status'], fg: col[l['status']]!.$1, bg: col[l['status']]!.$2), const SizedBox(width: 12),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('${l['student']?['full_name'] ?? ''} · ${_cls(l['student'])}', style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -418,10 +419,22 @@ class StaffLeaveScreen extends ConsumerWidget {
         Text('Requested ${_dmt(l['created_at'])}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
       ])),
       if (l['status'] == 'pending') ...[
-        TextButton(onPressed: () async { await decideLeave(ref, l['id'], false); ref.invalidate(staffLeavesProvider); ref.invalidate(staffOverviewProvider); }, child: const Text('Decline', style: TextStyle(color: Brand.crimson, fontWeight: FontWeight.w800))),
-        FilledButton(onPressed: () async { await decideLeave(ref, l['id'], true); ref.invalidate(staffLeavesProvider); ref.invalidate(staffOverviewProvider); }, child: const Text('Approve')),
+        TextButton(onPressed: () => decideLeaveWithToast(context, ref, l['id'], false), child: const Text('Decline', style: TextStyle(color: Brand.crimson, fontWeight: FontWeight.w800))),
+        FilledButton(onPressed: () => decideLeaveWithToast(context, ref, l['id'], true), child: const Text('Approve')),
       ],
     ]))])));
+  }
+}
+
+/// Approve / decline one leave request: one checked database call; success and errors are shown in plain words.
+Future<void> decideLeaveWithToast(BuildContext context, WidgetRef ref, String id, bool approve) async {
+  try {
+    final r = await db.rpc('leave_decide', params: {'p_id': id, 'p_approve': approve});
+    final who = (r is Map ? r['student'] : null) ?? '';
+    ref.invalidate(staffLeavesProvider); ref.invalidate(staffOverviewProvider); ref.invalidate(staffTodayProvider);
+    if (context.mounted) toast(context, '${approve ? 'Approved' : 'Declined'} ✓ · $who — family told');
+  } catch (e) {
+    if (context.mounted) toast(context, friendlyError(e));
   }
 }
 
@@ -446,7 +459,7 @@ class _SeenBarState extends ConsumerState<_SeenBar> {
       if (widget.canRemind && left > 0) Padding(padding: const EdgeInsets.only(top: 8), child: FilledButton.tonalIcon(onPressed: busy ? null : () async {
         setState(() => busy = true);
         try { final n = await remindAnnouncement(widget.a['id']); if (context.mounted) toast(context, 'Reminder queued for $n families. It reaches phones once notifications are switched on.'); }
-        catch (e) { if (context.mounted) toast(context, 'Could not send reminder: $e'); }
+        catch (e) { if (context.mounted) toast(context, 'Could not send reminder: ${friendlyError(e)}'); }
         if (mounted) setState(() => busy = false);
       }, icon: const Icon(Icons.notifications_active_outlined, size: 18), label: Text('Remind the $left who haven\'t'))),
     ]));
@@ -472,7 +485,7 @@ class _NoticeMenu extends ConsumerWidget {
         ])), actions: [TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Save'))]));
         if (ok != true || t.text.trim().isEmpty || b.text.trim().isEmpty) return;
         try { await db.from('announcement').update({'title': t.text.trim(), 'body': b.text.trim(), 'edited_at': DateTime.now().toUtc().toIso8601String()}).eq('id', a['id']); ref.invalidate(staffAnnouncementsProvider); if (context.mounted) toast(context, 'Notice updated ✓'); }
-        catch (e) { if (context.mounted) toast(context, 'Could not save: $e'); }
+        catch (e) { if (context.mounted) toast(context, 'Could not save: ${friendlyError(e)}'); }
         return;
       }
       final ok = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
@@ -485,7 +498,7 @@ class _NoticeMenu extends ConsumerWidget {
         await db.rpc('notice_unsend', params: {'p_id': a['id']});
         ref.invalidate(staffAnnouncementsProvider);
         if (context.mounted) showUndo(context, 'Notice', () => ref.invalidate(staffAnnouncementsProvider));
-      } catch (e) { if (context.mounted) toast(context, '$e'.replaceAll(RegExp(r'^.*?message: |, code.*$'), '')); }
+      } catch (e) { if (context.mounted) toast(context, friendlyError(e)); }
     }, itemBuilder: (_) => [
       const PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit_rounded), title: Text('Edit'), dense: true)),
       if (fresh) const PopupMenuItem(value: 'unsend', child: ListTile(leading: Icon(Icons.undo_rounded, color: Brand.crimson), title: Text('Unsend'), subtitle: Text('Within 10 minutes of sending'), dense: true))
