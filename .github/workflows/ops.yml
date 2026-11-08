@@ -1,10 +1,14 @@
 # Keeps an eye on the live system — runs on GitHub's computers, nothing to install.
 #   • every 30 minutes: is the website up, does the database answer?  (a failed run = GitHub emails the account owner)
 #   • every night 03:00 IST: full database backup, encrypted with BACKUP_PASSPHRASE, kept 30 days under Actions → Ops → the run → Artifacts
-# Needs two repository secrets (Settings → Secrets and variables → Actions → New repository secret):
+#   • every night too: all uploaded files (photos, report PDFs, documents, chat attachments) in one encrypted file, kept 14 days
+# Needs repository secrets (Settings → Secrets and variables → Actions → New repository secret):
 #   SUPABASE_DB_URL     – Supabase → Connect → "Session pooler" connection string, with the database password filled in
 #   BACKUP_PASSPHRASE   – any long phrase you choose; needed to open a backup. Keep it written down with the school.
+#   SUPABASE_SERVICE_ROLE_KEY – Supabase → Project Settings → API keys → service_role (secret) key; only for the files backup.
+#                         Without it the files backup is skipped with a warning (the database backup still runs).
 # Restoring a backup: download the .gpg file, then  gpg -d rcis-backup-DATE.sql.gpg | gunzip > backup.sql  and load it with psql (IT guide).
+# Restoring files:     gpg -d rcis-files-DATE.tar.gz.gpg | tar xz   → a folder "files/" with the same paths as in the storage bucket.
 name: Ops
 on:
   schedule:
@@ -58,3 +62,38 @@ jobs:
           name: ${{ env.file }}
           path: ${{ env.file }}
           retention-days: 30
+
+  files-backup:
+    if: github.event.schedule == '30 21 * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the secrets are set
+        env: { DB: "${{ secrets.SUPABASE_DB_URL }}", PASS: "${{ secrets.BACKUP_PASSPHRASE }}", KEY: "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" }
+        run: |
+          if [ -z "$DB" ] || [ -z "$PASS" ] || [ -z "$KEY" ]; then echo "::warning::Files backup skipped: add SUPABASE_DB_URL, BACKUP_PASSPHRASE and SUPABASE_SERVICE_ROLE_KEY secrets"; echo "skip=1" >> $GITHUB_ENV; fi
+      - name: Download every file and encrypt
+        if: env.skip != '1'
+        env: { DB: "${{ secrets.SUPABASE_DB_URL }}", PASS: "${{ secrets.BACKUP_PASSPHRASE }}", KEY: "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" }
+        run: |
+          set -o pipefail
+          base="https://upgvxhsxmdihmfmzknlq.supabase.co/storage/v1/object/authenticated"
+          docker run --rm postgres:17 psql "$DB" -At -c "select bucket_id || '/' || name from storage.objects where name is not null order by 1" > list.txt
+          echo "$(wc -l < list.txt) files to copy"
+          fails=0
+          while IFS= read -r path; do
+            [ -z "$path" ] && continue
+            enc=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$path")
+            mkdir -p "files/$(dirname "$path")"
+            curl -fsS --retry 3 -H "authorization: Bearer $KEY" -H "apikey: $KEY" "$base/$enc" -o "files/$path" || { fails=$((fails+1)); echo "::warning::could not copy $path"; }
+          done < list.txt
+          echo "copy failures: $fails"
+          name="rcis-files-$(date -u +%Y-%m-%d).tar.gz.gpg"
+          tar czf - files list.txt | gpg --batch --yes --pinentry-mode loopback --passphrase "$PASS" --symmetric --cipher-algo AES256 -o "$name"
+          ls -lh "$name"
+          echo "file=$name" >> $GITHUB_ENV
+      - uses: actions/upload-artifact@v4
+        if: env.skip != '1'
+        with:
+          name: ${{ env.file }}
+          path: ${{ env.file }}
+          retention-days: 14
