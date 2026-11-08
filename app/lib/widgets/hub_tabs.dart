@@ -13,7 +13,7 @@ const _hubs = <Hub, List<(String, String, String?)>>{   // path, label, feature 
   Hub.calendar: [('/calendar', 'Calendar', null), ('/timetable', 'Timetable', 'timetable'), ('/exams', 'Exams', null)],
   Hub.honours: [('/star', 'Star of the month', 'star'), ('/toppers', 'Toppers', 'toppers'), ('/fame', 'Hall of Fame', 'fame'), ('/council', 'Council', 'council'), ('/houses', 'Houses', 'houses')],
   Hub.attendance: [('/attendance', 'Attendance', null), ('/leave', 'Leave', 'leave')],
-  Hub.staffExams: [('/staff/exams', 'Portions', null), ('/staff/marks', 'Marks entry', null), ('/staff/reports', 'Report cards', null)],
+  Hub.staffExams: [('/staff/exams', 'Exams', null), ('/staff/marks', 'Marks entry', null), ('/staff/reports', 'Report cards', null)],
   Hub.staffHonours: [('/staff/toppers', 'Toppers & Hall of Fame', null), ('/staff/council', 'Council', 'council'), ('/staff/houses', 'Houses', 'houses')],
   Hub.schoolSetup: [('/staff/setup', 'Classes & fees', null), ('/staff/users', 'Staff', null), ('/staff/sections', 'New sections', null), ('/staff/bin', 'Bin', null), ('/staff/settings', 'Settings', null)],
 };
