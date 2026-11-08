@@ -11,6 +11,9 @@ import 'family_screens.dart' show StorageImage;
 import 'notice_extras.dart';
 import '../widgets/royal_extras.dart' show GoldLoading;
 import '../widgets/r_refresh.dart';
+import '../core/errors.dart';
+import '../core/data3.dart' show appSettingsProvider, featureOn;
+import 'family_today.dart' show openClassTeacherChat;
 
 class AnnouncementsScreen extends ConsumerStatefulWidget {
   const AnnouncementsScreen({super.key});
@@ -37,7 +40,7 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
       ])),
       Expanded(child: notices.when(
         loading: () => const GoldLoading(),
-        error: (e, _) => Center(child: Text('Could not load announcements.\n$e', textAlign: TextAlign.center)),
+        error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(32), child: Text(friendlyError(e), textAlign: TextAlign.center))),
         data: (list) {
           final mine = familyNotices(list, extras, myRoute);   // bus notices for this child only; kept-on-top first
           final rows = filter == 'all' ? mine : mine.where((n) => n.category == filter).toList();
@@ -87,7 +90,7 @@ class NoticeScreen extends ConsumerStatefulWidget {
 }
 
 class _NoticeScreenState extends ConsumerState<NoticeScreen> {
-  bool marked = false;
+  bool marked = false, _retried = false;
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -101,9 +104,17 @@ class _NoticeScreenState extends ConsumerState<NoticeScreen> {
       ])),
       Expanded(child: list.when(
         loading: () => const GoldLoading(),
-        error: (e, _) => Center(child: Text('Could not load.\n$e', textAlign: TextAlign.center)),
+        error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(32), child: Text(friendlyError(e), textAlign: TextAlign.center))),
         data: (rows) {
           final n = rows.where((x) => x.id == widget.id).firstOrNull;
+          // a brand-new notice (opened from its notification) may not be in the list kept on the phone yet:
+          // fetch the list once more before saying it is gone
+          if (n == null && (list.isRefreshing || list.isReloading)) return const GoldLoading();
+          if (n == null && !_retried) {
+            _retried = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) { ref.invalidate(noticeExtrasProvider); ref.invalidate(noticesProvider); } });
+            return const GoldLoading();
+          }
           if (n == null) return Center(child: Padding(padding: const EdgeInsets.all(32), child: Text('This announcement is no longer available.', style: TextStyle(color: cs.onSurfaceVariant))));
           final me = ref.read(sessionProvider).value?.active;
           if (!marked && me != null && !n.read) { marked = true; markNoticeRead(n.id, me.id).then((_) => ref.invalidate(noticesProvider)); }
@@ -138,7 +149,8 @@ class _NoticeScreenState extends ConsumerState<NoticeScreen> {
               ]),
             ],
             const SizedBox(height: 26),
-            OutlinedButton.icon(onPressed: () => context.push('/messages'), icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18), label: const Text('Ask the class teacher about this')),
+            if (featureOn(ref.watch(appSettingsProvider).value, 'messages'))
+              OutlinedButton.icon(onPressed: () => openClassTeacherChat(context, ref), icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18), label: const Text('Ask the class teacher about this')),
           ])));
         })),
     ]));
