@@ -219,30 +219,56 @@ class _AddDialogState extends State<_AddDialog> {
   );
 }
 
-/// For the family Home: the first three open items, with "See all" opening Diary → My list. Hidden when nothing is open.
-class MyListHomeSummary extends ConsumerWidget {
-  const MyListHomeSummary({super.key});
+/// For the family Home ("Your day" card): the first four items, tickable right here; "See all" opens Diary → My list.
+/// Ticked items cross off and stay until the end of the day (same rule as the full list). Hidden when the list is empty.
+class MyListHomeColumn extends ConsumerStatefulWidget {
+  const MyListHomeColumn({super.key});
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final items = (ref.watch(myListProvider).value ?? const <MyListItem>[]).where((i) => !i.done).toList();
-    if (items.isEmpty) return const SizedBox.shrink();
+  ConsumerState<MyListHomeColumn> createState() => _MyListHomeColumnState();
+}
+
+class _MyListHomeColumnState extends ConsumerState<MyListHomeColumn> {
+  final Map<String, bool> _local = {};
+
+  Future<void> _tick(MyListItem it, bool done) async {
+    if (viewOnlyMode) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('View only: ticks are not saved.'))); return; }
+    final st = ref.read(sessionProvider).value?.active;
+    if (st == null) return;
+    setState(() => _local[it.key] = done);
+    try {
+      await db.rpc('my_list_tick', params: {'p_student': st.id, 'p_diary': it.diaryId, 'p_item': it.itemId, 'p_done': done});
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _local.remove(it.key));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not save the tick. Please try again.')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final all = [for (final i in ref.watch(myListProvider).value ?? const <MyListItem>[]) i.withDone(_local[i.key] ?? i.done)];
+    if (all.isEmpty) return const SizedBox.shrink();
     final cs = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
     final today = _today();
-    items.sort((a, b) => (a.date ?? DateTime(9999)).compareTo(b.date ?? DateTime(9999)));
-    void open() { ref.read(diaryTabProvider.notifier).state = 1; context.go('/diary'); }
-    return Container(margin: const EdgeInsets.only(bottom: 14), padding: const EdgeInsets.fromLTRB(18, 10, 10, 12),
-      decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(22), border: Border.all(color: Brand.gold.withValues(alpha: .35))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Expanded(child: Text(items.length == 1 ? 'My list · 1 to do' : 'My list · ${items.length} to do', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
-          TextButton(onPressed: open, child: const Text('See all')),
-        ]),
-        for (final it in items.take(3)) InkWell(onTap: open, borderRadius: BorderRadius.circular(10), child: Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Row(children: [
-          const _GoldBox(done: false), const SizedBox(width: 12),
-          Expanded(child: Text(it.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w700, color: it.overdue(today) ? context.tone(Brand.crimson) : cs.onSurface))),
-          if (it.date != null) Padding(padding: const EdgeInsets.only(left: 8, right: 8), child: Text(it.overdue(today) ? 'Overdue' : _when(it, today).replaceFirst('Due ', ''),
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: it.overdue(today) ? context.tone(Brand.crimson) : cs.onSurfaceVariant))),
-        ]))),
-      ]));
+    // open items first (earliest date first), then the ones ticked today
+    all.sort((a, b) => a.done != b.done ? (a.done ? 1 : -1) : (a.date ?? DateTime(9999)).compareTo(b.date ?? DateTime(9999)));
+    final open = all.where((i) => !i.done).length;
+    void seeAll() { ref.read(diaryTabProvider.notifier).state = 1; context.go('/diary'); }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+      Row(children: [
+        Expanded(child: Text(open == 0 ? 'MY LIST' : 'MY LIST · $open TO DO', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.2, color: dark ? Brand.gold2 : const Color(0xFFA8822F)))),
+        InkWell(onTap: seeAll, borderRadius: BorderRadius.circular(8), child: Padding(padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            child: Text('See all', style: TextStyle(color: context.tone(Brand.crimson), fontWeight: FontWeight.w800, fontSize: 12.5)))),
+      ]),
+      if (open == 0) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Text('All done ✨', style: TextStyle(fontWeight: FontWeight.w800, color: context.tone(Brand.green)))),
+      for (final it in all.take(4)) InkWell(onTap: () => _tick(it, !it.done), borderRadius: BorderRadius.circular(10), child: Padding(padding: const EdgeInsets.symmetric(vertical: 7), child: Row(children: [
+        _GoldBox(done: it.done), const SizedBox(width: 12),
+        Expanded(child: Text(it.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5,
+            color: it.done ? cs.onSurfaceVariant : cs.onSurface, decoration: it.done ? TextDecoration.lineThrough : null))),
+        if (!it.done && it.date != null) Padding(padding: const EdgeInsets.only(left: 8), child: Text(it.overdue(today) ? 'Overdue' : _when(it, today).replaceFirst('Due ', ''),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: it.overdue(today) ? context.tone(Brand.crimson) : cs.onSurfaceVariant))),
+      ]))),
+    ]);
   }
 }
