@@ -57,6 +57,17 @@ class FeeSummary {
   int get pct => total == 0 ? 0 : (paidAmount / total * 100).round();
 }
 
+/// What "pay now" means everywhere (Home's Pay button, the Fees page button, the ticks on the Pay page):
+/// everything overdue, everything due within the next 7 days, and the late fees riding on them.
+/// With [orNext] and nothing due now, the next instalment (with its late fee) instead.
+List<FeeRow> feesDueNow(FeeSummary f, {bool orNext = false}) {
+  final ids = <String>{for (final r in f.unpaid) if (!r.isLate && (r.overdue || r.daysUntil() <= 7)) r.id};
+  for (final r in f.overdue) { if (r.isLate && (r.parentId == null || !f.unpaid.any((x) => x.id == r.parentId))) ids.add(r.id); }
+  if (ids.isEmpty && orNext) { final n = f.unpaid.where((r) => !r.isLate).firstOrNull; if (n != null) ids.add(n.id); }
+  for (final r in f.unpaid) { if (r.isLate && r.parentId != null && ids.contains(r.parentId)) ids.add(r.id); }
+  return [for (final r in f.unpaid) if (ids.contains(r.id)) r];
+}
+
 /// Fees for the active student (the nightly job keeps late-fee rows current).
 final feesProvider = FutureProvider.autoDispose<FeeSummary>((ref) async {
   ref.cacheFor();
@@ -136,7 +147,7 @@ final transportProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref
 
 /// One payment with its lines (receipt screen).
 final paymentProvider = FutureProvider.autoDispose.family<Map<String, dynamic>?, String>((ref, id) async =>
-    await db.from('payment').select('id,amount,mode,status,receipt_no,gateway_payment_id,paid_at,payment_line(amount,fee_ledger:fee_ledger_id(title))').eq('id', id).maybeSingle());
+    await db.from('payment').select('id,amount,mode,status,receipt_no,gateway_payment_id,paid_at,student_id,student:student_id(full_name),payment_line(amount,fee_ledger:fee_ledger_id(title))').eq('id', id).maybeSingle());
 
 /// Payment history for the active student, newest first.
 final paymentsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
