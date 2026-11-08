@@ -50,6 +50,12 @@ import 'staff/year_end.dart';
 import 'staff/week_summary.dart';
 import 'staff/id_cards_page.dart';
 import 'staff/certificates_page.dart';
+import 'staff/class_logins.dart';
+import 'staff/transport_pins.dart';
+import 'screens/privacy_screen.dart';
+import 'screens/change_password_screen.dart';
+import 'core/data3.dart' show appSettingsProvider;
+import 'auth/crew_password_screen.dart';
 
 /// Makes go_router re-run `redirect` whenever the session changes.
 class _SessionListenable extends ChangeNotifier {
@@ -57,6 +63,7 @@ class _SessionListenable extends ChangeNotifier {
     ref.listen(sessionProvider, (_, __) => notifyListeners());
     ref.listen(splashDoneProvider, (_, __) => notifyListeners());
     ref.listen(childPickedProvider, (_, __) => notifyListeners());
+    ref.listen(appSettingsProvider, (_, __) => notifyListeners());
   }
 }
 
@@ -77,14 +84,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       // the public "scan to verify" page (QR on receipts and report cards) opens for anyone, signed in or not
       if (pending != null && pending!.startsWith('/verify') && loc == '/splash') { final p = pending; pending = null; return p; }
       if (loc == '/verify') return null;
+      if (loc == '/privacy') return null;   // privacy policy opens for anyone (link on the sign-in page)
       if (pending != null && loc == '/splash' && s.value != null && s.value!.kind == 'student' && (s.value!.students.length < 2 || ref.read(childPickedProvider))) { final p = pending; pending = null; return p; }
       final open = loc == '/splash' || loc.startsWith('/login') || loc == '/staff-login';
       final session = s.value;
       if (session == null) return open ? null : (loc.startsWith('/staff') ? '/staff-login' : '/login');   // not signed in
-      if (session.kind == 'crew') return loc == '/driver' ? null : '/driver';
+      if (session.kind == 'crew') { if (session.mustChangePassword) return loc == '/driver/set-password' ? null : '/driver/set-password'; return loc == '/driver' ? null : '/driver'; }
       if (session.isStaff) {
         if (session.mustChangePassword) return loc == '/staff/set-password' ? null : '/staff/set-password';
-        return loc.startsWith('/staff') ? null : '/staff';                // staff live under /staff
+        if (!loc.startsWith('/staff')) return '/staff';                   // staff live under /staff
+        return staffRouteRedirect(session, ref.read(appSettingsProvider).value, loc);   // same rule as the menu
       }
       if (loc.startsWith('/staff')) return '/';                               // a family login never sees the panel
       if (session.mustChangePassword) return loc == '/set-password' ? null : '/set-password';
@@ -108,11 +117,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         GoRoute(path: '/staff/diary', builder: (_, __) => const StaffDiaryScreen()),
         GoRoute(path: '/staff/leave', builder: (_, __) => const StaffLeaveScreen()),
         GoRoute(path: '/staff/exams', builder: (_, __) => const StaffExamsScreen()),
-        GoRoute(path: '/staff/marks', builder: (_, __) => const StaffMarksScreen()),
+        GoRoute(path: '/staff/marks', onExit: (_, __) => marksCanLeave(), builder: (_, __) => const StaffMarksScreen()),
         GoRoute(path: '/staff/attendance', builder: (_, __) => const StaffAttendanceScreen()),
         GoRoute(path: '/staff/bin', builder: (_, __) => const StaffPage(title: 'Bin', hub: Hub.schoolSetup, subtitle: 'Everything deleted in the last 30 days. Bring anything back with one tap.', body: BinPanel())),
-        GoRoute(path: '/staff/plan', builder: (_, __) => const StaffPlanScreen()),
-        GoRoute(path: '/staff/worksheets', builder: (_, __) => const StaffWorksheetsScreen()),
         GoRoute(path: '/staff/star', builder: (_, __) => const StaffStarScreen()),
         GoRoute(path: '/staff/moments', builder: (_, __) => const StaffMomentsScreen()),
         GoRoute(path: '/staff/feedback', builder: (_, __) => const StaffFeedbackScreen()),
@@ -122,6 +129,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         GoRoute(path: '/staff/reports', builder: (_, __) => const StaffReportsScreen()),
         GoRoute(path: '/staff/transport', builder: (_, __) => const TransportPage()),
         GoRoute(path: '/staff/students', builder: (_, __) => const StudentsPage()),
+        GoRoute(path: '/staff/class-logins', builder: (_, __) => const ClassLoginsScreen()),
+        GoRoute(path: '/staff/bus-pins', builder: (_, __) => const BusPinsPage()),
         GoRoute(path: '/staff/id-cards', builder: (_, __) => const StaffIdCardsScreen()),
         GoRoute(path: '/staff/certificates', builder: (_, __) => const StaffCertificatesScreen()),
         GoRoute(path: '/staff/sections', builder: (_, __) => const NewSectionsScreen()),
@@ -143,6 +152,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       ]),
       GoRoute(path: '/students', pageBuilder: (_, st) => _grow(st, const StudentsScreen())),
       GoRoute(path: '/settings', pageBuilder: (_, st) => _grow(st, const SettingsScreen())),
+      GoRoute(path: '/driver/set-password', builder: (_, __) => const CrewSetPasswordScreen()),
+      GoRoute(path: '/privacy', pageBuilder: (_, st) => _grow(st, const PrivacyScreen())),
+      GoRoute(path: '/change-password', pageBuilder: (_, st) => _grow(st, const ChangePasswordScreen())),
       GoRoute(path: '/driver', pageBuilder: (_, st) => _grow(st, const DriverScreen())),
       // tiles & secondary pages
       GoRoute(path: '/timetable', pageBuilder: (_, st) => _grow(st, const TimetableScreen())),
@@ -151,8 +163,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/leave', pageBuilder: (_, st) => _grow(st, const LeaveScreen())),
       GoRoute(path: '/attendance', pageBuilder: (_, st) => _grow(st, const AttendanceScreen())),
       GoRoute(path: '/idcard', pageBuilder: (_, st) => _grow(st, const IdCardScreen())),
-      GoRoute(path: '/plan', pageBuilder: (_, st) => _grow(st, const MonthlyPlanScreen())),
-      GoRoute(path: '/worksheets', pageBuilder: (_, st) => _grow(st, const WorksheetsScreen())),
       GoRoute(path: '/exams', pageBuilder: (_, st) => _grow(st, const ExamsScreen())),
       GoRoute(path: '/calendar', pageBuilder: (_, st) => _grow(st, const CalendarScreen())),
       GoRoute(path: '/messages', pageBuilder: (_, st) => _grow(st, const MessagesScreen())),
