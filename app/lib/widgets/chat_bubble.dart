@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart' show DateFormat;
 import '../core/data.dart' show db, openStorageFile, viewOnlyMode;
 import '../core/theme.dart';
+import '../core/errors.dart';
 
 /// One chat message, used by both the family and the staff chat.
 /// Your own message (within 2 days): press and hold (or right-click on a laptop) for "Edit" and "Delete for everyone".
@@ -79,7 +80,7 @@ class ChatBubble extends StatelessWidget {
       }
       onChanged();
     } catch (e) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceAll(RegExp(r'^.*?message: |, code.*$'), ''))));
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
     }
   }
 }
