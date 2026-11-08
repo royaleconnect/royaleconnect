@@ -3,6 +3,7 @@ import '../core/theme.dart';
 import 'royal_extras.dart' show LivingSilk, PressScale;
 import 'royal_motion.dart' show ShineSweep;
 import '../core/data.dart' show db;
+import '../core/errors.dart';
 
 /// Red gradient header with the gold hairline, as in the prototype.
 class BrandHeader extends StatelessWidget {
@@ -117,6 +118,6 @@ void showUndo(BuildContext context, String what, VoidCallback refresh) {
     content: Text('$what deleted'),
     action: SnackBarAction(label: 'Undo', onPressed: () async {
       try { await db.rpc('bin_undo_last'); refresh(); m.showSnackBar(const SnackBar(content: Text('Brought back ✓'), behavior: SnackBarBehavior.floating)); }
-      catch (e) { m.showSnackBar(SnackBar(content: Text('$e'.replaceAll(RegExp(r'^.*?message: |, code.*\$'), '')), behavior: SnackBarBehavior.floating)); }
+      catch (e) { m.showSnackBar(SnackBar(content: Text(friendlyError(e)), behavior: SnackBarBehavior.floating)); }
     })));
 }
