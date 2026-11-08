@@ -8,12 +8,15 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show FileOptions;
 import '../auth/session.dart';
 import '../core/data.dart';
+import '../core/errors.dart';
 import '../core/theme.dart';
 import '../screens/family_screens.dart' show StorageImage, callNumber;
 import '../widgets/common.dart';
 import 'staff_data.dart';
 import 'staff_shell.dart';
+import 'class_logins.dart' show resetFirstPassword, printClassSlips;
 import 'fees_office.dart' show FeeCategoryBar, RecentPaymentsPanel;
+import 'transport_live.dart';
 import '../widgets/hub_tabs.dart';
 
 String _d(DateTime d) => DateFormat('yyyy-MM-dd').format(d);
@@ -21,7 +24,7 @@ String _dm(String? iso) => iso == null ? '' : DateFormat('d MMM').format(DateTim
 String _dmy(String? iso) => iso == null ? '' : DateFormat('d MMM yyyy').format(DateTime.parse(iso).toLocal());
 String _dmt(String? iso) => iso == null ? '' : DateFormat('d MMM, h:mm a').format(DateTime.parse(iso).toLocal());
 Widget _loading() => const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()));
-Widget _err(Object e) => Padding(padding: const EdgeInsets.all(24), child: Text('$e', style: const TextStyle(color: Brand.crimsonDeep)));
+Widget _err(Object e) => Padding(padding: const EdgeInsets.all(24), child: Text(friendlyError(e), style: const TextStyle(color: Brand.crimsonDeep)));
 String _cls(Map<String, dynamic>? student) { final en = (student?['enrolment'] as List?) ?? []; if (en.isEmpty) return ''; final s = en.first['section']; return '${s?['grade']?['code'] ?? ''}-${s?['name'] ?? ''}'; }
 
 /// Pick several PDFs / photos and upload them under [folder]; returns {path, name, mime} for each.
@@ -62,7 +65,7 @@ class StaffExamsScreen extends ConsumerWidget {
     final exams = ref.watch(staffExamsProvider);
     final canCreate = s.isOffice || s.hasRole('coordinator');
     final cs = Theme.of(context).colorScheme;
-    return StaffPage(title: 'Exams & portions', hub: Hub.staffExams, subtitle: canCreate ? 'Create the schedule; subject teachers fill in portions; publish when ready.' : 'Fill in portions for the subjects you teach. The coordinator publishes.',
+    return StaffPage(title: 'Exams & marks', hub: Hub.staffExams, subtitle: canCreate ? 'Create the schedule; subject teachers fill in portions; publish when ready.' : 'Fill in portions for the subjects you teach. The coordinator publishes.',
       actions: [if (canCreate) FilledButton.icon(onPressed: () => _create(context, ref), icon: const Icon(Icons.add_rounded), label: const Text('New exam'))],
       body: exams.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty ? Panel(child: Text('No exams yet.', style: TextStyle(color: cs.onSurfaceVariant))) : Column(children: [for (final e in rows) Panel(
         title: '${e['grade']?['name'] ?? ''} · ${e['name']} (${e['term']})',
@@ -89,7 +92,7 @@ class StaffExamsScreen extends ConsumerWidget {
       const SizedBox(height: 10),
       TextFormField(initialValue: portions, onChanged: (v) => portions = v, minLines: 4, maxLines: 10, decoration: const InputDecoration(labelText: 'Portions', hintText: 'Chapters / topics')),
     ])), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')), FilledButton(onPressed: () async {
-      try { await savePortions(ref, p['id'], onDate: on, portions: portions.trim().isEmpty ? null : portions.trim()); ref.invalidate(staffExamsProvider); if (ctx.mounted) Navigator.pop(ctx); } catch (e) { if (ctx.mounted) toast(ctx, 'Not allowed or failed: $e'); }
+      try { await savePortions(ref, p['id'], onDate: on, portions: portions.trim().isEmpty ? null : portions.trim()); ref.invalidate(staffExamsProvider); if (ctx.mounted) Navigator.pop(ctx); } catch (e) { if (ctx.mounted) toast(ctx, friendlyError(e)); }
     }, child: const Text('Save'))])));
   }
 
@@ -109,12 +112,16 @@ class StaffExamsScreen extends ConsumerWidget {
     ]))), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')), FilledButton(onPressed: busy ? null : () async {
       if (gradeId == null || name.trim().isEmpty) { toast(ctx, 'Grade and name are needed.'); return; }
       set(() => busy = true);
-      try { await createExam(ref, gradeId: gradeId!, name: name.trim(), term: term.trim(), starts: a, ends: b, maxMarks: max, note: note.trim().isEmpty ? null : note.trim(), subjectIds: subs.toList()); ref.invalidate(staffExamsProvider); if (ctx.mounted) Navigator.pop(ctx); } catch (e) { set(() => busy = false); if (ctx.mounted) toast(ctx, 'Failed: $e'); }
+      try { await createExam(ref, gradeId: gradeId!, name: name.trim(), term: term.trim(), starts: a, ends: b, maxMarks: max, note: note.trim().isEmpty ? null : note.trim(), subjectIds: subs.toList()); ref.invalidate(staffExamsProvider); if (ctx.mounted) Navigator.pop(ctx); } catch (e) { set(() => busy = false); if (ctx.mounted) toast(ctx, friendlyError(e)); }
     }, child: const Text('Create'))])));
   }
 }
 
 // ---------------------------------------------------------------- marks entry
+/// Set while the marks page has unsaved marks. The router asks it before leaving the page (GoRoute onExit).
+Future<bool> Function()? _marksLeaveGuard;
+Future<bool> marksCanLeave() async => _marksLeaveGuard == null ? true : await _marksLeaveGuard!();
+
 class StaffMarksScreen extends ConsumerStatefulWidget {
   const StaffMarksScreen({super.key});
   @override
@@ -122,25 +129,81 @@ class StaffMarksScreen extends ConsumerStatefulWidget {
 }
 class _StaffMarksScreenState extends ConsumerState<StaffMarksScreen> {
   String? examId, subjectId, sectionId; final edits = <String, Map<String, dynamic>>{}; bool busy = false;
+
+  @override
+  void initState() { super.initState(); _marksLeaveGuard = _askSave; }
+  @override
+  void dispose() { if (_marksLeaveGuard == _askSave) _marksLeaveGuard = null; super.dispose(); }
+
+  num? _max() => (ref.read(staffExamsProvider).value ?? []).where((e) => e['id'] == examId).firstOrNull?['max_marks'] as num?;
+  static num _total(Map<String, dynamic> m) => m['absent'] == true ? 0 : ((m['internal'] as num?) ?? 0) + ((m['external'] as num?) ?? 0);
+  static bool _negative(Map<String, dynamic> m) => ((m['internal'] as num?) ?? 0) < 0 || ((m['external'] as num?) ?? 0) < 0;
+
+  /// true = saved; false = something is wrong (a message was shown)
+  Future<bool> _save() async {
+    final max = _max();
+    if (edits.values.any((m) => _negative(m) || (max != null && _total(m) > max))) {
+      toast(context, 'Some marks are more than ${max ?? 'the maximum'}. Please check the rows in red.');
+      return false;
+    }
+    setState(() => busy = true);
+    try {
+      await saveMarks(ref, examId!, subjectId!, [for (final e in edits.entries) {'student_id': e.key, ...e.value}]);
+      edits.clear();
+      ref.invalidate(marksProvider((examId!, subjectId!, sectionId!)));
+      if (mounted) toast(context, 'Saved.');
+      return true;
+    } catch (e) {
+      if (mounted) toast(context, friendlyError(e));
+      return false;
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  /// Unsaved marks? Ask: Save / Discard / Cancel. Returns true when it is fine to move on.
+  Future<bool> _askSave() async {
+    if (edits.isEmpty || !mounted) return true;
+    final r = await showDialog<String>(context: context, builder: (c) => AlertDialog(
+      title: const Text('Save your marks first?'),
+      content: Text('You have changed ${edits.length} ${edits.length == 1 ? 'mark' : 'marks'} that are not saved yet.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, 'cancel'), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.pop(c, 'discard'), child: const Text('Discard')),
+        FilledButton(onPressed: () => Navigator.pop(c, 'save'), child: const Text('Save')),
+      ],
+    ));
+    if (r == 'discard') { setState(edits.clear); return true; }
+    if (r == 'save') return _save();
+    return false;
+  }
+
+  Future<void> _pick(VoidCallback change) async { if (await _askSave()) setState(() { change(); edits.clear(); }); }
+
   @override
   Widget build(BuildContext context) {
     final exams = ref.watch(staffExamsProvider); final secs = ref.watch(mySectionsProvider); final assigns = ref.watch(myAssignmentsProvider);
     final s = ref.watch(sessionProvider).value!;
     final cs = Theme.of(context).colorScheme;
     final exam = (exams.value ?? []).where((e) => e['id'] == examId).firstOrNull;
+    final max = exam?['max_marks'] as num?;
     final sectionsForGrade = (secs.value ?? []).where((x) => exam == null || x['grade']['id'] == exam['grade']['id']).toList();
     final subjectsFor = s.isOffice ? (List<Map<String, dynamic>>.from(exam?['exam_paper'] ?? []).map((p) => p['subject']).toList()) : (assigns.value ?? []).where((a) => a['section_id'] == sectionId).map((a) => a['subject']).toList();
     final rows = (examId != null && subjectId != null && sectionId != null) ? ref.watch(marksProvider((examId!, subjectId!, sectionId!))) : null;
+    Widget overMax(Map<String, dynamic> m) => (_negative(m) || (max != null && _total(m) > max))
+        ? Padding(padding: const EdgeInsets.only(top: 4), child: Text(_negative(m) ? 'Marks cannot be below 0 — please check' : '${max is int ? max : max!.toInt()} max — please check', style: const TextStyle(color: Brand.crimson, fontWeight: FontWeight.w800, fontSize: 12.5)))
+        : const SizedBox.shrink();
+    final anyOver = edits.values.any((m) => _negative(m) || (max != null && _total(m) > max));
     return StaffPage(title: 'Marks entry', hub: Hub.staffExams, subtitle: 'Marks are private to staff. Parents see them only on the published report card.', body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Panel(padding: const EdgeInsets.all(12), child: Wrap(spacing: 10, runSpacing: 10, children: [
-        SizedBox(width: isNarrow(context) ? double.infinity : 300, child: PickField<String>(label: 'Exam', value: examId, items: [for (final e in exams.value ?? []) DropdownMenuItem(value: e['id'] as String, child: Text('${e['grade']?['code']} · ${e['name']}'))], onChanged: (v) => setState(() { examId = v; sectionId = null; subjectId = null; edits.clear(); }))),
-        SizedBox(width: isNarrow(context) ? double.infinity : 180, child: PickField<String>(label: 'Section', value: sectionId, items: [for (final x in sectionsForGrade) DropdownMenuItem(value: x['id'] as String, child: Text(sectionLabel(x)))], onChanged: (v) => setState(() { sectionId = v; subjectId = null; edits.clear(); }))),
-        SizedBox(width: isNarrow(context) ? double.infinity : 220, child: PickField<String>(label: 'Subject', value: subjectId, items: [for (final x in subjectsFor) DropdownMenuItem(value: x['id'] as String, child: Text(x['name']))], onChanged: (v) => setState(() { subjectId = v; edits.clear(); }))),
+        SizedBox(width: isNarrow(context) ? double.infinity : 300, child: PickField<String>(label: 'Exam', value: examId, items: [for (final e in exams.value ?? []) DropdownMenuItem(value: e['id'] as String, child: Text('${e['grade']?['code']} · ${e['name']} (max ${e['max_marks']})'))], onChanged: (v) => _pick(() { examId = v; sectionId = null; subjectId = null; }))),
+        SizedBox(width: isNarrow(context) ? double.infinity : 180, child: PickField<String>(label: 'Section', value: sectionId, items: [for (final x in sectionsForGrade) DropdownMenuItem(value: x['id'] as String, child: Text(sectionLabel(x)))], onChanged: (v) => _pick(() { sectionId = v; subjectId = null; }))),
+        SizedBox(width: isNarrow(context) ? double.infinity : 220, child: PickField<String>(label: 'Subject', value: subjectId, items: [for (final x in subjectsFor) DropdownMenuItem(value: x['id'] as String, child: Text(x['name']))], onChanged: (v) => _pick(() { subjectId = v; }))),
       ])),
       if (rows != null) rows.when(loading: _loading, error: (e, _) => _err(e), data: (list) => Panel(padding: EdgeInsets.zero, title: null, child: Column(children: [
         if (!isNarrow(context)) Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 4), child: Row(children: [const SizedBox(width: 40, child: Text('Roll', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))), const Expanded(child: Text('Student', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))), const SizedBox(width: 90, child: Text('Internal', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))), const SizedBox(width: 90, child: Text('External', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))), const SizedBox(width: 70, child: Text('Absent', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)))])),
         const Divider(height: 1),
-        for (final r in list) Builder(builder: (_) {
+        for (final r in list) Builder(key: ValueKey('$examId|$subjectId|${r['student']['id']}'), builder: (_) {
           final st = r['student']; final id = st['id'] as String; final m = edits[id] ?? {'internal': r['mark']?['internal'], 'external': r['mark']?['external'], 'absent': r['mark']?['absent'] ?? false};
           if (isNarrow(context)) {
             InputDecoration box(String l) => InputDecoration(labelText: l, isDense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12));
@@ -148,104 +211,26 @@ class _StaffMarksScreenState extends ConsumerState<StaffMarksScreen> {
               Text('${r['roll_no'] ?? ''}.  ${st['full_name']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
               const SizedBox(height: 8),
               Row(children: [
-                Expanded(child: TextFormField(initialValue: m['internal']?.toString() ?? '', keyboardType: TextInputType.number, enabled: m['absent'] != true, onChanged: (v) => setState(() => edits[id] = {...m, 'internal': num.tryParse(v)}), decoration: box('Internal'))), const SizedBox(width: 10),
-                Expanded(child: TextFormField(initialValue: m['external']?.toString() ?? '', keyboardType: TextInputType.number, enabled: m['absent'] != true, onChanged: (v) => setState(() => edits[id] = {...m, 'external': num.tryParse(v)}), decoration: box('External'))), const SizedBox(width: 4),
+                Expanded(child: TextFormField(initialValue: m['internal']?.toString() ?? '', keyboardType: const TextInputType.numberWithOptions(decimal: true), enabled: m['absent'] != true, onChanged: (v) => setState(() => edits[id] = {...m, 'internal': num.tryParse(v)}), decoration: box('Internal'))), const SizedBox(width: 10),
+                Expanded(child: TextFormField(initialValue: m['external']?.toString() ?? '', keyboardType: const TextInputType.numberWithOptions(decimal: true), enabled: m['absent'] != true, onChanged: (v) => setState(() => edits[id] = {...m, 'external': num.tryParse(v)}), decoration: box('External'))), const SizedBox(width: 4),
                 Column(mainAxisSize: MainAxisSize.min, children: [Checkbox(value: m['absent'] == true, onChanged: (v) => setState(() => edits[id] = {...m, 'absent': v ?? false})), Text('Absent', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant))]),
               ]),
+              overMax(m),
             ]));
           }
-          return Padding(padding: const EdgeInsets.fromLTRB(16, 4, 16, 4), child: Row(children: [
+          return Padding(padding: const EdgeInsets.fromLTRB(16, 4, 16, 4), child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Row(children: [
             SizedBox(width: 40, child: Text('${r['roll_no'] ?? ''}')), Expanded(child: Text(st['full_name'], style: const TextStyle(fontWeight: FontWeight.w600))),
-            SizedBox(width: 80, child: TextFormField(initialValue: m['internal']?.toString() ?? '', keyboardType: TextInputType.number, enabled: m['absent'] != true, onChanged: (v) => setState(() => edits[id] = {...m, 'internal': num.tryParse(v)}), decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10)))), const SizedBox(width: 10),
-            SizedBox(width: 80, child: TextFormField(initialValue: m['external']?.toString() ?? '', keyboardType: TextInputType.number, enabled: m['absent'] != true, onChanged: (v) => setState(() => edits[id] = {...m, 'external': num.tryParse(v)}), decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10)))), const SizedBox(width: 10),
+            SizedBox(width: 80, child: TextFormField(initialValue: m['internal']?.toString() ?? '', keyboardType: const TextInputType.numberWithOptions(decimal: true), enabled: m['absent'] != true, onChanged: (v) => setState(() => edits[id] = {...m, 'internal': num.tryParse(v)}), decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10)))), const SizedBox(width: 10),
+            SizedBox(width: 80, child: TextFormField(initialValue: m['external']?.toString() ?? '', keyboardType: const TextInputType.numberWithOptions(decimal: true), enabled: m['absent'] != true, onChanged: (v) => setState(() => edits[id] = {...m, 'external': num.tryParse(v)}), decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10)))), const SizedBox(width: 10),
             SizedBox(width: 70, child: Checkbox(value: m['absent'] == true, onChanged: (v) => setState(() => edits[id] = {...m, 'absent': v ?? false}))),
-          ]));
+          ]), overMax(m)]));
         }),
-        Padding(padding: const EdgeInsets.all(14), child: Row(children: [Text('${edits.length} changed', style: TextStyle(color: cs.onSurfaceVariant)), const Spacer(), FilledButton.icon(onPressed: edits.isEmpty || busy ? null : () async {
-          setState(() => busy = true);
-          try { await saveMarks(ref, examId!, subjectId!, [for (final e in edits.entries) {'student_id': e.key, ...e.value}]); edits.clear(); ref.invalidate(marksProvider((examId!, subjectId!, sectionId!))); if (mounted) toast(context, 'Saved.'); } catch (e) { if (mounted) toast(context, 'Not allowed or failed: $e'); }
-          if (mounted) setState(() => busy = false);
-        }, icon: const Icon(Icons.save_rounded), label: const Text('Save marks'))])),
+        Padding(padding: const EdgeInsets.all(14), child: Row(children: [
+          Expanded(child: Text(anyOver ? 'Fix the marks in red, then save.' : '${edits.length} changed${max != null ? ' · max $max' : ''}', style: TextStyle(color: anyOver ? Brand.crimson : cs.onSurfaceVariant, fontWeight: anyOver ? FontWeight.w800 : null))),
+          FilledButton.icon(onPressed: edits.isEmpty || busy || anyOver ? null : _save, icon: const Icon(Icons.save_rounded), label: const Text('Save marks')),
+        ])),
       ]))),
     ]));
-  }
-}
-
-// ---------------------------------------------------------------- monthly plan (coordinator / office)
-class StaffPlanScreen extends ConsumerStatefulWidget {
-  const StaffPlanScreen({super.key});
-  @override
-  ConsumerState<StaffPlanScreen> createState() => _StaffPlanScreenState();
-}
-class _StaffPlanScreenState extends ConsumerState<StaffPlanScreen> {
-  String? gradeId; DateTime month = DateTime(DateTime.now().year, DateTime.now().month);
-  String get iso => DateFormat('yyyy-MM-01').format(month);
-  @override
-  Widget build(BuildContext context) {
-    final grades = ref.watch(gradesProvider); final subjects = ref.watch(subjectsProvider);
-    gradeId ??= grades.value?.firstOrNull?['id'];
-    final plan = gradeId == null ? null : ref.watch(staffPlanProvider((gradeId!, iso)));
-    final cs = Theme.of(context).colorScheme;
-    return StaffPage(title: 'Monthly plan', subtitle: 'What each subject covers this month. Parents see it under Monthly plan.', body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Panel(padding: const EdgeInsets.all(12), child: PickRow(children: [
-        Expanded(child: PickField<String>(label: 'Grade', value: gradeId, items: [for (final g in grades.value ?? []) DropdownMenuItem(value: g['id'] as String, child: Text(g['name']))], onChanged: (v) => setState(() => gradeId = v))),
-        const SizedBox(width: 12),
-        IconButton(onPressed: () => setState(() => month = DateTime(month.year, month.month - 1)), icon: const Icon(Icons.chevron_left_rounded)), Text(DateFormat('MMMM yyyy').format(month), style: const TextStyle(fontWeight: FontWeight.w800)), IconButton(onPressed: () => setState(() => month = DateTime(month.year, month.month + 1)), icon: const Icon(Icons.chevron_right_rounded)),
-      ])),
-      if (plan != null) plan.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => Column(children: [for (final sub in subjects.value ?? []) Builder(builder: (_) {
-        final r = rows.where((x) => x['subject']?['id'] == sub['id']).firstOrNull;
-        return Panel(padding: const EdgeInsets.all(14), child: CardRow(children: [
-          SizedBox(width: 160, child: Text(sub['name'], style: const TextStyle(fontWeight: FontWeight.w800))),
-          Expanded(child: r == null ? Text('Not set', style: TextStyle(color: cs.onSurfaceVariant)) : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(r['topics']), if (r['assessment'] != null) Text('Assessment: ${r['assessment']}', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant))])),
-          TextButton(onPressed: () => _edit(context, sub, r), child: Text(r == null ? 'Add' : 'Edit')),
-        ]));
-      })])),
-    ]));
-  }
-  void _edit(BuildContext context, Map<String, dynamic> sub, Map<String, dynamic>? r) {
-    String topics = r?['topics'] ?? '', assessment = r?['assessment'] ?? '';
-    showDialog(context: context, builder: (ctx) => AlertDialog(title: Text('${sub['name']} · ${DateFormat('MMMM').format(month)}'), content: SizedBox(width: 480, child: Column(mainAxisSize: MainAxisSize.min, children: [
-      TextFormField(initialValue: topics, onChanged: (v) => topics = v, minLines: 3, maxLines: 8, decoration: const InputDecoration(labelText: 'Topics / chapters')), const SizedBox(height: 10),
-      TextFormField(initialValue: assessment, onChanged: (v) => assessment = v, decoration: const InputDecoration(labelText: 'Assessment this month (optional)')),
-    ])), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')), FilledButton(onPressed: () async {
-      if (topics.trim().isEmpty) return;
-      try { await savePlan(ref, gradeId: gradeId!, monthIso: iso, subjectId: sub['id'], topics: topics.trim(), assessment: assessment.trim().isEmpty ? null : assessment.trim()); ref.invalidate(staffPlanProvider((gradeId!, iso))); if (ctx.mounted) Navigator.pop(ctx); } catch (e) { if (ctx.mounted) toast(ctx, 'Not allowed or failed: $e'); }
-    }, child: const Text('Save'))]));
-  }
-}
-
-// ---------------------------------------------------------------- worksheets
-class StaffWorksheetsScreen extends ConsumerWidget {
-  const StaffWorksheetsScreen({super.key});
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final list = ref.watch(staffWorksheetsProvider);
-    final cs = Theme.of(context).colorScheme;
-    return StaffPage(title: 'Worksheets', subtitle: 'PDFs for a section or a whole grade. Answer keys can be released on a later date.',
-      actions: [FilledButton.icon(onPressed: () => _add(context, ref), icon: const Icon(Icons.upload_file_rounded), label: const Text('Upload worksheet'))],
-      body: list.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty ? Panel(child: Text('No worksheets yet.', style: TextStyle(color: cs.onSurfaceVariant))) : Column(children: [for (final w in rows) Panel(padding: const EdgeInsets.all(14), child: Row(children: [
-        const Icon(Icons.picture_as_pdf_rounded, color: Brand.crimsonDeep), const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(w['title'], style: const TextStyle(fontWeight: FontWeight.w800)), Text('${w['subject']?['name'] ?? ''} · ${w['section'] != null ? sectionLabel(w['section']) : 'Grade ${w['grade']?['code'] ?? ''}'} · ${w['kind']} · ${w['author']?['display_name'] ?? ''} · ${_dm(w['created_at'])}${w['answer_key_path'] != null ? ' · key ${w['answer_key_release_on'] != null ? 'on ${_dm(w['answer_key_release_on'])}' : 'attached'}' : ''}', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant))])),
-        TextButton(onPressed: () => openStorageFile(w['file_path']), child: const Text('Open')),
-      ]))])));
-  }
-  void _add(BuildContext context, WidgetRef ref) {
-    String? sectionId, gradeId, subjectId, path, keyPath; String kind = 'Practice', title = ''; DateTime? keyDate; bool busy = false;
-    showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, set) => AlertDialog(title: const Text('Upload worksheet'), content: SizedBox(width: 520, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      TextField(onChanged: (v) => title = v, decoration: const InputDecoration(labelText: 'Title')), const SizedBox(height: 10),
-      Wrap(spacing: 6, children: [for (final k in ['Practice', 'Revision', 'Holiday', 'Project']) ChoiceChip(label: Text(k), selected: kind == k, onSelected: (_) => set(() => kind = k))]), const SizedBox(height: 10),
-      Consumer(builder: (_, r, __) => r.watch(subjectsProvider).when(loading: () => const SizedBox(), error: (e, _) => _err(e), data: (ss) => PickField<String>(label: 'Subject', value: subjectId, items: [for (final s in ss) DropdownMenuItem(value: s['id'] as String, child: Text(s['name']))], onChanged: (v) => set(() => subjectId = v)))), const SizedBox(height: 10),
-      Consumer(builder: (_, r, __) => r.watch(mySectionsProvider).when(loading: () => const SizedBox(), error: (e, _) => _err(e), data: (ss) => PickField<String?>(label: 'Section (or leave blank for a whole grade)', value: sectionId, items: [const DropdownMenuItem(value: null, child: Text('— whole grade —')), for (final s in ss) DropdownMenuItem(value: s['id'] as String, child: Text(sectionLabel(s)))], onChanged: (v) => set(() { sectionId = v; if (v != null) gradeId = null; })))), const SizedBox(height: 10),
-      if (sectionId == null) Consumer(builder: (_, r, __) => r.watch(gradesProvider).when(loading: () => const SizedBox(), error: (e, _) => _err(e), data: (gs) => PickField<String>(label: 'Grade', value: gradeId, items: [for (final g in gs) DropdownMenuItem(value: g['id'] as String, child: Text(g['name']))], onChanged: (v) => set(() => gradeId = v)))),
-      const SizedBox(height: 12),
-      OutlinedButton.icon(onPressed: () async { final p = await pickAndUpload(ctx, 'worksheets'); if (p != null) set(() => path = p); }, icon: const Icon(Icons.picture_as_pdf_rounded, size: 18), label: Text(path == null ? 'Choose worksheet PDF' : 'PDF attached ✓')), const SizedBox(height: 8),
-      OutlinedButton.icon(onPressed: () async { final p = await pickAndUpload(ctx, 'worksheets'); if (p != null) set(() => keyPath = p); }, icon: const Icon(Icons.key_rounded, size: 18), label: Text(keyPath == null ? 'Answer key PDF (optional)' : 'Key attached ✓')),
-      if (keyPath != null) TextButton.icon(onPressed: () async { final d = await showDatePicker(context: ctx, initialDate: DateTime.now().add(const Duration(days: 3)), firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 90))); if (d != null) set(() => keyDate = d); }, icon: const Icon(Icons.schedule_rounded, size: 18), label: Text(keyDate == null ? 'Release key on… (optional)' : 'Key visible from ${DateFormat('d MMM').format(keyDate!)}')),
-    ]))), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')), FilledButton(onPressed: busy ? null : () async {
-      if (title.trim().isEmpty || subjectId == null || path == null || (sectionId == null && gradeId == null)) { toast(ctx, 'Title, subject, section/grade and the PDF are needed.'); return; }
-      set(() => busy = true);
-      try { await addWorksheet(ref, sectionId: sectionId, gradeId: gradeId, subjectId: subjectId!, kind: kind, title: title.trim(), filePath: path!, keyPath: keyPath, keyRelease: keyDate); ref.invalidate(staffWorksheetsProvider); if (ctx.mounted) Navigator.pop(ctx); } catch (e) { set(() => busy = false); if (ctx.mounted) toast(ctx, 'Failed: $e'); }
-    }, child: const Text('Publish'))])));
   }
 }
 
@@ -283,7 +268,7 @@ class _StaffStarScreenState extends ConsumerState<StaffStarScreen> {
       PrimaryButton('Post star of the month', icon: Icons.star_rounded, busy: busy, onPressed: () async {
         if (sectionId == null || studentId == null || reason.text.trim().isEmpty) { toast(context, 'Pick a student and write a line.'); return; }
         setState(() => busy = true);
-        try { await postStar(ref, sectionId: sectionId!, studentId: studentId!, month: month, reason: reason.text.trim()); reason.clear(); ref.invalidate(staffStarHistoryProvider(sectionId!)); if (mounted) toast(context, 'Posted.'); } catch (e) { if (mounted) toast(context, 'Not allowed or failed: $e'); }
+        try { await postStar(ref, sectionId: sectionId!, studentId: studentId!, month: month, reason: reason.text.trim()); reason.clear(); ref.invalidate(staffStarHistoryProvider(sectionId!)); if (mounted) toast(context, 'Posted.'); } catch (e) { if (mounted) toast(context, friendlyError(e)); }
         if (mounted) setState(() => busy = false);
       }),
       const SizedBox(height: 6),
@@ -305,7 +290,7 @@ class _StaffMomentsScreenState extends ConsumerState<StaffMomentsScreen> {
     final secs = ref.watch(mySectionsProvider); final list = ref.watch(staffMomentsProvider);
     sectionId ??= secs.value?.firstOrNull?['id'];
     final cs = Theme.of(context).colorScheme;
-    return StaffPage(title: 'Class moments', subtitle: 'A few photos from the classroom for the parents of that section. Only students with photo consent should appear.', body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    return StaffPage(title: 'Class photos', subtitle: 'A few photos from the classroom for the parents of that section. Only students with photo consent should appear.', body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Panel(title: 'Share a moment', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         PickField<String>(label: 'Section', value: sectionId, items: [for (final s in secs.value ?? []) DropdownMenuItem(value: s['id'] as String, child: Text(sectionLabel(s)))], onChanged: (v) => setState(() => sectionId = v)),
         const SizedBox(height: 10),
@@ -324,7 +309,7 @@ class _StaffMomentsScreenState extends ConsumerState<StaffMomentsScreen> {
         PrimaryButton('Post to parents', icon: Icons.send_rounded, busy: busy, onPressed: () async {
           if (sectionId == null || caption.text.trim().isEmpty || paths.isEmpty) { toast(context, 'Caption and at least one photo are needed.'); return; }
           setState(() => busy = true);
-          try { await postMoment(ref, sectionId: sectionId!, caption: caption.text.trim(), paths: List.of(paths)); caption.clear(); paths.clear(); ref.invalidate(staffMomentsProvider); if (mounted) toast(context, 'Posted.'); } catch (e) { if (mounted) toast(context, 'Failed: $e'); }
+          try { await postMoment(ref, sectionId: sectionId!, caption: caption.text.trim(), paths: List.of(paths)); caption.clear(); paths.clear(); ref.invalidate(staffMomentsProvider); if (mounted) toast(context, 'Posted.'); } catch (e) { if (mounted) toast(context, friendlyError(e)); }
           if (mounted) setState(() => busy = false);
         }),
       ])),
@@ -373,7 +358,7 @@ class _StaffFeesScreenState extends ConsumerState<StaffFeesScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return StaffPage(title: 'Fees desk', subtitle: 'Every online payment lands here with its receipt number. Fee heads and plans are loaded from the accounts sheet.',
+    return StaffPage(title: 'Fees & receipts', subtitle: 'Every online payment lands here with its receipt number. Fee heads and plans are loaded from the accounts sheet.',
         actions: [OutlinedButton.icon(onPressed: () => context.go('/staff/fees/reports'), icon: const Icon(Icons.table_view_rounded, size: 18), label: const Text('Reports & Excel'))],
         body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       SegmentedButton<int>(showSelectedIcon: !isNarrow(context), segments: [ButtonSegment(value: 0, label: Text(isNarrow(context) ? 'Ledger' : 'Student ledger')), const ButtonSegment(value: 1, label: Text('Overdue')), ButtonSegment(value: 2, label: Text(isNarrow(context) ? 'Payments' : 'Recent payments'))], selected: {tab}, onSelectionChanged: (v) => setState(() => tab = v.first)),
@@ -401,11 +386,11 @@ class StaffTransportScreen extends ConsumerWidget {
   const StaffTransportScreen({super.key, this.bodyOnly = false});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final routes = ref.watch(routesProvider); final trips = ref.watch(runningTripsProvider);
+    final routes = ref.watch(routesProvider);
     final cs = Theme.of(context).colorScheme;
     final body = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       const _CrewPasswordPanel(),
-      Panel(title: 'Live now', child: trips.when(loading: () => const SizedBox(), error: (e, _) => _err(e), data: (list) => list.isEmpty ? Text('No trips running.', style: TextStyle(color: cs.onSurfaceVariant)) : Wrap(spacing: 10, runSpacing: 10, children: [for (final t in list) Chip(avatar: const Icon(Icons.gps_fixed_rounded, color: Brand.green, size: 16), label: Text('${t['route']?['name']} · ${t['kind']} · since ${_dmt(t['started_at'])}${t['last_fix_at'] != null ? ' · GPS ${DateFormat('h:mm:ss').format(DateTime.parse(t['last_fix_at']).toLocal())}' : ''}'), backgroundColor: Brand.greenTint, side: BorderSide.none)]))),
+      const RunningBusesPanel(),
       routes.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => Column(children: [for (final r in rows) Panel(title: '${r['name']} · ${r['bus_reg_no']}', trailing: Pill(r['active'] == true ? 'Active' : 'Inactive', fg: r['active'] == true ? Brand.green : Brand.muted, bg: r['active'] == true ? Brand.greenTint : Brand.surface2), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Wrap(spacing: 16, runSpacing: 6, children: [
           Text('Driver: ${r['driver']?['display_name'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w700)), if (r['driver']?['phone'] != null) InkWell(onTap: () => callNumber(r['driver']['phone']), child: Text(r['driver']['phone'], style: const TextStyle(color: Brand.blue))),
@@ -450,7 +435,10 @@ class _StaffStudentsScreenState extends ConsumerState<StaffStudentsScreen> {
         if (s.isOffice) ...[const SizedBox(width: 12), Expanded(child: TextField(onChanged: (v) => setState(() => q = v), decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: 'Search any student')))],
       ])),
       if (q.trim().length >= 2) Consumer(builder: (_, r, __) => r.watch(studentSearchProvider(q)).when(loading: () => const SizedBox(), error: (e, _) => _err(e), data: (rows) => Panel(padding: const EdgeInsets.all(8), child: Column(children: [for (final st in rows) _row(context, st, _cls(st), true)]))))
-      else if (sectionId != null) Consumer(builder: (_, r, __) => r.watch(sectionStudentsProvider(sectionId!)).when(loading: _loading, error: (e, _) => _err(e), data: (rows) => Panel(padding: const EdgeInsets.all(8), child: rows.isEmpty ? Padding(padding: const EdgeInsets.all(12), child: Text('No students enrolled in this section yet.', style: TextStyle(color: cs.onSurfaceVariant))) : Column(children: [for (final e in rows) _row(context, e['student'], 'Roll ${e['roll_no'] ?? '—'}', canReset)])))),
+      else if (sectionId != null && canReset) Padding(padding: const EdgeInsets.only(bottom: 10), child: Align(alignment: Alignment.centerRight, child: OutlinedButton.icon(
+          onPressed: () => printClassSlips(context, ref, sectionId!, sectionLabel((secs.value ?? []).firstWhere((x) => x['id'] == sectionId))),
+          icon: const Icon(Icons.print_rounded, size: 18), label: const Text('Print slips for this class')))),
+      if (q.trim().length < 2 && sectionId != null) Consumer(builder: (_, r, __) => r.watch(sectionStudentsProvider(sectionId!)).when(loading: _loading, error: (e, _) => _err(e), data: (rows) => Panel(padding: const EdgeInsets.all(8), child: rows.isEmpty ? Padding(padding: const EdgeInsets.all(12), child: Text('No students enrolled in this section yet.', style: TextStyle(color: cs.onSurfaceVariant))) : Column(children: [for (final e in rows) _row(context, e['student'], 'Roll ${e['roll_no'] ?? '—'}', canReset)])))),
     ]));
   }
 
@@ -460,22 +448,15 @@ class _StaffStudentsScreenState extends ConsumerState<StaffStudentsScreen> {
       leading: Avatar((st['full_name'] as String).split(' ').take(2).map((w) => w[0]).join(), size: 40),
       title: Text(st['full_name'], style: const TextStyle(fontWeight: FontWeight.w700)),
       subtitle: Text('${st['admission_no']} · $sub${phones.isNotEmpty ? ' · ${phones.map((p) => p['phone']).join(', ')}' : ''}'),
-      trailing: canReset ? PopupMenuButton<String>(onSelected: (v) => v == 'reset' ? _reset(context, st) : _signoutAll(context, st), itemBuilder: (_) => const [PopupMenuItem(value: 'reset', child: Text('Reset password (print slip)')), PopupMenuItem(value: 'signout', child: Text('Sign out all phones'))]) : null,
+      trailing: canReset ? PopupMenuButton<String>(onSelected: (v) => v == 'reset' ? _reset(context, st) : _signoutAll(context, st), itemBuilder: (_) => const [PopupMenuItem(value: 'reset', child: Text('New first password')), PopupMenuItem(value: 'signout', child: Text('Sign out all phones'))]) : null,
     );
   }
 
-  Future<void> _reset(BuildContext context, Map<String, dynamic> st) async {
-    final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(title: const Text('Reset password?'), content: Text('${st['full_name']} will get a new one-time password and must set a new one on next sign-in. All phones currently signed in for this student are signed out.'), actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Reset'))]));
-    if (ok != true) return;
-    try {
-      final r = await callFunction(ref, 'password', {'action': 'reset', 'student_id': st['id'], 'via': 'print'});
-      if (!context.mounted) return;
-      showDialog(context: context, builder: (ctx) => AlertDialog(title: const Text('Password slip'), content: SelectableText('Royale Connect — first-use password\n\nStudent: ${st['full_name']}\nAdmission no: ${st['admission_no']}\nPassword: ${r['first_use_password']}\n\nSign in at the app, then set your own password. This slip is the only copy.', style: const TextStyle(fontFamily: 'monospace', height: 1.6)), actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done'))]));
-    } catch (e) { if (context.mounted) toast(context, 'Failed: $e'); }
-  }
+  // a new first password ("ana@8919"), shown big to read out; it also appears in Class logins until the family changes it
+  Future<void> _reset(BuildContext context, Map<String, dynamic> st) => resetFirstPassword(context, ref, '${st['id']}', '${st['full_name'] ?? ''}');
 
   Future<void> _signoutAll(BuildContext context, Map<String, dynamic> st) async {
-    try { await callFunction(ref, 'password', {'action': 'signout_all', 'student_id': st['id']}); if (context.mounted) toast(context, 'All phones signed out for ${st['full_name']}.'); } catch (e) { if (context.mounted) toast(context, 'Failed: $e'); }
+    try { await callFunction(ref, 'password', {'action': 'signout_all', 'student_id': st['id']}); if (context.mounted) toast(context, 'All phones signed out for ${st['full_name']}.'); } catch (e) { if (context.mounted) toast(context, friendlyError(e)); }
   }
 }
 
@@ -493,7 +474,7 @@ class StaffUsersScreen extends ConsumerWidget {
       trailing: TextButton(onPressed: () async {
         try { final r = await callFunction(ref, 'password', {'action': 'reset_staff', 'staff_id': st['id']}); if (!context.mounted) return;
           showDialog(context: context, builder: (ctx) => AlertDialog(title: const Text('One-time password'), content: SelectableText('${st['full_name']}\n${st['email']}\n\nPassword: ${r['first_use_password']}\n\nThey must change it at first sign-in.', style: const TextStyle(fontFamily: 'monospace', height: 1.6)), actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done'))]));
-        } catch (e) { if (context.mounted) toast(context, 'Failed: $e'); }
+        } catch (e) { if (context.mounted) toast(context, friendlyError(e)); }
       }, child: Text(isNarrow(context) ? 'Reset' : 'Reset password')),
     )]))));
   }
@@ -573,27 +554,11 @@ class _CrewPasswordPanel extends ConsumerStatefulWidget {
   ConsumerState<_CrewPasswordPanel> createState() => _CrewPasswordPanelState();
 }
 class _CrewPasswordPanelState extends ConsumerState<_CrewPasswordPanel> {
-  final pw = TextEditingController(); bool busy = false;
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Panel(title: 'Bus crew sign-in', child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Text('Login ID = dr + route number for the driver (dr7), as + route number for the bus assistant (as7). Everyone uses one common password (not case-sensitive). It starts as Bus1 — you can change it here any time.',
-          style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
-      const SizedBox(height: 10),
-      PickRow(children: [
-        Expanded(child: TextField(controller: pw, decoration: const InputDecoration(labelText: 'New common bus password', isDense: true))),
-        const SizedBox(width: 10),
-        FilledButton(onPressed: busy ? null : () async {
-          setState(() => busy = true);
-          try {
-            final r = await callFunction(ref, 'password', {'action': 'crew_password', 'password': pw.text});
-            if (context.mounted) toast(context, 'Changed for ${r['updated']} drivers and bus assistants. Tell them the new password.');
-            pw.clear();
-          } catch (e) { if (context.mounted) toast(context, 'Could not change: $e'); }
-          if (mounted) setState(() => busy = false);
-        }, child: const Text('Change for all')),
-      ]),
-    ]));
+    return Panel(title: 'Bus crew sign-in', child: Text(
+        'Login ID = dr + bus number for the driver (dr7), as + bus number for the bus assistant (as7). Each one has their own password: tap “New login” on a bus below to make it, and give it to them. They choose their own at the first sign-in.',
+        style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)));
   }
 }
