@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../auth/session.dart';
 import '../core/data.dart';
+import '../core/errors.dart';
 import '../core/school_docs.dart' show openMonthlyReport;
 import '../core/theme.dart';
 import '../widgets/common.dart';
@@ -89,7 +90,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
       ],
       body: dash.when(
         loading: () => const Center(child: Padding(padding: EdgeInsets.all(48), child: CircularProgressIndicator())),
-        error: (e, _) => Panel(child: Text('Could not load the dashboard: $e\nIf this says “function admin_dashboard does not exist”, the database step of the update has not been run yet.', style: const TextStyle(color: Brand.crimsonDeep))),
+        error: (e, _) => Panel(child: Text('Could not load the dashboard. ${friendlyError(e)}', style: const TextStyle(color: Brand.crimsonDeep))),
         data: (d) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [const FestiveBanner(), const StaffBirthdayLine(), const PasswordRequestsCard(), const YearEndCard(), _body(context, d, ref.watch(adminOverviewProvider).value, cs), const StaffBirthdaysPanel()]),
       ),
     ));
@@ -260,7 +261,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     final chats = _i(t['chats_week']), ans = _i(t['chats_answered']);
     final rc = List<Map<String, dynamic>>.from(t['report_cards'] ?? const []);
     return Panel(title: 'Teaching today', child: Column(children: [
-      _row('Class diary posted', '$diary of $secs sections · ${_i(t['diary_posts_today'])} notes', cs, color: secs > 0 && diary >= secs * .8 ? context.tone(Brand.green) : null),
+      _row('Diary posted', '$diary of $secs sections · ${_i(t['diary_posts_today'])} notes', cs, color: secs > 0 && diary >= secs * .8 ? context.tone(Brand.green) : null),
       _row('Parent chats answered (7 days)', chats == 0 ? '—' : '${(ans * 100 / chats).round()}% of $chats', cs, color: chats > 0 && ans / chats >= .9 ? context.tone(Brand.green) : null),
       for (final r in rc) _row('Report cards · ${r['term']}', '${_i(r['published'])} of ${_i(r['total'])} published', cs),
       if (rc.isEmpty) _row('Report cards', 'none started yet', cs),
@@ -343,7 +344,7 @@ class _ViewAsFamilyState extends ConsumerState<_ViewAsFamily> {
       const SizedBox(height: 6),
       if (q.trim().length >= 2) res.when(
         loading: () => const Padding(padding: EdgeInsets.all(12), child: const GoldLoading()),
-        error: (e, _) => Text('$e'),
+        error: (e, _) => Text(friendlyError(e)),
         data: (rows) => rows.isEmpty ? Padding(padding: const EdgeInsets.all(8), child: Text('No student found.', style: TextStyle(color: cs.onSurfaceVariant))) : Column(children: [
           for (final st in rows.take(6)) ListTile(
             dense: true, contentPadding: EdgeInsets.zero,
@@ -355,7 +356,7 @@ class _ViewAsFamilyState extends ConsumerState<_ViewAsFamily> {
                 await ref.read(sessionProvider.notifier).viewAsFamily(st['id']);
                 if (context.mounted) context.go('/');
               } catch (e) {
-                if (context.mounted) toast(context, 'Could not open: $e');
+                if (context.mounted) toast(context, 'Could not open: ${friendlyError(e)}');
               }
               if (mounted) setState(() => busy = false);
             }, child: const Text('View')),
@@ -379,7 +380,7 @@ class _AdoptionPanel extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     return Panel(title: 'Switching from MCB', child: ref.watch(_adoptionProvider).when(
       loading: () => const SizedBox(height: 80, child: const GoldLoading()),
-      error: (e, _) => Text('$e', style: const TextStyle(color: Brand.crimsonDeep)),
+      error: (e, _) => Text(friendlyError(e), style: const TextStyle(color: Brand.crimsonDeep)),
       data: (a) {
         final total = _i(a['total']), using = _i(a['using']);
         final pct = total == 0 ? 0.0 : using / total;
