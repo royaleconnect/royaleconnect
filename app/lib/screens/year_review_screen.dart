@@ -15,11 +15,12 @@ import '../core/cache.dart';
 import '../core/data.dart';
 import '../core/data3.dart' show appSettingsProvider, featureOn;
 import '../widgets/royal_motion.dart';
+import '../core/errors.dart';
 
 /// Year in Review: an Instagram-style story of the child's school year (each May–June).
 /// Plays by itself (about 3.6 s a slide). Tap the right side for next, the left side for back; hold to pause.
 /// Slides without data are skipped. The gold end card can be shared (as a picture inside a PDF), or copied as text.
-String _msg(Object e) => e is PostgrestException ? e.message : e.toString().replaceFirst('Exception: ', '');
+String _msg(Object e) => friendlyError(e);
 
 DateTime _nowIst() => DateTime.now().toUtc().add(const Duration(hours: 5, minutes: 30));
 /// 15 May – 30 June (India time).
