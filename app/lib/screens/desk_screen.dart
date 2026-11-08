@@ -17,6 +17,7 @@ import 'family_screens.dart' show StorageImage;
 import '../widgets/royal_extras.dart' show GoldLoading;
 import '../core/cache.dart';
 import '../widgets/r_refresh.dart';
+import '../widgets/guided_tour.dart' show setTourHold;
 
 /// From the Principal's Desk.
 /// • The Principal's welcome shows full screen the first time anyone opens the app (one for families, one for staff).
@@ -90,7 +91,11 @@ class DeskGate extends ConsumerWidget {
   const DeskGate({super.key, required this.child});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final m = featureOn(ref.watch(appSettingsProvider).value, 'desk') ? ref.watch(deskPendingProvider).value : null;
+    final pending = featureOn(ref.watch(appSettingsProvider).value, 'desk') ? ref.watch(deskPendingProvider) : null;
+    final m = pending?.value;
+    // the guided tour waits while the letter is loading or showing, and starts after Continue
+    final busy = pending != null && (m != null || (pending.isLoading && !pending.hasValue));
+    WidgetsBinding.instance.addPostFrameCallback((_) => setTourHold('desk', busy));
     // the app stays underneath (nothing is rebuilt); the message fades in over it
     return Stack(children: [
       child,
@@ -605,7 +610,9 @@ Future<void> openDeskMessage(BuildContext context, DeskMessage m) => Navigator.o
 /// "From the Principal's Desk" on Home: the newest message (or her welcome), tap to open the list.
 class DeskHomeCard extends ConsumerWidget {
   final bool staff;
-  const DeskHomeCard({super.key, this.staff = false});
+  /// the slim strip at the bottom of "Latest notices" on the family Home
+  final bool compact;
+  const DeskHomeCard({super.key, this.staff = false, this.compact = false});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (!featureOn(ref.watch(appSettingsProvider).value, 'desk')) return const SizedBox.shrink();
@@ -617,23 +624,24 @@ class DeskHomeCard extends ConsumerWidget {
     final m = recent.isNotEmpty ? recent.first : mine.firstWhere((x) => x.isWelcome, orElse: () => mine.first);
     final info = principalInfo(ref.watch(appSettingsProvider).value);
     final isNew = recent.isNotEmpty && DateTime.now().difference(m.createdAt).inDays <= 3;
-    return Padding(padding: const EdgeInsets.only(bottom: 14), child: Material(color: Colors.transparent, child: InkWell(
-      onTap: () => openDeskMessage(context, m), borderRadius: BorderRadius.circular(20),
-      child: Ink(padding: const EdgeInsets.all(14), decoration: BoxDecoration(borderRadius: BorderRadius.circular(20),
+    final k = compact ? .8 : 1.0;
+    return Padding(padding: EdgeInsets.only(bottom: compact ? 0 : 14), child: Material(color: Colors.transparent, child: InkWell(
+      onTap: () => openDeskMessage(context, m), borderRadius: BorderRadius.circular(compact ? 14 : 20),
+      child: Ink(padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 14, vertical: compact ? 9 : 14), decoration: BoxDecoration(borderRadius: BorderRadius.circular(compact ? 14 : 20),
           gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF4A0910), Color(0xFF240609)]),
           border: Border.all(color: const Color(0xFFE8C97A).withValues(alpha: .35))),
         child: Row(children: [
-          PrincipalPortrait(name: info.name, photo: info.photo, size: 46),
+          PrincipalPortrait(name: info.name, photo: info.photo, size: 46 * k),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              GoldText("From the Principal's Desk", align: TextAlign.left, style: GoogleFonts.greatVibes(fontSize: 22, height: 1.2)),
+              Flexible(child: GoldText("From the Principal's Desk", align: TextAlign.left, style: GoogleFonts.greatVibes(fontSize: 22 * k, height: 1.2))),
               if (isNew) Container(margin: const EdgeInsets.only(left: 6), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1), decoration: BoxDecoration(color: const Color(0xFFE8C97A), borderRadius: BorderRadius.circular(6)),
                   child: const Text('NEW', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Color(0xFF2B1608)))),
             ]),
-            const SizedBox(height: 3),
-            Text(m.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16.5)),
-            Text(info.name, style: TextStyle(color: Colors.white.withValues(alpha: .75), fontSize: 13)),
+            if (!compact) const SizedBox(height: 3),
+            Text(m.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: compact ? 14 : 16.5)),
+            if (!compact) Text(info.name, style: TextStyle(color: Colors.white.withValues(alpha: .75), fontSize: 13)),
           ])),
           if (mine.length > 1) TextButton(onPressed: () => context.push(staff ? '/staff/desk' : '/desk'), style: TextButton.styleFrom(foregroundColor: const Color(0xFFE8C97A)), child: Text('All ${mine.length} ›', style: const TextStyle(fontWeight: FontWeight.w800)))
           else const Icon(Icons.play_circle_outline_rounded, color: Color(0xFFE8C97A)),
