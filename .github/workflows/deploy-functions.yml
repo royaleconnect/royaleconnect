@@ -39,19 +39,19 @@ jobs:
           add RAZORPAY_KEY_ID          "${{ secrets.RAZORPAY_KEY_ID }}"
           add RAZORPAY_KEY_SECRET      "${{ secrets.RAZORPAY_KEY_SECRET }}"
           add RAZORPAY_WEBHOOK_SECRET  "${{ secrets.RAZORPAY_WEBHOOK_SECRET }}"
-          supabase secrets set --env-file .env.deploy --project-ref "$PROJECT_REF"
+          supabase secrets set --env-file .env.deploy --project-ref "$PROJECT_REF" --yes
           rm .env.deploy
           # the Firebase key file is several lines long: squeeze it to one line and set it on its own
           if [ -n "$FCM_JSON" ]; then
             ONE_LINE="$(printf '%s' "$FCM_JSON" | jq -c .)" || { echo "FCM_SERVICE_ACCOUNT_JSON is not valid JSON - paste the whole file again"; exit 1; }
-            supabase secrets set "FCM_SERVICE_ACCOUNT_JSON=$ONE_LINE" --project-ref "$PROJECT_REF" >/dev/null
+            supabase secrets set "FCM_SERVICE_ACCOUNT_JSON=$ONE_LINE" --project-ref "$PROJECT_REF" --yes >/dev/null
             echo "Firebase key set for project $(printf '%s' "$FCM_JSON" | jq -r .project_id)"
           fi
 
       - name: Deploy
         run: |
           for f in login-student login-staff password nightly-fees send-notifications razorpay-order razorpay-webhook geocode; do
-            supabase functions deploy "$f" --project-ref "$PROJECT_REF" --no-verify-jwt
+            supabase functions deploy "$f" --project-ref "$PROJECT_REF" --no-verify-jwt --yes
           done
 
       - name: Smoke test (sample student)
