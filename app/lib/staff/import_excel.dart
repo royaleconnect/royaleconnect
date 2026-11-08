@@ -1,18 +1,17 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 import 'package:url_launcher/url_launcher.dart';
 import '../auth/session.dart';
 import '../core/config.dart';
 import '../core/data.dart';
+import '../core/errors.dart';
 import '../core/import_rules.dart';
 import '../core/school_docs.dart' show PdfDocScreen;
+import 'class_logins.dart' show PasswordSlip, passwordSlipsPdf;
 import '../core/sheet_reader.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
@@ -24,19 +23,15 @@ import 'staff_shell.dart';
 /// 1 choose what and upload · 2 columns matched automatically (change any) · 3 check every row (nothing saved yet)
 /// · 4 import in batches, then password slips for the new people.
 
-String _msg(Object e) => e is PostgrestException ? e.message : e.toString().replaceFirst('Exception: ', '');
-
-class _Slip {
-  final String title, line1, line2, password;
-  const _Slip(this.title, this.line1, this.line2, this.password);
-}
+/// Plain-English messages our own database functions raise are shown as they are; anything technical becomes one kind sentence.
+String _msg(Object e) => e is PostgrestException && !e.message.contains('_') && e.message.length < 200 ? e.message : friendlyError(e);
 
 class _Done {
   int added = 0, updated = 0;
   final failed = <Problem>[];
   final newIds = <String>[];                 // students / staff just added (for slips)
   final whoById = <String, CheckedRow>{};
-  List<_Slip>? slips;
+  List<PasswordSlip>? slips;
   int slipSkipped = 0;
 }
 
@@ -100,7 +95,7 @@ class _ImportTabState extends ConsumerState<ImportTab> {
   Future<void> _loadContext(ImpKind k) async {
     final idx = await db.rpc('admin_student_index');
     students = idx is Map ? {for (final e in idx.entries) '${e.key}': '${e.value}'} : {};
-    emails = {for (final s in await db.from('staff').select('email')) '${s['email']}'.toLowerCase()};
+    emails = {for (final s in (await db.rpc('staff_directory') as List)) '${s['email']}'.toLowerCase()};
     routes = {for (final r in await db.from('route').select('name')) '${r['name']}'.toLowerCase()};
     final secs = await db.from('section').select('id,name,grade:grade_id(id,code,name)').eq('status', 'active').eq('placeholder', false);
     classes = SchoolClasses(await ref.read(gradesProvider.future), List<Map<String, dynamic>>.from(secs));
@@ -160,19 +155,22 @@ class _ImportTabState extends ConsumerState<ImportTab> {
     final d = done!, k = kind!;
     final staffKind = k.key == 'staff';
     setState(() { busy = true; progress = 0; status = 'Making first-use passwords…'; });
-    final slips = <_Slip>[];
+    final slips = <PasswordSlip>[];
     var skipped = 0;
     try {
       for (var at = 0; at < d.newIds.length; at += 50) {
         final ids = d.newIds.sublist(at, math.min(at + 50, d.newIds.length));
-        final r = await callFunction(ref, 'password', {'action': staffKind ? 'bulk_first_use_staff' : 'bulk_first_use', 'ids': ids});
-        for (final p in (r['passwords'] as List? ?? const [])) {
+        // students: first passwords like "ana@8919", kept for Class logins until the family sets their own; staff: as before
+        final List out = staffKind
+            ? ((await callFunction(ref, 'password', {'action': 'bulk_first_use_staff', 'ids': ids}))['passwords'] as List? ?? const [])
+            : (await db.rpc('class_logins_make', params: {'p_ids': ids}) as List? ?? const []);
+        for (final p in out) {
           final row = d.whoById[p['id']];
           if (p['password'] == null || row == null) { skipped++; continue; }
           final rec = row.rec;
           slips.add(staffKind
-              ? _Slip('${rec['full_name'] ?? ''}', '${rec['email']}', 'School staff', '${p['password']}')
-              : _Slip('${rec['full_name'] ?? ''}', 'Class ${classes?.label('${rec['section_id']}') ?? ''}', 'Admission no. ${rec['admission_no']}', '${p['password']}'));
+              ? PasswordSlip('${rec['full_name'] ?? ''}', '${rec['email']}', 'School staff', '${p['password']}')
+              : PasswordSlip('${rec['full_name'] ?? ''}', 'Class ${classes?.label('${rec['section_id']}') ?? ''}', 'Admission no. ${rec['admission_no']}', '${p['password']}'));
         }
         if (mounted) setState(() => progress = (at + ids.length) / d.newIds.length);
       }
@@ -192,7 +190,7 @@ class _ImportTabState extends ConsumerState<ImportTab> {
     Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => PdfDocScreen(
       title: 'Password slips (${d.slips!.length})',
       fileName: staffKind ? 'RCIS-staff-password-slips.pdf' : 'RCIS-password-slips.pdf',
-      make: () => _slipsPdf(d.slips!, staff: staffKind),
+      make: () => passwordSlipsPdf(d.slips!, staff: staffKind),
     )));
   }
 
@@ -355,8 +353,8 @@ class _ImportTabState extends ConsumerState<ImportTab> {
       if (slipsKind && d.newIds.isNotEmpty) ...[
         const SizedBox(height: 14),
         NoteBox(d.slips == null
-            ? '${d.newIds.length} new ${k.key == 'staff' ? 'staff' : 'students'} need a first-use password. Make the slips now — they are printed class-wise, 10 to a page, ready to cut and hand out. Each password works once; at first sign-in they choose their own.'
-            : '${d.slips!.length} password slips are ready${d.slipSkipped > 0 ? ' (${d.slipSkipped} skipped — already using the app)' : ''}. Print them now: the passwords are not shown again (a new slip can always be printed from Students).'),
+            ? '${d.newIds.length} new ${k.key == 'staff' ? 'staff' : 'students'} need a first-use password. Make the slips now — they are printed class-wise, 10 to a page, ready to cut and hand out. At the first sign-in they choose their own password.'
+            : '${d.slips!.length} password slips are ready${d.slipSkipped > 0 ? ' (${d.slipSkipped} skipped — already using the app)' : ''}. ${k.key == 'staff' ? 'Print them now: the passwords are not shown again.' : 'Class teachers can print them again any time from Class logins (“Print slips for this class”).'}'),
       ],
       const SizedBox(height: 12),
       Wrap(alignment: WrapAlignment.end, spacing: 10, runSpacing: 10, children: [
@@ -369,53 +367,4 @@ class _ImportTabState extends ConsumerState<ImportTab> {
       ]),
     ]));
   }
-}
-
-// ------------------------------------------------------------------ password slips PDF (A4, 10 per page)
-Future<Uint8List> _slipsPdf(List<_Slip> slips, {required bool staff}) async {
-  pw.Font base, bold;
-  try {
-    base = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSans-Regular.ttf'));
-    bold = pw.Font.ttf(await rootBundle.load('assets/fonts/NotoSans-Bold.ttf'));
-  } catch (_) {
-    base = pw.Font.helvetica();
-    bold = pw.Font.helveticaBold();
-  }
-  final doc = pw.Document(theme: pw.ThemeData.withFont(base: base, bold: bold), title: 'Royale Connect password slips');
-  const crimson = PdfColor.fromInt(0xFF9A0F15), grey = PdfColor.fromInt(0xFF625E66), line = PdfColor.fromInt(0xFFB8B2A8);
-  final site = AppConfig.webUrl.replaceFirst('https://', '');
-
-  pw.Widget slip(_Slip s) => pw.Container(
-    padding: const pw.EdgeInsets.fromLTRB(12, 10, 12, 8),
-    decoration: pw.BoxDecoration(border: pw.Border.all(color: line, width: .6, style: pw.BorderStyle.dashed)),
-    child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-      pw.Text(AppConfig.schoolName, style: pw.TextStyle(font: bold, fontSize: 8.5, color: crimson)),
-      pw.Text('Royale Connect · first-use password', style: const pw.TextStyle(fontSize: 7.5, color: grey)),
-      pw.SizedBox(height: 6),
-      pw.Text(s.title, style: pw.TextStyle(font: bold, fontSize: 12.5), maxLines: 1),
-      pw.Text('${s.line1}   ·   ${s.line2}', style: const pw.TextStyle(fontSize: 8.5), maxLines: 1),
-      pw.SizedBox(height: 6),
-      pw.Container(padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: pw.BoxDecoration(color: const PdfColor.fromInt(0xFFF6F3EE), borderRadius: pw.BorderRadius.circular(4)),
-          child: pw.Text('Password:  ${s.password}', style: pw.TextStyle(font: bold, fontSize: 14, letterSpacing: 1.2))),
-      pw.Spacer(),
-      pw.Text(staff
-          ? 'Open Royale Connect (app or $site) → “School staff? Sign in here” → your school email and this password → choose your own password.'
-          : 'Open Royale Connect (app or $site) → sign in with the admission number and this password → choose your own password. Same login for both parents. Keep this slip private.',
-          style: const pw.TextStyle(fontSize: 7, color: grey)),
-    ]),
-  );
-
-  for (var at = 0; at < slips.length; at += 10) {
-    final page = slips.sublist(at, math.min(at + 10, slips.length));
-    doc.addPage(pw.Page(
-      pageFormat: PdfPageFormat.a4,
-      margin: const pw.EdgeInsets.all(20),
-      build: (_) => pw.Column(children: [
-        for (var r = 0; r < 5; r++) pw.Expanded(child: pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
-          for (var c = 0; c < 2; c++) pw.Expanded(child: r * 2 + c < page.length ? slip(page[r * 2 + c]) : pw.SizedBox()),
-        ])),
-      ]),
-    ));
-  }
-  return doc.save();
 }
