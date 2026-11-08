@@ -10,11 +10,12 @@ import 'package:url_launcher/url_launcher.dart';
 import '../auth/session.dart';
 import '../core/config.dart';
 import '../core/data.dart';
+import '../core/errors.dart';
 import '../core/school_docs.dart' show openReceiptPdf;
 import '../core/theme.dart';
 import '../widgets/common.dart';
-import '../widgets/royal_motion.dart' show StampIn, ConfettiBurst;
 import '../widgets/royal_extras.dart' show GoldLoading;
+export 'receipt_screen.dart' show ReceiptScreen;
 
 /// Choose what to pay → Razorpay → confirm → receipt.
 /// Rules (as agreed with the school): overdue items are always included; a late fee is locked to its instalment;
@@ -27,6 +28,7 @@ class PayScreen extends ConsumerStatefulWidget {
 
 class _PayScreenState extends ConsumerState<PayScreen> {
   final chosen = <String>{};
+  bool _preset = false;   // what is due now is ticked once, when the fees first arrive
   bool busy = false; String? error;
   Razorpay? _rz;
   String? _paymentId;
@@ -69,7 +71,7 @@ class _PayScreenState extends ConsumerState<PayScreen> {
         'theme': {'color': '#B5121A'}, 'retry': {'enabled': true, 'max_count': 1},
       });
     } on AuthError catch (e) { setState(() { busy = false; error = e.message; }); }
-    catch (_) { setState(() { busy = false; error = 'Could not reach the school server.'; }); }
+    catch (e) { setState(() { busy = false; error = friendlyError(e); }); }
   }
 
   Future<void> _onSuccess(PaymentSuccessResponse r) async {
@@ -92,13 +94,16 @@ class _PayScreenState extends ConsumerState<PayScreen> {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(body: Column(children: [
       BrandHeader(padding: const EdgeInsets.fromLTRB(8, 4, 20, 16), child: Row(children: [
-        IconButton(onPressed: () => context.pop(), icon: const Icon(Icons.arrow_back_rounded, color: Colors.white)),
+        IconButton(onPressed: () => context.canPop() ? context.pop() : context.go('/'), icon: const Icon(Icons.arrow_back_rounded, color: Colors.white), tooltip: 'Back'),
         const Text('Pay fees', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
       ])),
       Expanded(child: fees.when(
         loading: () => const GoldLoading(),
-        error: (e, _) => Center(child: Text('$e')),
+        error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(32), child: Text(friendlyError(e), textAlign: TextAlign.center))),
         data: (f) {
+          // what is due now (overdue + due within a week, or else the next instalment) comes ticked — the same amount
+          // the Pay button on Home and on the Fees page showed; anything not yet due stays unticked
+          if (!_preset) { _preset = true; chosen.addAll(feesDueNow(f, orNext: true).where((r) => !r.overdue && !r.isLate).map((r) => r.id)); }
           // overdue always in; late fees follow their instalment
           final forced = f.overdue.map((r) => r.id).toSet();
           final optional = f.unpaid.where((r) => !r.overdue && !r.isLate).toList();
@@ -108,13 +113,14 @@ class _PayScreenState extends ConsumerState<PayScreen> {
           final total = rows.fold<num>(0, (a, r) => a + r.amount);
           return Column(children: [
             Expanded(child: ListView(padding: const EdgeInsets.all(20), children: [
+              Padding(padding: const EdgeInsets.only(bottom: 14), child: Text('What is due is already ticked.', style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w600))),
               if (f.overdue.isNotEmpty) ...[
                 Eyebrow('Overdue · included', color: context.tone(Brand.crimsonDeep)), const SizedBox(height: 8),
                 for (final r in f.overdue) _row(r, true, null, cs),
                 const SizedBox(height: 16),
               ],
               if (optional.isNotEmpty) ...[
-                Eyebrow('Pay ahead', color: cs.onSurfaceVariant), const SizedBox(height: 8),
+                Eyebrow(f.overdue.isEmpty ? 'Fees' : 'Other fees', color: cs.onSurfaceVariant), const SizedBox(height: 8),
                 for (final r in optional) _row(r, chosen.contains(r.id), (v) => setState(() => v ? chosen.add(r.id) : chosen.remove(r.id)), cs,
                     late: f.unpaid.where((l) => l.isLate && l.parentId == r.id).fold<num>(0, (a, l) => a + l.amount)),
               ],
@@ -147,60 +153,10 @@ class _PayScreenState extends ConsumerState<PayScreen> {
         Checkbox(value: on, onChanged: onChanged == null ? null : (v) => onChanged(v ?? false), activeColor: Brand.crimson),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(r.title, style: const TextStyle(fontWeight: FontWeight.w800)),
-          Text('Due ${DateFormat('d MMM yyyy').format(DateTime.parse(r.dueOn))}${late > 0 ? ' · includes late fee ${inr(late)}' : ''}', style: TextStyle(fontSize: 12, color: r.overdue ? Brand.crimsonDeep : cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
+          Text('Due ${DateFormat('d MMM yyyy').format(DateTime.parse(r.dueOn))}${r.overdue ? ' · overdue' : r.daysUntil() > 7 ? ' · not yet due' : ''}${late > 0 ? ' · includes late fee ${inr(late)}' : ''}', style: TextStyle(fontSize: 12, color: r.overdue ? Brand.crimsonDeep : cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
         ])),
         Text(inr(r.amount + late), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
       ])))));
-}
-
-/// Landing route for the web payment link (`/pay/done?payment_id=…`) and the in-app success screen (`/receipt/:id`).
-class ReceiptScreen extends ConsumerWidget {
-  final String paymentId;
-  const ReceiptScreen({super.key, required this.paymentId});
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final p = ref.watch(paymentProvider(paymentId));
-    final cs = Theme.of(context).colorScheme;
-    return Scaffold(body: Column(children: [
-      BrandHeader(padding: const EdgeInsets.fromLTRB(8, 4, 20, 16), child: Row(children: [
-        IconButton(onPressed: () => context.go('/fees'), icon: const Icon(Icons.close_rounded, color: Colors.white)),
-        const Text('Receipt', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
-      ])),
-      Expanded(child: p.when(
-        loading: () => const GoldLoading(),
-        error: (e, _) => Center(child: Text('$e')),
-        data: (m) {
-          if (m == null) return const Center(child: Text('Receipt not found.'));
-          final ok = m['status'] == 'success';
-          return ListView(padding: const EdgeInsets.all(20), children: [
-            Stack(clipBehavior: Clip.none, children: [Container(padding: const EdgeInsets.all(22), decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(22)), child: Column(children: [
-              Container(width: 64, height: 64, alignment: Alignment.center, decoration: BoxDecoration(color: ok ? Brand.greenTint : Brand.amberTint, shape: BoxShape.circle), child: Icon(ok ? Icons.check_rounded : Icons.hourglass_top_rounded, color: ok ? Brand.green : Brand.amber, size: 34)),
-              const SizedBox(height: 14),
-              Text(ok ? 'Payment received' : 'Confirming payment…', style: Theme.of(context).textTheme.headlineSmall),
-              const SizedBox(height: 4),
-              Text(ok ? 'Receipt ${m['receipt_no']}' : 'This usually takes under a minute. Pull down to refresh.', style: TextStyle(color: cs.onSurfaceVariant)),
-              const SizedBox(height: 18),
-              Text(inr(m['amount'] as num), style: const TextStyle(fontSize: 34, fontWeight: FontWeight.w800, letterSpacing: -.5)),
-              if (m['paid_at'] != null) Text(DateFormat('d MMMM yyyy, h:mm a').format(DateTime.parse(m['paid_at']).toLocal()), style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
-              const Divider(height: 32),
-              for (final l in (m['payment_line'] as List)) Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Row(children: [
-                Expanded(child: Text(l['fee_ledger']['title'], style: const TextStyle(fontWeight: FontWeight.w700))), Text(inr(l['amount'] as num))])),
-              const Divider(height: 32),
-              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Mode', style: TextStyle(color: cs.onSurfaceVariant)), Text((m['mode'] as String).toUpperCase(), style: const TextStyle(fontWeight: FontWeight.w700))]),
-              const SizedBox(height: 6),
-              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Reference', style: TextStyle(color: cs.onSurfaceVariant)), Text(m['gateway_payment_id'] ?? '—', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12))]),
-            ])),
-              if (ok) const Positioned(right: 14, top: 18, child: StampIn('PAID', delayMs: 500)),
-              if (ok) const Positioned(left: 0, right: 0, top: -20, height: 420, child: ConfettiBurst(count: 120, origin: Alignment(0, -.5))),
-            ]),
-            const SizedBox(height: 14),
-            if (ok) OutlinedButton.icon(onPressed: () => openReceiptPdf(context, m['id'], receiptNo: m['receipt_no']), icon: const Icon(Icons.picture_as_pdf_rounded), label: const Text('Receipt PDF — download, share or print')),
-            const SizedBox(height: 10),
-            PrimaryButton('Back to fees', onPressed: () => context.go('/fees')),
-          ]);
-        })),
-    ]));
-  }
 }
 
 class ReceiptsScreen extends ConsumerWidget {
@@ -211,12 +167,12 @@ class ReceiptsScreen extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(body: Column(children: [
       BrandHeader(padding: const EdgeInsets.fromLTRB(8, 4, 20, 16), child: Row(children: [
-        IconButton(onPressed: () => context.pop(), icon: const Icon(Icons.arrow_back_rounded, color: Colors.white)),
+        IconButton(onPressed: () => context.canPop() ? context.pop() : context.go('/fees'), icon: const Icon(Icons.arrow_back_rounded, color: Colors.white), tooltip: 'Back'),
         const Text('Payments & receipts', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
       ])),
       Expanded(child: list.when(
         loading: () => const GoldLoading(),
-        error: (e, _) => Center(child: Text('$e')),
+        error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(32), child: Text(friendlyError(e), textAlign: TextAlign.center))),
         data: (rows) => rows.isEmpty ? const Center(child: Text('No payments yet.')) : ListView.separated(padding: const EdgeInsets.all(20), itemCount: rows.length, separatorBuilder: (_, __) => const SizedBox(height: 8), itemBuilder: (_, i) {
           final m = rows[i];
           final cancelled = m['status'] == 'cancelled' || m['cancelled_at'] != null;
