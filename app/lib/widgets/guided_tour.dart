@@ -45,9 +45,9 @@ String tourRoleFor(Session s) {
 const tourSteps = <String, List<TourStep>>{
   'family': [
     TourStep('Your child', 'Tap here for the profile and the ID card. With two children, tap to switch between them.', Icons.person_rounded, at: ['f-child']),
-    TourStep('Needs you today', 'Only what needs you: a fee due, a notice to read, homework for tomorrow. When it says “All done”, you are free.', Icons.task_alt_rounded, at: ['f-needs']),
+    TourStep('Today · needs you', 'Only what needs you: a fee to pay (with a Pay button), homework for the next school day, new notices. When it says “All done for today”, you are free.', Icons.task_alt_rounded, at: ['f-needs']),
     TourStep('Attendance streak', 'Days present in a row. A gold celebration at 30 and 60 days.', Icons.local_fire_department_rounded, at: ['f-streak'], optional: true),
-    TourStep('Notices', 'Every school notice comes here, with a notification on your phone. Urgent ones show in red at the top of Home.', Icons.campaign_rounded, at: ['f-notices', 'nav:/announcements']),
+    TourStep('Notices', 'Every school notice comes here, with a notification on your phone. New ones also show in the Today card on Home.', Icons.campaign_rounded, at: ['f-notices', 'nav:/announcements']),
     TourStep('Diary', 'Today’s homework and notes from the teachers, plus My list to tick off what is done.', Icons.menu_book_rounded, at: ['f-diary', 'nav:/diary']),
     TourStep('Fees', 'See what is due, pay online and download receipts.', Icons.account_balance_wallet_rounded, at: ['f-fees', 'nav:/fees']),
     TourStep('Bus', 'Watch the bus live and get an alert 10 and 5 minutes before it reaches your stop.', Icons.directions_bus_rounded, at: ['f-bus', 'nav:/bus'], optional: true),
@@ -63,7 +63,7 @@ const tourSteps = <String, List<TourStep>>{
     TourStep('Help', 'Short answers to every question. You can take this tour again from here.', Icons.help_outline_rounded, at: ['nav:/staff/help']),
   ],
   'office': [
-    TourStep('Approvals', 'Everything waiting for a yes or no is in one place: password help, leave, receipt cancellations, certificates.', Icons.inbox_rounded, at: ['nav:/staff/approvals'], optional: true),
+    TourStep('Approvals', 'Password help and certificates still to give. The Principal decides receipt cancellations, TC requests and data corrections.', Icons.inbox_rounded, at: ['nav:/staff/approvals'], optional: true),
     TourStep('Fees & receipts', 'Record a payment, print the receipt, see who still owes fees and download reports in Excel. Reminders to families go by themselves.', Icons.account_balance_wallet_rounded, at: ['nav:/staff/fees']),
     TourStep('Students', 'Find any student by name, admission number or a parent’s phone. The full record opens with one tap.', Icons.people_alt_rounded, at: ['nav:/staff/students']),
     TourStep('Certificates', 'TC, Study, Bonafide and No dues certificates, filled in from the records, ready to print.', Icons.workspace_premium_rounded, at: ['nav:/staff/certificates'], optional: true),
@@ -74,7 +74,7 @@ const tourSteps = <String, List<TourStep>>{
   'leader': [
     TourStep('The whole school at a glance', 'Your first page shows students, today’s attendance, fees and notices, and the Data checker, which lists anything missing, like a photo or a phone number.', Icons.dashboard_rounded, at: ['nav:/staff']),
     TourStep('The small dot', 'The dot at the top shows the app’s health. Green: all is well. Amber or red: tap it to see what to check.', Icons.circle, at: ['staff-health'], optional: true),
-    TourStep('Approvals', 'Receipt cancellations and other things waiting for your yes or no.', Icons.inbox_rounded, at: ['nav:/staff/approvals'], optional: true),
+    TourStep('Approvals', 'Receipt cancellations, TC requests and data corrections waiting for your yes or no.', Icons.inbox_rounded, at: ['nav:/staff/approvals'], optional: true),
     TourStep('Principal’s Desk', 'Your welcome and event messages to families and staff, shown full screen once to everyone.', Icons.auto_awesome_rounded, at: ['nav:/staff/desk'], optional: true),
     TourStep('School setup', 'Staff, classes & fees, sections on/off, the Bin (bring back anything deleted within 30 days) and branches — all as tabs here.', Icons.tune_rounded, at: ['nav:/staff/setup']),
     TourStep('Weekly summary', 'Every Monday at 8 am: “Your week at Royale”, five lines about the week and what needs you.', Icons.insights_rounded),
