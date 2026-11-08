@@ -8,6 +8,11 @@ import '../core/theme.dart';
 import '../widgets/common.dart';
 import '../widgets/royal_extras.dart' show GoldLoading;
 import '../widgets/r_refresh.dart';
+import '../core/config.dart';
+import '../core/data2.dart' show enrolmentProvider;
+import '../core/data3.dart' show yearLabelProvider;
+import '../core/errors.dart';
+import 'family_today.dart' show classNow;
 
 class FeesScreen extends ConsumerWidget {
   const FeesScreen({super.key});
@@ -16,28 +21,32 @@ class FeesScreen extends ConsumerWidget {
     final st = ref.watch(sessionProvider).value!.active!;
     final fees = ref.watch(feesProvider);
     final cs = Theme.of(context).colorScheme;
+    final year = (ref.watch(enrolmentProvider).value?['academic_year']?['label'] ?? ref.watch(yearLabelProvider).value ?? AppConfig.academicYearLabel).toString();
     return Scaffold(
       body: Column(children: [
         BrandHeader(padding: const EdgeInsets.fromLTRB(20, 8, 20, 16), hairline: false, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            IconButton(onPressed: () => context.go('/'), icon: const Icon(Icons.arrow_back_rounded, color: Colors.white)),
+            IconButton(onPressed: () => context.go('/'), tooltip: 'Back', icon: const Icon(Icons.arrow_back_rounded, color: Colors.white)),
             const Expanded(child: Text('Fees', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800))),
+            // the current school year (changes by itself on move-up day)
             Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), decoration: BoxDecoration(color: Colors.white.withValues(alpha: .14), borderRadius: BorderRadius.circular(999)),
-                child: const Text('2026-27', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13))),
+                child: Text(year, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13))),
           ]),
           const SizedBox(height: 8),
-          Row(children: [Avatar(st.initials, bg: Colors.white, fg: Brand.crimsonDeep, size: 32), const SizedBox(width: 10), Text('${st.fullName} · ${st.cls}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))]),
+          Row(children: [Avatar(st.initials, bg: Colors.white, fg: Brand.crimsonDeep, size: 32), const SizedBox(width: 10),
+            Expanded(child: Text('${st.fullName} · ${classNow(ref, st)}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)))]),
         ])),
         Expanded(child: fees.when(
           loading: () => const GoldLoading(),
-          error: (e, _) => Center(child: Text('Could not load fees.\n$e', textAlign: TextAlign.center)),
+          error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(32), child: Text(friendlyError(e), textAlign: TextAlign.center))),
           data: (f) => RRefresh(onRefresh: () async => ref.invalidate(feesProvider), child: ListView(padding: const EdgeInsets.fromLTRB(20, 16, 20, 110), children: [
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Container(padding: const EdgeInsets.all(18), decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(22), boxShadow: [BoxShadow(color: Brand.crimsonDeep.withValues(alpha: .12), blurRadius: 30, offset: const Offset(0, 10))]),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                    Row(crossAxisAlignment: CrossAxisAlignment.end, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Balance for the year', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)), Text(inr(f.balance), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -.5))]),
-                      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text('Paid so far', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)), RichText(text: TextSpan(style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Brand.green), children: [TextSpan(text: inr(f.paidAmount)), TextSpan(text: ' of ${inr(f.total)}', style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurfaceVariant))]))]),
+                    // Wrap: on a narrow phone or with large text the two halves sit one under the other instead of spilling out
+                    Wrap(alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.end, spacing: 16, runSpacing: 8, children: [
+                      Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Balance for the year', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)), FittedBox(fit: BoxFit.scaleDown, child: Text(inr(f.balance), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800, letterSpacing: -.5)))]),
+                      Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Paid so far', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)), Text.rich(TextSpan(style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: context.tone(Brand.green)), children: [TextSpan(text: inr(f.paidAmount)), TextSpan(text: ' of ${inr(f.total)}', style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurfaceVariant))]))]),
                     ]),
                     const SizedBox(height: 12),
                     ClipRRect(borderRadius: BorderRadius.circular(5), child: SizedBox(height: 10, child: Row(children: [
@@ -46,7 +55,7 @@ class FeesScreen extends ConsumerWidget {
                       Expanded(flex: (100 - f.pct).clamp(0, 100), child: Container(color: cs.surfaceContainerHighest)),
                     ]))),
                     const SizedBox(height: 10),
-                    Row(children: [_legend('Paid', Brand.green, cs), const SizedBox(width: 16), _legend('Overdue', Brand.crimson, cs), const SizedBox(width: 16), _legend('Not yet due', cs.surfaceContainerHighest, cs)]),
+                    Wrap(spacing: 16, runSpacing: 6, children: [_legend('Paid', Brand.green, cs), _legend('Overdue', Brand.crimson, cs), _legend('Not yet due', cs.surfaceContainerHighest, cs)]),
                   ])),
               const SizedBox(height: 14),
               if (f.overdue.isNotEmpty) _section(context, 'Overdue', Theme.of(context).brightness == Brightness.dark ? const Color(0xFFFF6B6B) : Brand.crimsonDeep, f.overdue, border: true),
@@ -67,9 +76,10 @@ class FeesScreen extends ConsumerWidget {
         decoration: BoxDecoration(color: cs.surface, border: Border(top: BorderSide(color: cs.outline))),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Builder(builder: (_) {
-            final f = fees.value!; final sel = f.overdue.isNotEmpty ? f.overdue : [f.unpaid.first];
+            // the same rule as Home's Pay button: what is due now (or else the next instalment) — and the Pay page opens with exactly these ticked
+            final f = fees.value!; final sel = feesDueNow(f, orNext: true);
             final amt = sel.fold<num>(0, (a, r) => a + r.amount);
-            return PrimaryButton('${f.overdue.isNotEmpty ? 'Pay overdue amount' : 'Pay next instalment'}   ${inr(amt)}', onPressed: () => context.push('/pay'));
+            return PrimaryButton('${feesDueNow(f).isNotEmpty ? 'Pay what is due' : 'Pay next instalment'} · ${inr(amt)}', onPressed: () => context.push('/pay'));
           }),
           TextButton(onPressed: () => context.push('/pay'), child: const Text('Choose other items to pay')),
         ]),
@@ -92,6 +102,7 @@ class FeesScreen extends ConsumerWidget {
             if (r.note != null) Text(r.note!, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
             Text(r.overdue ? 'Due ${DateFormat('d MMM yyyy').format(DateTime.parse(r.dueOn))}' : 'Due ${DateFormat('d MMM').format(DateTime.parse(r.dueOn))}${r.daysUntil() <= 30 ? ' · ${r.daysUntil()} days left' : ''}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color)),
           ])),
+          const SizedBox(width: 10),
           Text(inr(r.amount), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
         ]),
       )),
