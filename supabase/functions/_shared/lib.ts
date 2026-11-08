@@ -35,9 +35,11 @@ export const normAdmission = (s: string) => (s || "").trim().toUpperCase().repla
 /**
  * Mint the app session token. It is a standard Supabase-compatible JWT signed with the project's JWT secret,
  * so PostgREST + RLS accept it. Claims:
- *   role=authenticated, sub=<primary id>, student_ids=[...], staff_id, roles=[...], kind='student'|'staff'
+ *   role=authenticated, sub=<primary id>, sid=<app_session id>, kind='student'|'staff'|'crew',
+ *   families: student_ids=[...] · staff: staff_id + roles · bus crew: crew_id + roles (never staff_id, so the database never treats them as staff)
+ *   pwd_change_required=true → a short "choose your password first" token: only the password service accepts it
  */
-export async function mintToken(claims: Record<string, unknown>, hours = 24 * 365) {
+export async function mintToken(claims: Record<string, unknown>, hours: number = LIFETIME.family) {
   const secret = env("APP_JWT_SECRET");
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
   return await jwtCreate({ alg: "HS256", typ: "JWT" }, {
@@ -85,6 +87,28 @@ export function firstUsePassword() {
 
 export async function audit(db: any, row: { actor_staff_id?: string; actor_student_id?: string; action: string; entity?: string; entity_id?: string; detail?: unknown }) {
   await db.from("audit_log").insert(row);
+}
+
+/** How long a sign-in lasts (hours). After that the app asks for the password again. */
+export const LIFETIME = { family: 24 * 90, staff: 24 * 30, crew: 24 * 30 } as const;
+
+/** The caller's network address (for the "too many wrong passwords from one place" limit). */
+export const clientIp = (req: Request) =>
+  (req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0] ?? req.headers.get("x-real-ip") ?? "").trim().slice(0, 64);
+
+/**
+ * Verify the token AND check it against the sign-in record (signed out on every phone, made inactive, left the school,
+ * still has to choose a password). Same rule as the database's check_session(). Returns the claims or null.
+ * allowPasswordChange: the password service accepts a token whose only problem is "choose your password first".
+ */
+export async function liveClaims(req: Request, opts: { allowPasswordChange?: boolean } = {}): Promise<any | null> {
+  const c = await verifyToken(req);
+  if (!c) return null;
+  const { data: problem, error } = await admin().rpc("session_problem", { c });
+  if (error) { console.error("session_problem", error.message); return null; }
+  if (!problem) return c;
+  if (problem === "change password" && opts.allowPasswordChange) return { ...c, pwd_change_pending: true };
+  return null;
 }
 
 /** Read and verify the app session token from the Authorization header. Returns the claims or null. */
