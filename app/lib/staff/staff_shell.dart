@@ -16,7 +16,8 @@ import '../widgets/guided_tour.dart' show maybeShowTour, tourRoleFor, TourTarget
 import '../widgets/staff_birthday.dart';
 import 'id_cards_page.dart' show idCardsAllReadyProvider;
 
-/// One menu entry: route, label, icon, group, and which roles see it (empty = everyone).
+/// One menu entry: route, label, icon, group, and which roles IT may open it to (empty = everyone).
+/// Who sees it by default comes from [staffLayouts] (the menu of each role); IT can narrow it in School settings → "Who can use what".
 class StaffItem {
   final String path, label, group; final IconData icon; final List<String> roles;
   /// locked = always shown to the roles above; IT cannot switch it off (Today, Help, My settings, School settings)
@@ -27,32 +28,74 @@ class StaffItem {
 const officeRoles = ['office', 'it_admin', 'principal', 'vice_principal'];
 const allStaffRoles = ['teacher', 'class_teacher', 'coordinator', 'accounts', 'office', 'transport_incharge', 'vice_principal', 'principal', 'it_admin'];
 
-// Fewer items than before: pages that belong together open with tabs at the top
-// (Exams & marks: portions · marks · report cards; Honours: toppers · council · houses; School setup: staff · classes · sections · Bin · settings).
+/// Highest role first: the menu groups and the phone's bottom bar follow a person's highest role.
+const staffRoleOrder = ['it_admin', 'principal', 'vice_principal', 'office', 'accounts', 'transport_incharge', 'coordinator', 'class_teacher', 'teacher'];
+
+// Every page that can be in the menu. Page titles are the same as these labels.
 const staffMenu = [
   StaffItem('/staff', 'Today', Icons.today_rounded, 'TODAY', locked: true),
+  StaffItem('/staff/approvals', 'Approvals', Icons.inbox_rounded, 'TODAY', roles: ['it_admin', 'principal', 'vice_principal', 'office']),
   StaffItem('/staff/messages', 'Messages', Icons.chat_bubble_rounded, 'TODAY'),
-  StaffItem('/staff/announcements', 'Notices', Icons.campaign_rounded, 'TODAY'),
-  StaffItem('/staff/approvals', 'Approvals', Icons.inbox_rounded, 'TODAY', roles: ['it_admin', 'principal', 'vice_principal', 'office', 'accounts', 'class_teacher']),
-  StaffItem('/staff/diary', 'Diary', Icons.menu_book_rounded, 'MY CLASS'),
+  StaffItem('/staff/announcements', 'Notices', Icons.campaign_rounded, 'TODAY', roles: ['class_teacher', 'coordinator', 'transport_incharge', ...officeRoles]),
+  StaffItem('/staff/desk', "Principal's Desk", Icons.auto_awesome_rounded, 'TODAY', roles: ['it_admin', 'principal']),
   StaffItem('/staff/attendance', 'Attendance', Icons.fact_check_rounded, 'MY CLASS', roles: ['class_teacher', 'coordinator', ...officeRoles]),
-  StaffItem('/staff/leave', 'Leave requests', Icons.event_busy_rounded, 'MY CLASS'),
-  StaffItem('/staff/moments', 'Class photos', Icons.photo_library_rounded, 'MY CLASS'),
-  StaffItem('/staff/star', 'Star of the month', Icons.star_rounded, 'MY CLASS'),
+  StaffItem('/staff/diary', 'Diary', Icons.menu_book_rounded, 'MY CLASS'),
+  StaffItem('/staff/leave', 'Leave requests', Icons.event_busy_rounded, 'MY CLASS', roles: ['class_teacher', ...officeRoles]),
   StaffItem('/staff/exams', 'Exams & marks', Icons.grading_rounded, 'MY CLASS'),
+  StaffItem('/staff/star', 'Star of the month', Icons.star_rounded, 'MY CLASS'),
+  StaffItem('/staff/moments', 'Class photos', Icons.photo_library_rounded, 'MY CLASS'),
   StaffItem('/staff/students', 'Students', Icons.people_alt_rounded, 'STUDENTS'),
-  StaffItem('/staff/certificates', 'Certificates', Icons.workspace_premium_rounded, 'STUDENTS', roles: ['office', 'it_admin', 'principal', 'vice_principal', 'accounts']),
-  StaffItem('/staff/id-cards', 'ID cards', Icons.badge_rounded, 'STUDENTS', roles: officeRoles),
+  StaffItem('/staff/class-logins', 'Class logins', Icons.key_rounded, 'MY CLASS', roles: ['class_teacher', 'office', 'it_admin']),
   StaffItem('/staff/fees', 'Fees & receipts', Icons.account_balance_wallet_rounded, 'STUDENTS', roles: ['accounts', ...officeRoles]),
+  StaffItem('/staff/certificates', 'Certificates', Icons.workspace_premium_rounded, 'STUDENTS', roles: ['accounts', ...officeRoles]),
+  StaffItem('/staff/id-cards', 'ID cards', Icons.badge_rounded, 'STUDENTS', roles: officeRoles),
   StaffItem('/staff/transport', 'Transport', Icons.directions_bus_rounded, 'STUDENTS', roles: ['transport_incharge', ...officeRoles]),
-  StaffItem('/staff/toppers', 'Honours', Icons.emoji_events_rounded, 'STUDENTS'),
-  StaffItem('/staff/desk', "Principal's Desk", Icons.auto_awesome_rounded, 'SCHOOL', roles: ['it_admin', 'principal']),
+  StaffItem('/staff/bus-pins', 'Check pins', Icons.pin_drop_rounded, 'BUSES', roles: ['transport_incharge', ...officeRoles]),
+  StaffItem('/staff/toppers', 'Honours', Icons.emoji_events_rounded, 'SCHOOL'),
   StaffItem('/staff/calendar', 'School calendar', Icons.calendar_month_rounded, 'SCHOOL', roles: officeRoles),
   StaffItem('/staff/feedback', 'Parent feedback', Icons.rate_review_rounded, 'SCHOOL', roles: officeRoles),
   StaffItem('/staff/setup', 'School setup', Icons.tune_rounded, 'SCHOOL', roles: ['accounts', ...officeRoles]),
+  StaffItem('/staff/week', 'Your week', Icons.insights_rounded, 'SCHOOL', roles: ['principal', 'it_admin', 'vice_principal']),
   StaffItem('/staff/me', 'My settings', Icons.settings_rounded, 'ME', locked: true),
   StaffItem('/staff/help', 'Help', Icons.help_outline_rounded, 'ME', locked: true),
 ];
+
+const _me = ('ME', ['/staff/me', '/staff/help']);
+const _honours = ('SCHOOL', ['/staff/toppers']);
+
+/// The menu of each role (groups in order). Honours is in every menu. A person with several roles gets all their pages.
+const staffLayouts = <String, List<(String, List<String>)>>{
+  'teacher': [('TODAY', ['/staff', '/staff/messages']), ('MY CLASSES', ['/staff/diary', '/staff/exams', '/staff/moments']), _honours, _me],
+  'class_teacher': [('TODAY', ['/staff', '/staff/messages', '/staff/announcements']),
+    ('MY CLASS', ['/staff/attendance', '/staff/diary', '/staff/leave', '/staff/exams', '/staff/star', '/staff/moments', '/staff/students', '/staff/class-logins']), _honours, _me],
+  'coordinator': [('TODAY', ['/staff', '/staff/messages', '/staff/announcements']), ('MY GRADES', ['/staff/attendance', '/staff/diary', '/staff/exams', '/staff/students']), _honours, _me],
+  'accounts': [('TODAY', ['/staff']), ('FEES', ['/staff/fees', '/staff/students', '/staff/certificates']), _honours, _me],
+  'office': [('TODAY', ['/staff', '/staff/approvals', '/staff/messages', '/staff/announcements']),
+    ('STUDENTS', ['/staff/students', '/staff/fees', '/staff/certificates', '/staff/id-cards', '/staff/transport']), ('SCHOOL', ['/staff/calendar', '/staff/feedback', '/staff/toppers']), _me],
+  'transport_incharge': [('TODAY', ['/staff', '/staff/announcements']), ('BUSES', ['/staff/transport', '/staff/bus-pins', '/staff/students']), _honours, _me],
+  'principal': [('TODAY', ['/staff', '/staff/approvals', '/staff/announcements', '/staff/desk']),
+    ('SCHOOL', ['/staff/students', '/staff/attendance', '/staff/exams', '/staff/toppers', '/staff/feedback', '/staff/week']), _me],
+  'vice_principal': [('TODAY', ['/staff', '/staff/approvals', '/staff/announcements']),
+    ('SCHOOL', ['/staff/students', '/staff/attendance', '/staff/exams', '/staff/toppers', '/staff/feedback', '/staff/week']), _me],
+  // IT: everything
+  'it_admin': [('TODAY', ['/staff', '/staff/approvals', '/staff/messages', '/staff/announcements']),
+    ('STUDENTS', ['/staff/students', '/staff/fees', '/staff/certificates', '/staff/id-cards', '/staff/transport', '/staff/toppers']),
+    ('SCHOOL', ['/staff/desk', '/staff/calendar', '/staff/feedback', '/staff/setup', '/staff/week']),
+    ('CLASSES', ['/staff/attendance', '/staff/diary', '/staff/leave', '/staff/exams', '/staff/star', '/staff/moments', '/staff/class-logins', '/staff/bus-pins']), _me],
+};
+
+/// The 4 pages at the bottom of the phone screen: the daily jobs of the person's highest role.
+const staffBottomBar = <String, List<(String, String)>>{
+  'teacher': [('/staff', 'Today'), ('/staff/diary', 'Diary'), ('/staff/marks', 'Marks'), ('/staff/messages', 'Messages')],
+  'class_teacher': [('/staff', 'Today'), ('/staff/attendance', 'Attendance'), ('/staff/diary', 'Diary'), ('/staff/messages', 'Messages')],
+  'coordinator': [('/staff', 'Today'), ('/staff/attendance', 'Attendance'), ('/staff/diary', 'Diary'), ('/staff/marks', 'Marks')],
+  'accounts': [('/staff', 'Today'), ('/staff/fees', 'Fees'), ('/staff/students', 'Students'), ('/staff/certificates', 'Certificates')],
+  'office': [('/staff', 'Today'), ('/staff/approvals', 'Approvals'), ('/staff/students', 'Students'), ('/staff/announcements', 'Notices')],
+  'transport_incharge': [('/staff', 'Today'), ('/staff/transport', 'Transport'), ('/staff/announcements', 'Notices'), ('/staff/students', 'Students')],
+  'principal': [('/staff', 'Today'), ('/staff/approvals', 'Approvals'), ('/staff/announcements', 'Notices'), ('/staff/week', 'Your week')],
+  'vice_principal': [('/staff', 'Today'), ('/staff/approvals', 'Approvals'), ('/staff/announcements', 'Notices'), ('/staff/week', 'Your week')],
+  'it_admin': [('/staff', 'Today'), ('/staff/approvals', 'Approvals'), ('/staff/students', 'Students'), ('/staff/setup', 'Setup')],
+};
 
 /// Pages reached through a tab of another menu item (they keep their own "who can use it" setting in School settings).
 const staffSubPages = [
@@ -65,12 +108,18 @@ const staffSubPages = [
   StaffItem('/staff/settings', 'School settings', Icons.admin_panel_settings_rounded, 'SCHOOL', roles: ['it_admin'], locked: true),
   StaffItem('/staff/houses', 'Houses', Icons.flag_rounded, 'STUDENTS'),
   StaffItem('/staff/year-end', 'Year-end checklist', Icons.event_available_rounded, 'SCHOOL', roles: ['it_admin', 'principal'], locked: true),
-  StaffItem('/staff/week', 'Your week at Royale', Icons.insights_rounded, 'SCHOOL', roles: ['principal', 'it_admin', 'vice_principal'], locked: true),
 ];
 
 /// Which menu item a tab-page belongs to (so the right item stays highlighted).
 const staffHubOf = {'/staff/marks': '/staff/exams', '/staff/reports': '/staff/exams', '/staff/council': '/staff/toppers', '/staff/houses': '/staff/toppers',
-  '/staff/users': '/staff/setup', '/staff/sections': '/staff/setup', '/staff/bin': '/staff/setup', '/staff/settings': '/staff/setup', '/staff/fees/reports': '/staff/fees', '/staff/year-end': '/staff', '/staff/week': '/staff', '/staff/thanks': '/staff'};
+  '/staff/users': '/staff/setup', '/staff/sections': '/staff/setup', '/staff/bin': '/staff/setup', '/staff/settings': '/staff/setup', '/staff/fees/reports': '/staff/fees', '/staff/year-end': '/staff', '/staff/thanks': '/staff'};
+
+/// Roles that have this page in their own menu (the normal setting when IT has not changed it).
+List<String> defaultRolesOf(StaffItem m) {
+  if (staffSubPages.contains(m)) return maxRolesOf(m);
+  final r = [for (final e in staffLayouts.entries) if (e.value.any((g) => g.$2.contains(m.path))) e.key];
+  return r.isEmpty ? maxRolesOf(m) : r;
+}
 
 /// May this person open this page (menu item or tab page)?
 bool staffCanOpen(Session s, Map<String, String>? settings, String path) {
@@ -79,16 +128,63 @@ bool staffCanOpen(Session s, Map<String, String>? settings, String path) {
   return m == null || chosenRolesOf(m, staffAccessOf(settings)).any(s.hasRole);
 }
 
-/// The most a page can be opened to (the database rules decide what each role can actually read).
-List<String> maxRolesOf(StaffItem m) => m.roles.isEmpty ? allStaffRoles : m.roles;
+/// The same rule for any address inside the panel (used by the router): '/staff/toppers/edit' follows '/staff/toppers'.
+bool staffCanOpenRoute(Session s, Map<String, String>? settings, String loc) {
+  if (loc == '/staff' || loc == '/staff/me' || loc == '/staff/help' || loc == '/staff/set-password') return true;
+  final all = [...staffMenu, ...staffSubPages].where((m) => m.path != '/staff' && (loc == m.path || loc.startsWith('${m.path}/'))).toList()
+    ..sort((a, b) => b.path.length.compareTo(a.path.length));
+  return all.isEmpty || staffCanOpen(s, settings, all.first.path);
+}
 
-/// What IT has chosen in School settings → "Who can use what" (missing = the normal roles).
+/// Bumped when the router turns someone away from a page; the panel then shows "You don't have access to that page".
+final staffAccessDenied = ValueNotifier<int>(0);
+
+/// For the router: null = go ahead; '/staff' = not allowed (and the panel shows a short message).
+String? staffRouteRedirect(Session s, Map<String, String>? settings, String loc) {
+  if (staffCanOpenRoute(s, settings, loc)) return null;
+  staffAccessDenied.value++;
+  return '/staff';
+}
+
+/// The most a page can be opened to (the database rules decide what each role can actually read).
+List<String> maxRolesOf(StaffItem m) => m.roles.isEmpty ? allStaffRoles : {...m.roles, ...[for (final e in staffLayouts.entries) if (e.value.any((g) => g.$2.contains(m.path))) e.key]}.toList();
+
+/// What IT has chosen in School settings → "Who can use what" (missing = the normal roles of each menu).
 List<String> chosenRolesOf(StaffItem m, Map<String, List<String>> access) =>
-    m.locked || !access.containsKey(m.path) ? maxRolesOf(m) : access[m.path]!.where(maxRolesOf(m).contains).toList();
+    m.locked ? maxRolesOf(m) : !access.containsKey(m.path) ? defaultRolesOf(m) : access[m.path]!.where(maxRolesOf(m).contains).toList();
+
+/// This person's highest role (decides the order of the menu groups and the bottom bar).
+String staffTopRole(Session s) => staffRoleOrder.firstWhere(s.hasRole, orElse: () => 'teacher');
 
 List<StaffItem> visibleMenu(Session s, [Map<String, String>? settings]) {
   final access = staffAccessOf(settings);
-  return staffMenu.where((m) => chosenRolesOf(m, access).any(s.hasRole)).toList();
+  final allowed = {for (final m in staffMenu) if (chosenRolesOf(m, access).any(s.hasRole)) m.path: m};
+  // groups and order: the highest role's menu first, then pages from the person's other roles, then pages IT has opened to them
+  final groups = <String, List<StaffItem>>{};
+  final placed = <String>{};
+  void put(String g, String p) { final m = allowed[p]; if (m == null || placed.contains(p)) return; placed.add(p); (groups[g] ??= []).add(m); }
+  for (final r in staffRoleOrder.where(s.hasRole)) {
+    for (final (g, paths) in staffLayouts[r]!) { if (g != 'ME') for (final p in paths) { put(g, p); } }
+  }
+  for (final m in staffMenu) { if (m.group != 'ME') put(m.group, m.path); }
+  for (final p in _me.$2) { put('ME', p); }
+  // a person who is both class teacher and coordinator: Students once
+  return [for (final e in groups.entries) ...e.value];
+}
+
+/// The phone's bottom bar: the 4 daily jobs of the highest role (only pages this person may open).
+List<StaffItem> staffQuickBar(Session s, Map<String, String>? settings, List<StaffItem> menu) {
+  final all = [...staffMenu, ...staffSubPages];
+  final out = <StaffItem>[];
+  for (final (p, label) in staffBottomBar[staffTopRole(s)]!) {
+    final m = all.where((x) => x.path == p).firstOrNull;
+    if (m != null && staffCanOpen(s, settings, p)) out.add(StaffItem(p, label, m.icon, m.group));
+  }
+  for (final m in menu) {
+    if (out.length >= 4) break;
+    if (m.group != 'ME' && !out.any((x) => x.path == m.path)) out.add(m);
+  }
+  return out.take(4).toList();
 }
 
 /// Inside the staff panel, buttons size to their text (the app-wide theme makes them full width for phone forms).
@@ -112,7 +208,8 @@ class StaffShell extends ConsumerWidget {
     if (s == null || !s.isStaff) return const SizedBox.shrink();
     ref.watch(tourRequestProvider);   // "Take the tour again" from Help
     WidgetsBinding.instance.addPostFrameCallback((_) { if (context.mounted) maybeShowTour(context, tourRoleFor(s)); });
-    final menu = visibleMenu(s, ref.watch(appSettingsProvider).value);
+    final settings = ref.watch(appSettingsProvider).value;
+    final menu = visibleMenu(s, settings);
     final loc0 = GoRouterState.of(context).matchedLocation;
     final loc = staffHubOf.entries.where((e) => loc0 == e.key || loc0.startsWith('${e.key}/')).firstOrNull?.value ?? loc0;
     final ov = ref.watch(staffOverviewProvider).value ?? const {};
@@ -125,7 +222,7 @@ class StaffShell extends ConsumerWidget {
 
     // Help: bottom right of the Overview page
     final help = loc0 == '/staff' ? HelpFab(onTap: () => context.go('/staff/help')) : null;
-    return StaffSearchShortcuts(child: DeskGate(child: StaffBirthdayGate(child: LayoutBuilder(builder: (_, c) {
+    return _AccessDeniedToast(child: StaffSearchShortcuts(child: DeskGate(child: StaffBirthdayGate(child: LayoutBuilder(builder: (_, c) {
       final wide = c.maxWidth >= 960;
       if (wide) {
         return Scaffold(body: Row(children: [
@@ -140,7 +237,7 @@ class StaffShell extends ConsumerWidget {
             Expanded(child: ListView(padding: const EdgeInsets.symmetric(horizontal: 10), children: [
               for (final (i, m) in menu.indexed) ...[
                 if (i == 0 || menu[i - 1].group != m.group) Padding(padding: const EdgeInsets.fromLTRB(12, 14, 12, 4), child: Text(m.group, style: TextStyle(color: Colors.white.withValues(alpha: .6), fontSize: 10.5, letterSpacing: 1.6, fontWeight: FontWeight.w800))),
-                TourTarget('nav:${m.path}', child: _NavTile(m, selected: loc == m.path || (m.path != '/staff' && loc.startsWith(m.path)), badge: badge(m.path), glow: m.path == '/staff/id-cards' && idReady, onTap: () => m.path == '/staff/me' ? context.push(m.path) : context.go(m.path))),
+                TourTarget('nav:${m.path}', child: _NavTile(m, selected: loc == m.path || (m.path != '/staff' && loc.startsWith('${m.path}/')), badge: badge(m.path), glow: m.path == '/staff/id-cards' && idReady, onTap: () => m.path == '/staff/me' ? context.push(m.path) : context.go(m.path))),
               ],
             ])),
             _MeTile(s, onSignOut: () async { await ref.read(sessionProvider.notifier).signOut(); if (context.mounted) context.go('/login'); }),
@@ -149,20 +246,21 @@ class StaffShell extends ConsumerWidget {
         ]), floatingActionButton: help);
       }
       // phone / tablet
-      final quick = menu.take(4).toList();
+      final quick = staffQuickBar(s, settings, menu);
+      bool on(StaffItem m) => loc0 == m.path || loc == m.path || (m.path != '/staff' && (loc.startsWith('${m.path}/') || loc0.startsWith('${m.path}/')));
       return Scaffold(
         appBar: AppBar(backgroundColor: Brand.crimsonDeep, foregroundColor: Colors.white, elevation: 0,
-          title: Text(menu.firstWhere((m) => loc == m.path || (m.path != '/staff' && loc.startsWith(m.path)), orElse: () => menu.first).label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+          title: Text(menu.firstWhere((m) => loc == m.path || (m.path != '/staff' && loc.startsWith('${m.path}/')), orElse: () => menu.first).label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
           actions: [TourTarget('staff-search', child: IconButton(onPressed: () => showStaffSearch(context), icon: const Icon(Icons.search_rounded), tooltip: 'Search a student')), TourTarget('staff-menu', child: IconButton(onPressed: () => _more(context, ref, s, menu, loc, badge), icon: const Icon(Icons.menu_rounded), tooltip: 'Menu'))]),
         body: content,
         floatingActionButton: help,
         bottomNavigationBar: NavigationBar(
-          selectedIndex: quick.indexWhere((m) => loc == m.path || (m.path != '/staff' && loc.startsWith(m.path))).clamp(0, quick.length - 1),
+          selectedIndex: quick.indexWhere(on).clamp(0, quick.length - 1),
           onDestinationSelected: (i) => context.go(quick[i].path),
-          destinations: [for (final m in quick) TourTarget('nav:${m.path}', child: NavigationDestination(icon: badge(m.path) > 0 ? Badge(label: Text('${badge(m.path)}'), child: Icon(m.icon)) : Icon(m.icon), label: const {'Parent feedback': 'Feedback', 'School calendar': 'Calendar', 'Class diary': 'Diary', 'Leave requests': 'Leave', 'Exams & portions': 'Exams', 'Marks entry': 'Marks'}[m.label] ?? m.label.split(' ').first))],
+          destinations: [for (final m in quick) TourTarget('nav:${m.path}', child: NavigationDestination(icon: badge(m.path) > 0 ? Badge(label: Text('${badge(m.path)}'), child: Icon(m.icon)) : Icon(m.icon), label: const {'Parent feedback': 'Feedback', 'School calendar': 'Calendar', 'Leave requests': 'Leave', 'Exams & marks': 'Exams', 'Fees & receipts': 'Fees'}[m.label] ?? m.label))],
         ),
       );
-    }))));
+    })))));
   }
 
   void _more(BuildContext context, WidgetRef ref, Session s, List<StaffItem> menu, String loc, int Function(String) badge) => showModalBottomSheet(context: context, showDragHandle: true, isScrollControlled: true, builder: (sheet) => ConstrainedBox(
@@ -181,6 +279,24 @@ class StaffShell extends ConsumerWidget {
       ListTile(leading: const Icon(Icons.logout_rounded, color: Brand.crimson), title: const Text('Sign out', style: TextStyle(fontWeight: FontWeight.w800, color: Brand.crimson)),
         onTap: () async { Navigator.pop(sheet); await ref.read(sessionProvider.notifier).signOut(); if (context.mounted) context.go('/login'); }),
     ])));
+}
+
+/// Shows "You don't have access to that page" when the router sends someone back to Today.
+class _AccessDeniedToast extends StatefulWidget {
+  final Widget child;
+  const _AccessDeniedToast({required this.child});
+  @override
+  State<_AccessDeniedToast> createState() => _AccessDeniedToastState();
+}
+
+class _AccessDeniedToastState extends State<_AccessDeniedToast> {
+  void _show() => WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) toast(context, 'You don’t have access to that page'); });
+  @override
+  void initState() { super.initState(); staffAccessDenied.addListener(_show); }
+  @override
+  void dispose() { staffAccessDenied.removeListener(_show); super.dispose(); }
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class _NavTile extends StatelessWidget {
