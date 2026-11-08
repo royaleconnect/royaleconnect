@@ -1,6 +1,9 @@
 // Woken every minute by the database (job rc-push, only when something is waiting). Sends queued notifications
 // through Firebase Cloud Messaging (HTTP v1).
 // Rules: during quiet hours (school_setting, now 00:00–05:00 IST) everything except urgent waits until they end.
+//        Teachers: a parent's chat message that arrives between 10 pm and 6 am IST reaches the teacher's phone at 6 am
+//        (handled in claim_notifications2). Families have no such pause.
+//        A notification is marked sent only after it went out; if Firebase fails it is tried again later (5 tries in all).
 //        One phone gets one copy of a whole-school notice even with two children on it.
 //        With two or more children on a phone, the child's first name goes in front of personal notifications.
 // Push tokens come from device_session.push_token (the app registers them). Dead tokens are cleared.
@@ -54,8 +57,8 @@ Deno.serve(async (req) => {
   const quiet = qStart > qEnd ? (now >= qStart || now < qEnd) : (now >= qStart && now < qEnd);
   if (quiet) await db.from("notification").update({ send_after: quietEndISO(qeH, qeM) }).is("sent_at", null).eq("urgent", false).lte("send_after", new Date().toISOString());
 
-  // ---- take a batch (marked as sent in the same step, so an overlapping run can never double-send)
-  const { data: batch, error } = await db.rpc("claim_notifications", { lim: BATCH, urgent_only: quiet });
+  // ---- take a batch (claimed for 10 minutes, so an overlapping run never takes the same ones; marked sent after sending)
+  const { data: batch, error } = await db.rpc("claim_notifications2", { lim: BATCH, urgent_only: quiet });
   if (error) return json({ ok: false, error: error.message }, 500);
   if (!batch?.length) return json({ ok: true, sent: 0, quiet });
 
@@ -79,7 +82,7 @@ Deno.serve(async (req) => {
   // ---- build messages
   const shared = new Set(["announcement", "moment", "worksheet"]);   // same text for every child → one copy per phone
   const seen = new Set<string>();
-  const out: { token: string; deviceId: string; body: any }[] = [];
+  const out: { token: string; deviceId: string; nid: number; body: any }[] = [];
   for (const n of batch) {
     const list = n.student_id ? byStudent.get(n.student_id) ?? [] : byStaff.get(n.staff_id) ?? [];
     for (const d of list) {
@@ -87,7 +90,7 @@ Deno.serve(async (req) => {
       if (seen.has(dedupe)) continue; seen.add(dedupe);
       const prefix = n.student_id && !shared.has(n.kind) && (kidsOnToken.get(d.push_token) ?? 0) > 1 && firstName.get(n.student_id) ? `${firstName.get(n.student_id)} · ` : "";
       out.push({
-        token: d.push_token, deviceId: d.id,
+        token: d.push_token, deviceId: d.id, nid: n.id,
         body: {
           message: {
             token: d.push_token,
@@ -106,17 +109,24 @@ Deno.serve(async (req) => {
   const token = await fcmAccessToken();
   const url = `https://fcm.googleapis.com/v1/projects/${sa.project_id}/messages:send`;
   let sent = 0, failed = 0; const dead: string[] = [];
+  const okIds = new Set<number>(), badIds = new Set<number>();
   for (const group of chunks(out, PARALLEL)) {
     await Promise.all(group.map(async (m) => {
       try {
         const r = await fetch(url, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(m.body) });
-        if (r.ok) { sent++; await r.body?.cancel(); return; }
+        if (r.ok) { sent++; okIds.add(m.nid); await r.body?.cancel(); return; }
         const t = await r.text();
         if (r.status === 404 || (r.status === 400 && /UNREGISTERED|registration-token-not-registered|INVALID_ARGUMENT.*token/i.test(t))) dead.push(m.token);
-        else { failed++; console.error("FCM", r.status, t.slice(0, 300)); }
-      } catch (e) { failed++; console.error("FCM fetch", String(e)); }
+        else { failed++; badIds.add(m.nid); console.error("FCM", r.status, t.slice(0, 300)); }
+      } catch (e) { failed++; badIds.add(m.nid); console.error("FCM fetch", String(e)); }
     }));
   }
   for (const c of chunks([...new Set(dead)], 100)) await db.from("device_session").update({ push_token: null }).in("push_token", c);
-  return json({ ok: true, notifications: batch.length, pushes: out.length, sent, failed, dead_tokens_cleared: dead.length, quiet });
+  // done: everything that reached at least one phone (or had no phone to reach); tried again later: those where every push failed
+  const retry = batch.map((n: any) => n.id).filter((id: number) => badIds.has(id) && !okIds.has(id));
+  const retrySet = new Set(retry);
+  const done = batch.map((n: any) => n.id).filter((id: number) => !retrySet.has(id));
+  for (const c of chunks(done, 500)) { const { error: e } = await db.rpc("notifications_done", { p_sent: c, p_failed: [] }); if (e) console.error("notifications_done", e.message); }
+  for (const c of chunks(retry, 500)) { const { error: e } = await db.rpc("notifications_done", { p_sent: [], p_failed: c }); if (e) console.error("notifications_done", e.message); }
+  return json({ ok: true, notifications: batch.length, pushes: out.length, sent, failed, retry_later: retry.length, dead_tokens_cleared: dead.length, quiet });
 });
