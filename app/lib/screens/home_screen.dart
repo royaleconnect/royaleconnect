@@ -9,27 +9,27 @@ import '../core/data3.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
 import '../widgets/royal_motion.dart';
-import 'desk_screen.dart' show DeskHomeCard;
+import 'desk_screen.dart' show DeskHomeCard, deskMessagesProvider;
 import '../widgets/royal_extras.dart';
 import '../widgets/hub_tabs.dart';
 import 'attendance_screen.dart' show StreakCard, attendanceSummaryProvider;
 import 'family_today.dart';
-import 'my_list.dart' show MyListHomeSummary, myListProvider, diaryTabProvider;
+import 'my_list.dart' show myListProvider, diaryTabProvider;
 import 'notice_extras.dart' show noticeExtrasProvider;
 import 'thanks_screen.dart' show ThanksHomeBanner;
 import 'year_review_screen.dart' show YearReviewHomeCard;
 import '../widgets/r_refresh.dart';
 import '../widgets/guided_tour.dart' show TourTarget;
-import 'now_next.dart';
 
-/// The family Home. One "Today · needs you" card holds everything that needs the family (fee to pay, homework for the
-/// next school day, new notices); the rest is calm: festival banner, Principal's Desk, My list, the bus line, the tiles.
-/// Phones: one column · tablets (600–959 px): two columns · laptops (960 px+): the side menu does the navigating.
+/// The family Home (approved mock, Nov 2026), the same on every screen size:
+///   festival wish → one "Your day" card (school day / holiday, Needs you, My list) → two equal cards side by side:
+///   Latest notices (with the Principal's Desk strip at the bottom) and Latest diary.
+/// Phones and tablets also get the tiles (Calendar, Attendance… are not in the bottom tabs). Laptops (960 px+) use the side menu.
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   Future<void> _refresh(WidgetRef ref) async {
-    for (final p in <ProviderOrFamily>[calendarProvider, feesProvider, noticesProvider, noticeExtrasProvider, unreadMessagesProvider, myListProvider, latestDiaryProvider, homeworkForProvider, transportProvider, enrolmentProvider]) {
+    for (final p in <ProviderOrFamily>[calendarProvider, feesProvider, noticesProvider, noticeExtrasProvider, unreadMessagesProvider, myListProvider, latestDiaryProvider, homeworkForProvider, transportProvider, enrolmentProvider, deskMessagesProvider]) {
       ref.invalidate(p);
     }
   }
@@ -45,14 +45,21 @@ class HomeScreen extends ConsumerWidget {
     final greet = now.hour < 12 ? 'Good morning' : now.hour < 17 ? 'Good afternoon' : 'Good evening';
     final t = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
+    final laptop = width >= 960;
+
+    final body = <Widget>[
+      const BirthdayHomeCard(),
+      const FestiveBanner(),
+      const FadeRise(delayMs: 120, child: TourTarget('f-needs', child: YourDayCard())),
+      const FadeRise(delayMs: 200, child: _NoticesAndDiary()),
+      if (!laptop) FadeRise(delayMs: 260, child: Padding(padding: const EdgeInsets.only(bottom: 14), child: _Tiles(settings: settings))),
+      const TourTarget('f-streak', child: HomeStreak()),
+      const ThanksHomeBanner(),
+      const YearReviewHomeCard(),
+    ];
 
     // ---------------------------------------------------------------- laptop / large tablet
-    if (width >= 960) {
-      final notices = familyVisibleNotices(ref);
-      final diary = ref.watch(latestDiaryProvider);
-      Widget card(String title, String link, VoidCallback go, Widget child) => _CardShell(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))), TextButton(onPressed: go, child: Text(link))]),
-        const SizedBox(height: 4), child]));
+    if (laptop) {
       return Scaffold(body: FestiveSky(child: RRefresh(
         onRefresh: () => _refresh(ref),
         child: ListView(padding: const EdgeInsets.fromLTRB(34, 28, 34, 40), children: [
@@ -64,44 +71,7 @@ class HomeScreen extends ConsumerWidget {
             Flexible(child: Text('${st.fullName} · $cls', textAlign: TextAlign.right, style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w700))),
           ]),
           const SizedBox(height: 18),
-          const BirthdayHomeCard(),
-          const FestiveBanner(),
-          FadeRise(delayMs: 120, child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Expanded(flex: 5, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              TourTarget('f-needs', child: TodayNeedsCard()),
-              NowNextLine(), ExamCountdownChip(),
-              MyListHomeSummary(),
-            ])),
-            const SizedBox(width: 18),
-            const Expanded(flex: 4, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              HomeBusLine(),
-              TourTarget('f-streak', child: HomeStreak()),
-              DeskHomeCard(),
-            ])),
-          ])),
-          const ThanksHomeBanner(),
-          const YearReviewHomeCard(),
-          const SizedBox(height: 4),
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: card('Latest notices', 'See all', () => context.go('/announcements'), Column(children: [
-              for (final n in notices.take(4)) Padding(padding: const EdgeInsets.only(bottom: 8), child: _NoticeRow(n, () => context.push('/notice/${n.id}'))),
-              if (ref.watch(noticesProvider).value != null && notices.isEmpty) Text('No notices yet.', style: TextStyle(color: cs.onSurfaceVariant)),
-            ]))),
-            const SizedBox(width: 18),
-            Expanded(child: diary.when(loading: () => const _CardShell(child: SizedBox(height: 120, child: GoldLoading())), error: (e, _) => const SizedBox.shrink(), data: (d) => card(
-              d.$1 == null ? 'Class diary' : 'Class diary · ${d.$1 == DateFormat('yyyy-MM-dd').format(now) ? 'today' : DateFormat('EEE d MMM').format(DateTime.parse(d.$1!))}', 'Open diary',
-              () { ref.read(diaryTabProvider.notifier).state = 0; context.go('/diary'); },
-              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                if (d.$2.isEmpty) Text('Nothing posted recently.', style: TextStyle(color: cs.onSurfaceVariant)),
-                for (final e in d.$2) Padding(padding: const EdgeInsets.only(bottom: 10), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Pill(e.kind.replaceAll('_', ' '), fg: Brand.blue, bg: Brand.blueTint), const SizedBox(width: 10),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(e.title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    Text([if (e.subject != null) e.subject!, if (e.dueOn != null) 'by ${DateFormat('EEE d MMM').format(DateTime.parse(e.dueOn!))}'].join(' · '), style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-                  ])),
-                ])),
-              ])))),
-          ]),
+          ...body,
         ]))));
     }
 
@@ -113,48 +83,6 @@ class HomeScreen extends ConsumerWidget {
       Text(DateFormat('EEEE, d MMMM').format(now), style: TextStyle(color: Colors.white.withValues(alpha: .85), fontSize: 13)),
       Row(children: [Flexible(child: Text(greet, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.headlineMedium?.copyWith(color: Colors.white))), const SizedBox(width: 10), const TimeOfDayIcon(size: 30)]),
     ])));
-
-    const top = [BirthdayHomeCard(), FestiveBanner()];
-    final today = [
-      const FadeRise(delayMs: 120, child: TourTarget('f-needs', child: TodayNeedsCard())),
-      const NowNextLine(), const ExamCountdownChip(),
-    ];
-    const calm = [
-      FadeRise(delayMs: 200, child: DeskHomeCard()),
-      ThanksHomeBanner(),
-      YearReviewHomeCard(),
-    ];
-    final tiles = FadeRise(delayMs: 260, child: _Tiles(settings: settings));
-    final List<Widget> body;
-    if (tablet) {
-      body = [
-        ...top,
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            ...today,
-            const FadeRise(delayMs: 200, child: MyListHomeSummary()),
-            const TourTarget('f-streak', child: HomeStreak()),
-          ])),
-          const SizedBox(width: 18),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            const HomeBusLine(),
-            tiles,
-            const SizedBox(height: 14),
-            ...calm,
-          ])),
-        ]),
-      ];
-    } else {
-      body = [
-        ...top,
-        ...today,
-        ...calm,
-        const FadeRise(delayMs: 230, child: MyListHomeSummary()),
-        const HomeBusLine(),
-        const FadeRise(delayMs: 240, child: TourTarget('f-streak', child: HomeStreak())),
-        tiles,
-      ];
-    }
     return Scaffold(
       body: FestiveSky(child: RRefresh(
         onRefresh: () => _refresh(ref),
@@ -165,6 +93,89 @@ class HomeScreen extends ConsumerWidget {
         ]),
       )),
     );
+  }
+}
+
+/// Two equal cards under "Your day": Latest notices (the Principal's Desk strip at the bottom) and Latest diary.
+/// Side by side when there is room (together the width of the festival wish), one under the other on phones.
+class _NoticesAndDiary extends ConsumerWidget {
+  const _NoticesAndDiary();
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    final notices = familyVisibleNotices(ref);
+    final loaded = ref.watch(noticesProvider).value != null;
+    final noticesCard = _Panel(title: 'Latest notices', onSeeAll: () => context.go('/announcements'), children: [
+      for (final n in notices.take(3)) Padding(padding: const EdgeInsets.only(bottom: 8), child: _NoticeRow(n, () => context.push('/notice/${n.id}'))),
+      if (loaded && notices.isEmpty) Padding(padding: const EdgeInsets.only(bottom: 10), child: Text('No notices yet.', style: TextStyle(color: cs.onSurfaceVariant))),
+      const DeskHomeCard(compact: true),
+    ]);
+    final diaryCard = _Panel(title: 'Latest diary', onSeeAll: () { ref.read(diaryTabProvider.notifier).state = 0; context.go('/diary'); }, children: const [_DiaryList()]);
+    return LayoutBuilder(builder: (_, c) => c.maxWidth >= 700
+        ? IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [Expanded(child: noticesCard), const SizedBox(width: 16), Expanded(child: diaryCard)]))
+        : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [noticesCard, diaryCard]));
+  }
+}
+
+class _Panel extends StatelessWidget {
+  final String title; final VoidCallback onSeeAll; final List<Widget> children;
+  const _Panel({required this.title, required this.onSeeAll, required this.children});
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Container(padding: const EdgeInsets.fromLTRB(16, 8, 12, 14), margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: dark ? const Color(0xFF3A3028) : const Color(0xFFEEE6D8))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+        Row(children: [
+          Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))),
+          TextButton(onPressed: onSeeAll, child: const Text('See all')),
+        ]),
+        const SizedBox(height: 2),
+        ...children,
+      ]));
+  }
+}
+
+/// Today's diary for the class. Nothing today: "Nothing in the diary today." and, below it, the last day that had entries.
+class _DiaryList extends ConsumerWidget {
+  const _DiaryList();
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    final d = ref.watch(latestDiaryProvider).value;
+    final todayIso = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    final isToday = d?.$1 == todayIso;
+    final list = d?.$2 ?? const <DiaryEntry>[];
+    Widget entry(DiaryEntry e) {
+      final note = e.kind != 'homework' && e.kind != 'project';
+      final chip = e.subject ?? (note ? 'Note' : e.kind.replaceAll('_', ' '));
+      final when = e.dueOn == null ? null : 'for ${dayWord(DateTime.parse(e.dueOn!))}';
+      return Padding(padding: const EdgeInsets.only(bottom: 8), child: Material(color: cs.surfaceContainerHighest.withValues(alpha: .35), borderRadius: BorderRadius.circular(14),
+        child: InkWell(borderRadius: BorderRadius.circular(14), onTap: () { ref.read(diaryTabProvider.notifier).state = 0; context.go('/diary'); },
+          child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Pill(chip, fg: note ? Brand.green : Brand.blue, bg: note ? Brand.greenTint : Brand.blueTint), const SizedBox(width: 8),
+              Expanded(child: Text(e.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14))),
+            ]),
+            const SizedBox(height: 3),
+            Text([if (e.by.isNotEmpty) e.by, if (when != null) when].join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+          ])))));
+    }
+    if (isToday) return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [for (final e in list.take(3)) entry(e)]);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Padding(padding: const EdgeInsets.symmetric(vertical: 14), child: Column(children: [
+        Icon(Icons.menu_book_outlined, size: 30, color: Brand.gold.withValues(alpha: .9)),
+        const SizedBox(height: 6),
+        const Text('Nothing in the diary today.', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w700)),
+        Text('New homework and notes from teachers will show here.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+      ])),
+      if (d?.$1 != null && list.isNotEmpty) ...[
+        Padding(padding: const EdgeInsets.only(bottom: 6), child: Text('LAST DIARY · ${DateFormat('EEE d MMM').format(DateTime.parse(d!.$1!)).toUpperCase()}',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.1, color: cs.onSurfaceVariant))),
+        for (final e in list.take(2)) entry(e),
+      ],
+    ]);
   }
 }
 
@@ -240,15 +251,6 @@ class _Tiles extends ConsumerWidget {
       children: list,
     );
   }
-}
-
-class _CardShell extends StatelessWidget {
-  final Widget child;
-  const _CardShell({required this.child});
-  @override
-  Widget build(BuildContext context) => Container(padding: const EdgeInsets.all(18), margin: const EdgeInsets.only(bottom: 14),
-      decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, borderRadius: BorderRadius.circular(22)),
-      child: child);
 }
 
 class _Tile extends StatelessWidget {
