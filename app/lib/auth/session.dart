@@ -95,7 +95,7 @@ class SessionController extends AsyncNotifier<Session?> {
   /// Admission number + password. `linkToExisting` keeps siblings already on this phone.
   Future<void> loginWithPassword(String admissionNo, String password, {bool linkToExisting = false}) async {
     final existing = linkToExisting ? (state.value?.students.map((s) => s.id).toList() ?? []) : <String>[];
-    final j = await _call('login-student', {'admission_no': admissionNo, 'password': password, 'link_to': existing, 'device_label': 'app'});
+    final j = await _call('login-student', {'admission_no': admissionNo, 'password': password, 'link_to': existing, 'device_label': 'app'}, bearer: linkToExisting ? state.value?.token : null);
     final students = (j['students'] as List).map((e) => StudentRef.fromJson(Map<String, dynamic>.from(e))).toList();
     final newId = students.firstWhere((s) => s.admissionNo == admissionNo.trim().toUpperCase(), orElse: () => students.first).id;
     await _save(Session(token: j['token'], kind: 'student', students: students, activeStudentId: linkToExisting ? state.value?.activeStudentId ?? newId : newId, mustChangePassword: j['must_change_password'] == true));
@@ -105,7 +105,7 @@ class SessionController extends AsyncNotifier<Session?> {
   Future<void> loginStaff(String email, String password) async {
     final j = await _call('login-staff', {'email': email, 'password': password, 'device_label': 'app'});
     if (j['kind'] == 'crew') {
-      await _save(Session(token: j['token'], kind: 'crew', crew: Map<String, dynamic>.from(j['crew'])));
+      await _save(Session(token: j['token'], kind: 'crew', crew: Map<String, dynamic>.from(j['crew']), mustChangePassword: j['must_change_password'] == true));
       return;
     }
     await _save(Session(token: j['token'], kind: 'staff', staff: Map<String, dynamic>.from(j['staff']), mustChangePassword: j['must_change_password'] == true));
@@ -159,11 +159,16 @@ class SessionController extends AsyncNotifier<Session?> {
 final sessionProvider = AsyncNotifierProvider<SessionController, Session?>(SessionController.new);
 
 
-/// The opening splash stays for 4 seconds every time the app starts.
+/// The opening splash plays for about 2 seconds every time the app starts; a tap on it skips the rest.
 class SplashDone extends Notifier<bool> {
   @override
-  bool build() { Timer(const Duration(seconds: 4), () => state = true); return false; }
+  bool build() { Timer(const Duration(milliseconds: 2000), () => state = true); return false; }
+  void skip() => state = true;
 }
+
+/// A link the app was opened with that must wait until a child is chosen (e.g. the web payment return page when
+/// the family has two or more children). The child picker opens it after the choice.
+String? linkAfterChildPicked;
 final splashDoneProvider = NotifierProvider<SplashDone, bool>(SplashDone.new);
 
 /// With two or more children on the phone, the family picks one each time the app opens.
