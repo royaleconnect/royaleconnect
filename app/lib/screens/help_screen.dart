@@ -8,7 +8,8 @@ import '../core/help_content.dart';
 import '../core/help_it.dart';
 import '../widgets/guided_tour.dart' show TakeTourAgainButton;
 import '../core/theme.dart';
-import '../staff/staff_shell.dart' show StaffPage, Panel;
+import '../staff/staff_shell.dart' show StaffPage, Panel, staffCanOpenRoute;
+import '../core/data3.dart' show appSettingsProvider;
 import '../widgets/common.dart';
 import 'family_screens.dart' show callNumber;
 
@@ -42,8 +43,19 @@ class _HelpScreenState extends ConsumerState<HelpScreen> {
   final voted = <String>{};
 
   bool get _itBook { final s = ref.read(sessionProvider).value; return widget.staff && s != null && (s.hasRole('it_admin') || s.hasRole('principal')); }
-  List<HelpItem> get all => widget.staff ? [...staffHelp, if (_itBook) ...itHandbookHelp] : familyHelp;
-  List<HelpTopic> get topics => widget.staff ? [...staffTopics, if (_itBook) itHandbookTopic] : familyTopics;
+  /// Staff see only answers for pages they can open (the same rule as the menu and "Who can use what").
+  List<HelpItem> get all {
+    if (!widget.staff) return familyHelp;
+    final s = ref.read(sessionProvider).value;
+    final settings = ref.read(appSettingsProvider).value;
+    bool ok(HelpItem h) { final p = h.needs ?? h.route; return p == null || (s != null && staffCanOpenRoute(s, settings, p)); }
+    return [...staffHelp, if (_itBook) ...itHandbookHelp].where(ok).toList();
+  }
+  List<HelpTopic> get topics {
+    if (!widget.staff) return familyTopics;
+    final mine = {for (final h in all) h.topic};   // a topic with no answers for this person is not shown
+    return [...staffTopics, if (_itBook) itHandbookTopic].where((t) => mine.contains(t.name)).toList();
+  }
 
   void _vote(HelpItem h, bool yes) {
     setState(() => voted.add(h.id));
@@ -60,6 +72,7 @@ class _HelpScreenState extends ConsumerState<HelpScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.staff) ref.watch(appSettingsProvider);
     final cs = Theme.of(context).colorScheme;
     final query = q.trim();
     final List<HelpItem> shown;
