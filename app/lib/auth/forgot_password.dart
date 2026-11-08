@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/data.dart';
 import '../core/theme.dart';
+import '../core/config.dart';
 
 /// "Forgot password?" for families: admission number + the phone number registered with the school.
 /// The class teacher gets the request and gives a new password slip. Nothing else to choose.
@@ -30,7 +31,7 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
       final r = Map<String, dynamic>.from(await db.rpc('password_help_request', params: {'p_admission': adm.text.trim(), 'p_phone': phone.text.trim()}) as Map);
       setState(() { if (r['ok'] == true) { done = r['message']; } else { error = r['message']; } });
     } catch (e) {
-      setState(() => error = 'Could not send just now. Please check the internet and try again, or call the school office: 080-25435454.');
+      setState(() => error = 'Could not send just now. Please check the internet and try again, or call the school office: ${AppConfig.officePhonesShort}.');
     }
     if (mounted) setState(() => busy = false);
   }
