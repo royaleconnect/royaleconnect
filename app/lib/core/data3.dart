@@ -67,6 +67,22 @@ final homeworkDueProvider = FutureProvider.autoDispose.family<int, String>((ref,
   return rows.length;
 });
 
+/// The subjects of the homework / project entries due on [isoDate] (one per entry) — the Today card on Home.
+final homeworkForProvider = FutureProvider.autoDispose.family<List<String>, String>((ref, isoDate) async {
+  ref.cacheFor();
+  final e = await ref.watch(enrolmentProvider.future);
+  final sec = e?['section'];
+  if (sec == null || shownSection(sec) == null) return const [];
+  final rows = await db.from('diary_entry').select('id,subject:subject_id(name)').eq('section_id', sec['id']).eq('due_on', isoDate)
+      .inFilter('kind', ['homework', 'project']).not('posted_at', 'is', null);
+  return [for (final r in rows) (r['subject']?['name'] ?? 'Class').toString()];
+});
+
+/// The family asks the school to delete their account (Settings). The office sees the request and calls back.
+Future<void> requestAccountDeletion(String studentId, String? note) async {
+  await db.rpc('request_account_deletion', params: {'p_student': studentId, 'p_note': note});
+}
+
 // ---------------------------------------------------------------- Board Toppers & Hall of Fame
 /// All toppers of a board class ('X' or 'XII'), newest year first.
 final toppersProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, cls) async {
