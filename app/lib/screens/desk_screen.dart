@@ -329,9 +329,9 @@ class _EventArt extends StatefulWidget {
 
 class _EventArtState extends State<_EventArt> with TickerProviderStateMixin {
   late final AnimationController intro = AnimationController(vsync: this, duration: const Duration(milliseconds: 2600));
-  late final AnimationController loop = AnimationController(vsync: this, duration: const Duration(seconds: 6))..repeat();
+  late final AnimationController loop = AnimationController(vsync: this, duration: const Duration(seconds: 6));
   @override
-  void didChangeDependencies() { super.didChangeDependencies(); if (intro.value == 0) { reduceMotion(context) ? intro.value = 1 : intro.forward(); } }
+  void didChangeDependencies() { super.didChangeDependencies(); loopWhileVisible(context, loop); if (intro.value == 0) { reduceMotion(context) ? intro.value = 1 : intro.forward(); } }
   @override
   void dispose() { intro.dispose(); loop.dispose(); super.dispose(); }
   @override
