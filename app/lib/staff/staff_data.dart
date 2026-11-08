@@ -223,24 +223,6 @@ Future<void> publishExam(String id, bool publish) => db.from('exam').update({'pu
 Future<void> savePortions(WidgetRef ref, String paperId, {DateTime? onDate, String? portions}) =>
     db.from('exam_paper').update({'on_date': onDate == null ? null : _d(onDate), 'portions': portions, 'confirmed_by': myId(ref), 'confirmed_at': nowIso()}).eq('id', paperId);
 
-final staffPlanProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, (String, String)>((ref, key) async {
-  ref.cacheFor();
-  final (gradeId, monthIso) = key;
-  final data = await db.from('monthly_plan').select('id,topics,assessment,published_at,subject:subject_id(id,name)').eq('grade_id', gradeId).eq('month', monthIso);
-  return List<Map<String, dynamic>>.from(data);
-});
-Future<void> savePlan(WidgetRef ref, {required String gradeId, required String monthIso, required String subjectId, required String topics, String? assessment, bool publish = true}) async {
-  final yearId = await gradeYearId(gradeId);
-  await db.from('monthly_plan').upsert({'academic_year_id': yearId, 'grade_id': gradeId, 'month': monthIso, 'subject_id': subjectId, 'topics': topics, 'assessment': assessment, 'published_at': publish ? nowIso() : null}, onConflict: 'academic_year_id,grade_id,month,subject_id');
-}
-
-final staffWorksheetsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  ref.cacheFor();
-  final data = await db.from('worksheet').select('id,kind,title,file_path,answer_key_path,answer_key_release_on,created_at,subject:subject_id(name),section:section_id(name,grade:grade_id(code)),grade:grade_id(code),author:author_id(display_name)').order('created_at', ascending: false).limit(100);
-  return List<Map<String, dynamic>>.from(data);
-});
-Future<void> addWorksheet(WidgetRef ref, {String? sectionId, String? gradeId, required String subjectId, required String kind, required String title, required String filePath, String? keyPath, DateTime? keyRelease}) =>
-    db.from('worksheet').insert({'section_id': sectionId, 'grade_id': gradeId, 'subject_id': subjectId, 'kind': kind, 'title': title, 'file_path': filePath, 'answer_key_path': keyPath, 'answer_key_release_on': keyRelease == null ? null : _d(keyRelease), 'author_id': myId(ref)});
 
 // ---------------------------------------------------------------- marks
 final marksProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, (String, String, String)>((ref, key) async {
@@ -296,7 +278,8 @@ final runningTripsProvider = StreamProvider.autoDispose<List<Map<String, dynamic
 
 // ---------------------------------------------------------------- staff directory (IT)
 final staffListProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async =>
-    List<Map<String, dynamic>>.from(await db.from('staff').select('id,email,full_name,display_name,roles,division,phone,active').order('full_name', ascending: true)));
+    // staff_directory(): staff-only list with the private phone and sign-in email (families can no longer read these)
+    List<Map<String, dynamic>>.from(await db.rpc('staff_directory') as List)..sort((a, b) => '${a['full_name']}'.compareTo('${b['full_name']}')));
 
 /// Call a server function with the staff token (password resets etc.). Throws with the server's message on failure.
 Future<Map<String, dynamic>> callFunction(WidgetRef ref, String fn, Map<String, dynamic> body) async {
