@@ -5,9 +5,9 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart' show PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 import '../auth/session.dart';
 import '../core/data.dart';
+import '../core/errors.dart';
 import '../core/school_docs.dart' show openReceiptPdf, openReportCardPdf;
 import '../core/theme.dart';
 import '../widgets/common.dart';
@@ -17,14 +17,18 @@ import 'staff_screens_2.dart' show StaffStudentsScreen, pickAndUpload;
 import 'staff_shell.dart';
 import '../core/cache.dart';
 import 'certificates_page.dart' show pickCertificate, openCertificate, certificateIssuedTick;
+import 'class_logins.dart' show resetFirstPassword, printClassSlips;
 
 /// Students — one page for the office: current and past students, one search box
 /// (name, admission number — old or new — or a parent's phone), and each student's full record:
 /// Details · Fees · Marks · Attendance · Documents · Bus.
 /// Teachers keep the simple class list (their own sections).
-String _msg(Object e) => e is PostgrestException ? e.message : e.toString().replaceFirst('Exception: ', '');
+String _msg(Object e) => friendlyError(e);
 String _dmy(String? iso) => iso == null ? '' : DateFormat('d MMM yyyy').format(DateTime.parse(iso).toLocal());
 const _recordRoles = ['office', 'it_admin', 'principal', 'vice_principal', 'accounts'];
+/// Who may admit and change students (the database refuses everyone else — Accounts only look).
+const _editRoles = ['office', 'it_admin', 'principal', 'vice_principal'];
+bool _canEdit(WidgetRef ref) => _editRoles.any(ref.watch(sessionProvider).value?.hasRole ?? (_) => false);
 
 final _findProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, (String, bool)>((ref, k) async {
   ref.cacheFor();
@@ -101,7 +105,7 @@ class _StudentsPageState extends ConsumerState<StudentsPage> {
     return StaffPage(
       title: 'Students',
       subtitle: 'Current and past students in one place. Open a student for their details, fees, marks, attendance, documents and bus.',
-      actions: [FilledButton.icon(onPressed: _admit, icon: const Icon(Icons.person_add_alt_1_rounded, size: 18), label: const Text('New admission'))],
+      actions: [if (_editRoles.any(s.hasRole)) FilledButton.icon(onPressed: _admit, icon: const Icon(Icons.person_add_alt_1_rounded, size: 18), label: const Text('New admission'))],
       body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (past) Builder(builder: (_) {
           final c = ref.watch(_certsProvider).value;
@@ -132,10 +136,14 @@ class _StudentsPageState extends ConsumerState<StudentsPage> {
           ]),
           const SizedBox(height: 8),
           list,
+          if (!past && sectionId != null && sections.any((x) => x['id'] == sectionId)) Align(alignment: Alignment.centerRight, child: OutlinedButton.icon(
+            onPressed: () => printClassSlips(context, ref, sectionId!, sectionLabel(sections.firstWhere((x) => x['id'] == sectionId))),
+            icon: const Icon(Icons.print_rounded, size: 18), label: const Text('Print slips for this class'))),
         ])),
         NoteBox(past
             ? 'Past students: those who finished Grade X or XII, or left with a TC. Their records stay here for ever — open one to upload or print a TC, marksheet or certificate.'
-            : 'A student who leaves: open them → Edit details → switch off “Studying here”. Grade X and XII move to Past students by themselves on the second move-up day.'),
+            : _editRoles.any(s.hasRole) ? 'A student who leaves: open them → Student is leaving. Grade X and XII move to Past students by themselves on the second move-up day.'
+            : 'Open a student to see their details, fees and receipts.'),
       ]),
     );
   }
@@ -257,6 +265,7 @@ class _DetailsTab extends ConsumerWidget {
     final cls = r['class'] as Map<String, dynamic>?;
     final phones = List<Map<String, dynamic>>.from(r['family_phone'] ?? const []);
     final active = r['active'] == true;
+    final canEdit = _canEdit(ref);
     Widget kv(String k, String? v) => v == null || v.isEmpty ? const SizedBox.shrink() : Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       SizedBox(width: 140, child: Text(k, style: TextStyle(color: cs.onSurfaceVariant))), Expanded(child: Text(v, style: const TextStyle(fontWeight: FontWeight.w700)))]));
     final classText = cls == null ? null : '${cls['grade_name']} ${cls['section_tba'] == true ? '· section to be announced' : '– ${cls['section_name'] ?? ''}'} (${cls['year_label']})';
@@ -280,7 +289,7 @@ class _DetailsTab extends ConsumerWidget {
             title: Text('Re-admitted as ${r['later']['admission_no']}', style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: const Text('The family now signs in with the new admission number.'),
             trailing: const Icon(Icons.open_in_new_rounded), onTap: () => openStudentRecord(context, r['later']['id'])),
       ])),
-      Panel(title: 'Details', trailing: OutlinedButton.icon(onPressed: () async {
+      Panel(title: 'Details', trailing: !canEdit ? null : OutlinedButton.icon(onPressed: () async {
         final saved = await showDialog<bool>(context: context, barrierDismissible: false, builder: (_) => StudentEditor(studentId: r['id']));
         if (saved == true) ref.invalidate(_recordProvider(r['id']));
       }, icon: const Icon(Icons.edit_rounded, size: 18), label: const Text('Edit details')), child: Column(children: [
@@ -293,7 +302,7 @@ class _DetailsTab extends ConsumerWidget {
         kv('Address', r['address']), kv('Blood group', r['blood_group']), kv('House', r['house']), kv('Admission type', r['admission_type']),
         kv('Left on', r['left_on'] == null ? null : _dmy(r['left_on'])), kv('Reason', r['leaving_reason']), kv('TC issued', r['tc_issued_on'] == null ? null : _dmy(r['tc_issued_on'])),
       ])),
-      if (active) Panel(title: 'Leaving the school', child: CardRow(children: [
+      if (active && canEdit) Panel(title: 'Leaving the school', child: CardRow(children: [
         Expanded(child: Text('For a student leaving during the year: upload the signed TC and conduct certificate, and the student moves to Past students. Nothing is deleted.', style: TextStyle(color: cs.onSurfaceVariant))),
         const SizedBox(width: 10),
         FilledButton.icon(onPressed: () async {
@@ -301,7 +310,7 @@ class _DetailsTab extends ConsumerWidget {
           if (done == true) { ref.invalidate(_recordProvider(r['id'])); ref.invalidate(_docsProvider); ref.invalidate(_findProvider); ref.invalidate(_certsProvider); }
         }, icon: const Icon(Icons.logout_rounded, size: 18), label: const Text('Student is leaving')),
       ])),
-      if (!active && r['left_on'] != null && DateTime.now().difference(DateTime.parse(r['left_on'])).inDays <= 30) Panel(title: 'Left by mistake?', child: CardRow(children: [
+      if (canEdit && !active && r['left_on'] != null && DateTime.now().difference(DateTime.parse(r['left_on'])).inDays <= 30) Panel(title: 'Left by mistake?', child: CardRow(children: [
         Expanded(child: Text('Within 30 days of leaving, the student can be brought back: they become active again in the same class, with their bus seat.', style: TextStyle(color: cs.onSurfaceVariant))),
         const SizedBox(width: 10),
         OutlinedButton.icon(onPressed: () async {
@@ -319,19 +328,13 @@ class _DetailsTab extends ConsumerWidget {
         OutlinedButton.icon(onPressed: () async {
           try { await callFunction(ref, 'password', {'action': 'signout_all', 'student_id': r['id']}); if (context.mounted) toast(context, 'Signed out of every phone.'); } catch (e) { if (context.mounted) toast(context, _msg(e)); }
         }, icon: const Icon(Icons.phonelink_erase_rounded, size: 18), label: const Text('Sign out all phones')),
-        if (r['previous'] == null) OutlinedButton.icon(onPressed: () => _linkByHand(context, ref), icon: const Icon(Icons.link_rounded, size: 18), label: const Text('Link an earlier admission')),
+        if (r['previous'] == null && canEdit) OutlinedButton.icon(onPressed: () => _linkByHand(context, ref), icon: const Icon(Icons.link_rounded, size: 18), label: const Text('Link an earlier admission')),
       ])),
     ]);
   }
 
   Future<void> _reset(BuildContext context, WidgetRef ref) async {
-    try {
-      final x = await callFunction(ref, 'password', {'action': 'reset', 'student_id': r['id'], 'via': 'print'});
-      if (!context.mounted) return;
-      showDialog(context: context, builder: (ctx) => AlertDialog(title: const Text('Password slip'),
-          content: SelectableText('Royale Connect — first-use password\n\nStudent: ${r['full_name']}\nAdmission no: ${r['admission_no']}\nPassword: ${x['first_use_password']}\n\nSign in at the app, then set your own password. This slip is the only copy.', style: const TextStyle(fontFamily: 'monospace', height: 1.6)),
-          actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done'))]));
-    } catch (e) { if (context.mounted) toast(context, _msg(e)); }
+    await resetFirstPassword(context, ref, '${r['id']}', '${r['full_name'] ?? ''}');
   }
 
   Future<void> _linkByHand(BuildContext context, WidgetRef ref) async {
