@@ -16,6 +16,7 @@ import '../widgets/empty_state.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/royal_extras.dart' show GoldLoading;
 import '../widgets/r_refresh.dart';
+import '../core/errors.dart';
 
 /// Private 1:1 messages with the teachers who teach this student (+ coordinator / VP). Student side can only start
 /// a chat with those contacts; nothing can be deleted; files are PDF or images.
@@ -28,7 +29,7 @@ class MessagesScreen extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(body: Column(children: [
       BrandHeader(padding: const EdgeInsets.fromLTRB(8, 4, 20, 16), child: Row(children: [
-        IconButton(onPressed: () => context.pop(), icon: const Icon(Icons.arrow_back_rounded, color: Colors.white)),
+        IconButton(onPressed: () => context.canPop() ? context.pop() : context.go('/'), tooltip: 'Back', icon: const Icon(Icons.arrow_back_rounded, color: Colors.white)),
         const Text('Messages', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
       ])),
       Expanded(child: RRefresh(onRefresh: () async { ref.invalidate(conversationsProvider); ref.invalidate(contactsProvider); }, child: ListView(padding: const EdgeInsets.all(20), children: [
@@ -41,7 +42,7 @@ class MessagesScreen extends ConsumerWidget {
         Eyebrow('Your teachers', color: cs.onSurfaceVariant), const SizedBox(height: 8),
         contacts.when(
           loading: () => const Padding(padding: EdgeInsets.all(24), child: const GoldLoading()),
-          error: (e, _) => Text('$e'),
+          error: (e, _) => Text(friendlyError(e)),
           data: (list) => list.isEmpty ? const EmptyState(kind: EmptyKind.messages, title: 'No messages yet', line: 'Your teachers appear here once the class is set up.', compact: true) : Column(children: [for (final k in list) _tile(context, cs, name: k.name, sub: k.subject ?? '', onTap: () async {
             final s = ref.read(sessionProvider).value!.active!;
             final id = await openConversation(s.id, k.staffId);
@@ -100,7 +101,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (path == null && body.isNotEmpty && isNetworkError(e)) {
         await queueMessage(widget.conversationId, body);   // no internet: keep it and send it later by itself
         text.clear(); await _loadWaiting();
-      } else if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not send: $e'))); }
+      } else if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e)))); }
     }
     if (mounted) setState(() => sending = false);
   }
@@ -121,7 +122,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       await db.storage.from('files').uploadBinary(path, Uint8List.fromList(bytes), fileOptions: FileOptions(contentType: mime));
       await _send(path: path, name: name, mime: mime);
-    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e'))); setState(() => sending = false); }
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e)))); setState(() => sending = false); }
   }
 
   @override
@@ -130,12 +131,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(body: Column(children: [
       BrandHeader(padding: const EdgeInsets.fromLTRB(8, 4, 20, 14), hairline: false, child: Row(children: [
-        IconButton(onPressed: () => context.pop(), icon: const Icon(Icons.arrow_back_rounded, color: Colors.white)),
+        IconButton(onPressed: () => context.canPop() ? context.pop() : context.go('/messages'), tooltip: 'Back', icon: const Icon(Icons.arrow_back_rounded, color: Colors.white)),
         Expanded(child: Text(widget.title ?? 'Chat', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800))),
       ])),
       Expanded(child: msgs.when(
         loading: () => const GoldLoading(),
-        error: (e, _) => Center(child: Text('$e')),
+        error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(32), child: Text(friendlyError(e), textAlign: TextAlign.center))),
         data: (list) {
           WidgetsBinding.instance.addPostFrameCallback((_) { if (scroll.hasClients) scroll.jumpTo(scroll.position.maxScrollExtent); });
           return ListView.builder(controller: scroll, padding: const EdgeInsets.all(16), itemCount: list.length, itemBuilder: (_, i) {
