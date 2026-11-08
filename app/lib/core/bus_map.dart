@@ -74,7 +74,7 @@ class _BusMapState extends State<BusMap> with SingleTickerProviderStateMixin {
     if (pts.isEmpty || !_ready) return;
     try {
       if (pts.length == 1) { _mc.move(pts.first, 15); return; }
-      _mc.fitCamera(CameraFit.bounds(bounds: LatLngBounds.fromPoints(pts), padding: EdgeInsets.fromLTRB(40, 60, 40, 40 + widget.padding.bottom)));
+      _mc.fitCamera(CameraFit.bounds(bounds: LatLngBounds.fromPoints(pts), padding: EdgeInsets.fromLTRB(40 + widget.padding.left, 60, 40, 40 + widget.padding.bottom)));
     } catch (_) {}
   }
 
