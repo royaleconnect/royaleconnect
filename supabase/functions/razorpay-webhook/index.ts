@@ -1,29 +1,15 @@
 // POST /functions/v1/razorpay-webhook   — called by Razorpay (payment.captured / payment.failed) AND by the app after Checkout
-// Either way the signature is checked, then the payment is marked success, the ledger rows paid, a receipt number issued.
+// Either way the signature is checked, then the payment is marked success, the ledger rows paid, a receipt number issued
+// (all in one database step: settle_payment).
 // Idempotent: a payment already marked success is left alone.
-import { admin, json, preflight, hmacHex, env, verifyToken, audit } from "../_shared/lib.ts";
+import { admin, json, preflight, hmacHex, env, liveClaims } from "../_shared/lib.ts";
 
+// One database step (public.settle_payment) gives the receipt number, marks the payment and the fee rows paid, and tells the
+// family — so two calls at the same moment (Razorpay + the app) can never take two numbers or half-finish.
 async function settle(db: any, paymentId: string, gatewayPaymentId: string, method: string | undefined, payload: unknown) {
-  const { data: pay } = await db.from("payment").select("id,status,student_id,amount").eq("id", paymentId).single();
-  if (!pay) return { error: "Unknown payment." };
-  if (pay.status === "success") return { ok: true, receipt_no: (await db.from("payment").select("receipt_no").eq("id", paymentId).single()).data?.receipt_no };
-
-  // receipt number from the per-year sequence
-  const { data: year } = await db.from("academic_year").select("id,label").eq("is_current", true).single();
-  const { data: seq } = await db.from("receipt_sequence").select("*").eq("academic_year_id", year.id).maybeSingle();
-  const prefix = seq?.prefix ?? `RCIS/${year.label.replace("20", "").replace("-20", "-")}/`;
-  const n = seq?.next_no ?? 1;
-  const receipt_no = `${prefix}${String(n).padStart(5, "0")}`;
-  await db.from("receipt_sequence").upsert({ academic_year_id: year.id, prefix, next_no: n + 1 });
-
-  const mode = ({ upi: "upi", card: "card", netbanking: "netbanking", wallet: "wallet" } as Record<string, string>)[method ?? ""] ?? "other";
-  const now = new Date().toISOString();
-  await db.from("payment").update({ status: "success", mode, gateway_payment_id: gatewayPaymentId, receipt_no, paid_at: now, raw_payload: payload }).eq("id", paymentId);
-  const { data: lines } = await db.from("payment_line").select("fee_ledger_id").eq("payment_id", paymentId);
-  await db.from("fee_ledger").update({ status: "paid", paid_on: now.slice(0, 10), payment_id: paymentId }).in("id", lines.map((l: any) => l.fee_ledger_id));
-  await db.from("notification").insert({ student_id: pay.student_id, title: "Payment received", body: `₹${Number(pay.amount).toLocaleString("en-IN")} received. Receipt ${receipt_no}.`, kind: "system", deep_link: `receipt/${paymentId}` });
-  await audit(db, { actor_student_id: pay.student_id, action: "payment.success", entity: "payment", entity_id: paymentId, detail: { receipt_no, amount: pay.amount } });
-  return { ok: true, receipt_no };
+  const { data, error } = await db.rpc("settle_payment", { p_payment: paymentId, p_gateway_payment_id: gatewayPaymentId, p_method: method ?? null, p_payload: payload ?? null });
+  if (error) { console.error("settle_payment", error.message); throw new Error(error.message); }
+  return data;
 }
 
 Deno.serve(async (req) => {
@@ -49,7 +35,7 @@ Deno.serve(async (req) => {
     }
 
     // --- app confirmation right after Checkout closes (bearer: student token) ---
-    const c = await verifyToken(req);
+    const c = await liveClaims(req);
     if (!c) return json({ error: "Please sign in again." }, 401);
     const { payment_id, razorpay_order_id, razorpay_payment_id, razorpay_signature } = JSON.parse(raw);
     const { data: pay } = await db.from("payment").select("id,student_id,gateway_order_id").eq("id", payment_id).single();
