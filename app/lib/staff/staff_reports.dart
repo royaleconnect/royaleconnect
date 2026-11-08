@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/session.dart';
 import '../core/data.dart';
+import '../core/errors.dart';
+import 'package:intl/intl.dart' show DateFormat;
 import '../core/school_docs.dart' show openReportCardPdf;
 import '../core/theme.dart';
 import '../widgets/common.dart';
@@ -49,6 +51,14 @@ final _cardsProvider = FutureProvider.autoDispose.family<Map<String, Map<String,
   return {for (final r in rows) r['student_id'] as String: Map<String, dynamic>.from(r)};
 });
 
+/// Days present from daily attendance for this report card's period (null when there is nothing to go on).
+final _reportAttendanceProvider = FutureProvider.autoDispose.family<Map<String, dynamic>?, (String, String)>((ref, key) async {
+  ref.cacheFor();
+  final (sectionId, term) = key;
+  final r = await db.rpc('attendance_for_report', params: {'p_section': sectionId, 'p_term': term});
+  return r == null ? null : Map<String, dynamic>.from(r as Map);
+});
+
 const _remarkIdeas = [
   'A sincere and hardworking student. Keep it up!',
   'Participates actively in class and is helpful to classmates.',
@@ -57,6 +67,8 @@ const _remarkIdeas = [
   'Creative and confident. Needs to focus on completing work on time.',
   'Well-behaved and attentive. Aim higher in Mathematics next term.',
 ];
+
+String _dm(Object? iso) => iso == null ? '' : DateFormat('d MMM').format(DateTime.parse('$iso'));
 
 class StaffReportsScreen extends ConsumerStatefulWidget {
   const StaffReportsScreen({super.key});
@@ -82,8 +94,9 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
 
   String _n(num? v) => v == null ? '' : (v == v.roundToDouble() ? v.toInt().toString() : v.toString());
 
-  /// Fill the boxes from what is saved (once per section + term).
-  void _load(List<Map<String, dynamic>> studs, Map<String, Map<String, dynamic>> cards, List<String> areas) {
+  /// Fill the boxes from what is saved (once per section + term). Empty "days present" / "working days" boxes are filled
+  /// from daily attendance (the teacher can still change them).
+  void _load(List<Map<String, dynamic>> studs, Map<String, Map<String, dynamic>> cards, List<String> areas, Map<String, dynamic>? att) {
     final key = '$sectionId|$term';
     if (loadedFor == key) return;
     loadedFor = key;
@@ -103,8 +116,12 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
         if (c['co_scholastic'] is Map) { (c['co_scholastic'] as Map).forEach((k, v) => r.co['$k'] = '$v'); }
         if (workingDays.text.isEmpty && c['working_days'] != null) workingDays.text = _n(c['working_days'] as num?);
       }
+      final fromAtt = att?['present']?[id];
+      if (r.present.text.isEmpty && fromAtt != null && (r.status == 'new' || r.status == 'draft')) r.present.text = '$fromAtt';
       rows[id] = r;
     }
+    final wd = att?['working_days'];
+    if (workingDays.text.isEmpty && wd is num && wd > 0) workingDays.text = '$wd';
   }
 
   num? _num(String t) => t.trim().isEmpty ? null : num.tryParse(t.trim());
@@ -134,7 +151,7 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
       if (mounted && !quiet) toast(context, 'Saved. Families cannot see it until you publish.');
       return true;
     } catch (e) {
-      if (mounted) toast(context, 'Could not save: $e');
+      if (mounted) toast(context, friendlyError(e));
       return false;
     } finally {
       if (mounted) setState(() => busy = false);
@@ -159,7 +176,7 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
       ref.invalidate(_cardsProvider((sectionId!, term)));
       if (mounted) toast(context, 'Published. Families are being notified.');
     } catch (e) {
-      if (mounted) toast(context, 'Could not publish: $e');
+      if (mounted) toast(context, friendlyError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -181,7 +198,10 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
     }
     final studs = sectionId == null ? null : ref.watch(sectionStudentsProvider(sectionId!));
     final cards = sectionId == null ? null : ref.watch(_cardsProvider((sectionId!, term)));
-    if (studs?.value != null && cards?.value != null) _load(studs!.value!, cards!.value!, areas);
+    final att = sectionId == null ? null : ref.watch(_reportAttendanceProvider((sectionId!, term)));
+    final attReady = att != null && !att.isLoading;
+    if (studs?.value != null && cards?.value != null && attReady) _load(studs!.value!, cards!.value!, areas, att.value);
+    final attInfo = att?.value;
     final published = rows.values.where((r) => r.status == 'published' || r.status == 'locked').length;
 
     return StaffPage(
@@ -195,8 +215,11 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
           const SizedBox(width: 12),
           Expanded(child: TextField(controller: workingDays, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Working days this term'))),
         ])),
-        if (studs == null || cards == null || studs.isLoading || cards.isLoading) const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()))
-        else if (studs.hasError || cards.hasError) Text('${studs.error ?? cards.error}', style: const TextStyle(color: Brand.crimsonDeep))
+        if (attInfo != null && (attInfo['working_days'] ?? 0) > 0) Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(
+            'Days present are filled in from daily attendance (${_dm(attInfo['from'])} – ${_dm(attInfo['to'])} · ${attInfo['working_days']} days taken). You can change any number.',
+            style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant))),
+        if (studs == null || cards == null || !attReady || studs.isLoading || cards.isLoading) const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()))
+        else if (studs.hasError || cards.hasError) Text(friendlyError(studs.error ?? cards.error), style: const TextStyle(color: Brand.crimsonDeep))
         else ...[
           Panel(padding: const EdgeInsets.all(12), child: Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
             Text('${rows.length} students · $published published', style: const TextStyle(fontWeight: FontWeight.w800)),
