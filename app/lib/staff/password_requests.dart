@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 import '../core/cache.dart';
 import '../core/data.dart';
 import '../core/theme.dart';
-import 'staff_data.dart';
 import 'staff_shell.dart';
+import 'class_logins.dart' show resetFirstPassword;
 
 /// Everything waiting for this staff member, in one call (password help, receipts to cancel, leave, certificates).
 /// The database decides what each person sees: class teachers their own class, the office everything,
@@ -20,25 +19,15 @@ final approvalsInboxProvider = FutureProvider.autoDispose<Map<String, dynamic>>(
 List<Map<String, dynamic>> inboxList(Map<String, dynamic>? m, String key) =>
     [for (final x in (m?[key] as List?) ?? const []) Map<String, dynamic>.from(x as Map)];
 
-String _errText(Object e) => e is PostgrestException ? e.message : e.toString().replaceFirst('Exception: ', '');
 
 /// "Give new password": a new one-time password (same as Students → Reset password), the slip, and every
 /// open request of this student is marked done (so the card clears for the teacher and the office).
 Future<void> givePasswordSlip(BuildContext context, WidgetRef ref, Map<String, dynamic> st) async {
-  try {
-    final r = await callFunction(ref, 'password', {'action': 'reset', 'student_id': st['student_id'], 'via': 'print'});
-    try { await db.rpc('password_request_done', params: {'p_student': st['student_id']}); } catch (_) {}
-    ref.invalidate(approvalsInboxProvider);
-    if (!context.mounted) return;
-    await showDialog(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Password slip'),
-      content: SelectableText('Royale Connect — first-use password\n\nStudent: ${st['full_name']}\nAdmission no: ${st['admission_no']}\nPassword: ${r['first_use_password']}\n\nSign in at the app, then set your own password. This slip is the only copy.',
-          style: const TextStyle(fontFamily: 'monospace', height: 1.6)),
-      actions: [FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done'))],
-    ));
-  } catch (e) {
-    if (context.mounted) toast(context, 'Could not make a new password: ${_errText(e)}');
-  }
+  // the same easy first password (e.g. ana@8919) and big read-out screen as Class logins
+  final ok = await resetFirstPassword(context, ref, '${st['student_id']}', '${st['full_name'] ?? ''}');
+  if (!ok) return;
+  try { await db.rpc('password_request_done', params: {'p_student': st['student_id']}); } catch (_) {}
+  ref.invalidate(approvalsInboxProvider);
 }
 
 /// One row of a password request (used on Today and in Approvals).
