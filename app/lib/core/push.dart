@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/session.dart';
 import '../router.dart';
-import 'data.dart' show db;
+import 'data.dart' show db; import 'freshness.dart';
 
 /// Phone notifications (Firebase Cloud Messaging) and crash reports (Crashlytics).
 /// Everything here is best-effort: if Firebase is unavailable the app simply runs without it.
@@ -129,6 +129,7 @@ class Push {
   }
 
   static void _showInApp(WidgetRef ref, RemoteMessage msg) {
+    refreshFamilyData(ref, force: true);   // something new arrived: Home, Notices, Fees… fetch again quietly
     final n = msg.notification;
     if (n == null) return;
     final messenger = appMessengerKey.currentState;
@@ -159,6 +160,7 @@ class Push {
         if (s.activeStudentId != sid) await ref.read(sessionProvider.notifier).selectStudent(sid);
         ref.read(childPickedProvider.notifier).done();
       }
+      refreshFamilyData(ref, force: true);   // the page it opens must already know about the new notice / fee / message
       final route = routeFor(data['deep_link']?.toString(), staff: s.isStaff);
       final router = ref.read(routerProvider);
       if (s.kind == 'crew') { router.go('/driver'); return; }
