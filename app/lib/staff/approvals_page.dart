@@ -1,102 +1,146 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 import '../auth/session.dart';
 import '../core/data.dart';
+import '../core/errors.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
 import 'password_requests.dart';
-import 'staff_data.dart';
 import 'staff_shell.dart';
 import 'students_page.dart' show openStudentRecord;
+import 'deletion_requests.dart';
+import '../auth/staff_first_passwords.dart';
 
-/// Approvals — one list of everything waiting for me, one badge number in the menu.
-///   • Password help (class teacher: own class; office: all)
-///   • Receipts to cancel (only the Principal / IT decide)
-///   • Leave requests (class teacher: own class; office: all)
-///   • Certificates still to give (office)
+/// Approvals — only what needs a decision, one badge number in the menu.
+///   Principal (VP sees them too): receipt cancellations · TC requests · data corrections (name, date of birth, parents' names)
+///   Office / IT: password help for every class · certificates still to give
+///   Leave requests are NOT here: they have their own page (class teacher).
+///   Anyone who asked for a receipt cancellation sees what happened to it.
 
-/// The number on the menu badge.
+/// The number on the menu badge (only things this person can act on).
 final approvalsCountProvider = Provider.autoDispose<int>((ref) {
   final m = ref.watch(approvalsInboxProvider).value;
   if (m == null) return 0;
-  return ['passwords', 'cancels', 'leaves', 'certificates'].fold<int>(0, (a, k) => a + ((m[k] as List?)?.length ?? 0));
+  final decide = m['can_decide'] == true;
+  return [...['passwords', 'certificates'], if (decide) ...['cancels', 'tcs', 'corrections']]
+      .fold<int>(0, (a, k) => a + ((m[k] as List?)?.length ?? 0));
 });
 
-String _msg(Object e) => e is PostgrestException ? e.message : e.toString().replaceFirst('Exception: ', '');
 String _dmy(String? iso) => iso == null ? '' : DateFormat('d MMM yyyy').format(DateTime.parse(iso).toLocal());
 String _dm(String? iso) => iso == null ? '' : DateFormat('d MMM').format(DateTime.parse(iso).toLocal());
 
 class StaffApprovalsScreen extends ConsumerWidget {
   const StaffApprovalsScreen({super.key});
 
-  void _refresh(WidgetRef ref) { ref.invalidate(approvalsInboxProvider); ref.invalidate(staffLeavesProvider); ref.invalidate(staffOverviewProvider); }
+  void _refresh(WidgetRef ref) => ref.invalidate(approvalsInboxProvider);
 
-  Future<void> _leave(BuildContext context, WidgetRef ref, String id, bool ok) async {
-    try { await decideLeave(ref, id, ok); _refresh(ref); if (context.mounted) toast(context, ok ? 'Leave approved ✓' : 'Leave declined.'); }
-    catch (e) { if (context.mounted) toast(context, _msg(e)); }
-  }
+  /// Approve / Decline with a short check first. [note] = a line for the person who asked (decline only).
+  Future<bool?> _confirm(BuildContext context, {required String title, required String body, required bool approve, TextEditingController? note}) => showDialog<bool>(context: context, builder: (c) => AlertDialog(
+    title: Text(title),
+    content: SizedBox(width: 460, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text(body),
+      if (!approve && note != null) Padding(padding: const EdgeInsets.only(top: 12), child: TextField(controller: note, textCapitalization: TextCapitalization.sentences, decoration: const InputDecoration(labelText: 'A line for the office (optional)'))),
+    ])),
+    actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Back')),
+      FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(approve ? 'Approve' : 'Decline'))],
+  ));
 
   Future<void> _receipt(BuildContext context, WidgetRef ref, Map<String, dynamic> k, bool cancel) async {
-    final sure = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
-      title: Text(cancel ? 'Cancel receipt ${k['receipt_no']}?' : 'Keep receipt ${k['receipt_no']}?'),
-      content: Text(cancel
+    final note = TextEditingController();
+    final sure = await _confirm(context, approve: cancel, note: note,
+      title: cancel ? 'Cancel receipt ${k['receipt_no']}?' : 'Keep receipt ${k['receipt_no']}?',
+      body: cancel
           ? '${k['student']} · ${inr(k['amount'] as num)}\nReason: ${k['reason']}\n\nThe receipt becomes cancelled and the fees it paid are open again. This is written in the activity log.'
-          : 'The receipt stays as it is. ${k['asked_by'] ?? 'Accounts'} will be told.'),
-      actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Back')),
-        FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(cancel ? 'Yes, cancel it' : 'Keep it'))],
-    ));
+          : 'The receipt stays as it is. ${k['asked_by'] ?? 'Accounts'} will be told.');
     if (sure != true) return;
     try {
-      await db.rpc('receipt_cancel_decide', params: {'p_request': k['id'], 'p_approve': cancel});
+      await db.rpc('receipt_cancel_decide', params: {'p_request': k['id'], 'p_approve': cancel, 'p_note': note.text.trim().isEmpty ? null : note.text.trim()});
       _refresh(ref);
-      if (context.mounted) toast(context, cancel ? 'Receipt ${k['receipt_no']} cancelled.' : 'Receipt kept.');
-    } catch (e) { if (context.mounted) toast(context, _msg(e)); }
+      if (context.mounted) toast(context, '${cancel ? 'Approved' : 'Declined'} ✓ · ${k['receipt_no']} — ${k['asked_by'] ?? 'Accounts'} told');
+    } catch (e) { if (context.mounted) toast(context, friendlyError(e)); }
+  }
+
+  Future<void> _decide(BuildContext context, WidgetRef ref, Map<String, dynamic> r, bool approve, {required String what, required String body}) async {
+    final note = TextEditingController();
+    final sure = await _confirm(context, approve: approve, note: note, title: '${approve ? 'Approve' : 'Decline'} · $what', body: body);
+    if (sure != true) return;
+    try {
+      final res = await db.rpc('approval_decide', params: {'p_id': r['id'], 'p_approve': approve, 'p_note': note.text.trim().isEmpty ? null : note.text.trim()});
+      _refresh(ref);
+      final num = res is Map ? res['number'] : null;
+      if (context.mounted) toast(context, '${approve ? 'Approved' : 'Declined'} ✓ · ${r['student']}${num != null ? ' · $num' : ''} — office told');
+    } catch (e) { if (context.mounted) toast(context, friendlyError(e)); }
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final s = ref.watch(sessionProvider).value!;
+    ref.watch(sessionProvider);
     final cs = Theme.of(context).colorScheme;
     final inbox = ref.watch(approvalsInboxProvider);
-    return StaffPage(title: 'Approvals', subtitle: 'Everything waiting for you, in one place.', body: inbox.when(
+    return StaffPage(title: 'Approvals', subtitle: 'Only what needs your decision.', body: inbox.when(
       loading: () => const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator())),
-      error: (e, _) => Padding(padding: const EdgeInsets.all(24), child: Text(_msg(e), style: const TextStyle(color: Brand.crimsonDeep))),
+      error: (e, _) => Padding(padding: const EdgeInsets.all(24), child: Text(friendlyError(e), style: const TextStyle(color: Brand.crimsonDeep))),
       data: (m) {
-        final pw = inboxList(m, 'passwords'), rc = inboxList(m, 'cancels'), lv = inboxList(m, 'leaves'), ce = inboxList(m, 'certificates');
-        if (pw.isEmpty && rc.isEmpty && lv.isEmpty && ce.isEmpty) {
-          return Panel(child: Row(children: [
-            Icon(Icons.check_circle_rounded, color: context.tone(Brand.green)), const SizedBox(width: 10),
-            const Expanded(child: Text('Nothing waiting for you ✓', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
-          ]));
-        }
+        final decide = m['can_decide'] == true;
+        final rc = inboxList(m, 'cancels'), tc = inboxList(m, 'tcs'), dc = inboxList(m, 'corrections');
+        final pw = inboxList(m, 'passwords'), ce = inboxList(m, 'certificates'), mine = inboxList(m, 'my_cancels');
+        final waiting = rc.length + tc.length + dc.length + pw.length + ce.length;
         Widget sub(String t) => Text(t, style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant));
+        // one card per request: what it is (pill), the details, then Approve / Decline
+        Widget card({required String head, required String kind, required Color fg, required Color bg, required List<Widget> lines, VoidCallback? onApprove, VoidCallback? onDecline}) =>
+          Panel(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(child: Text(head, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
+              const SizedBox(width: 8), Pill(kind, fg: fg, bg: bg),
+            ]),
+            const SizedBox(height: 6), ...lines,
+            if (onApprove != null) Padding(padding: const EdgeInsets.only(top: 10), child: Wrap(alignment: WrapAlignment.end, spacing: 8, children: [
+              OutlinedButton(onPressed: onDecline, child: const Text('Decline')),
+              FilledButton(onPressed: onApprove, child: const Text('Approve')),
+            ]))
+            else if (!decide) Padding(padding: const EdgeInsets.only(top: 8), child: sub('Waiting for the Principal.')),
+          ]));
+
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (pw.isNotEmpty) Panel(title: 'Password help (${pw.length})', child: Column(children: [for (final st in pw) PasswordRequestRow(st)])),
-          if (rc.isNotEmpty) Panel(title: 'Receipts to cancel (${rc.length})', child: Column(children: [
-            for (final k in rc) Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: CardRow(children: [
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('${k['receipt_no']} · ${k['student']}${(k['class'] ?? '').toString().isNotEmpty ? ' · ${k['class']}' : ''} · ${inr(k['amount'] as num)}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                sub('Paid ${_dmy(k['paid_at'])} (${k['mode']}) · asked by ${k['asked_by'] ?? '—'} on ${_dm(k['asked_at'])}'),
-                Text('Reason: ${k['reason']}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-              ])),
-              if (s.hasRole('principal') || s.hasRole('it_admin')) ...[
-                TextButton(onPressed: () => _receipt(context, ref, k, false), child: const Text('Keep')),
-                FilledButton(onPressed: () => _receipt(context, ref, k, true), style: FilledButton.styleFrom(backgroundColor: Brand.crimson, foregroundColor: Colors.white), child: const Text('Cancel receipt')),
+          if (waiting == 0) Panel(child: Column(children: [
+            const Text('✨', style: TextStyle(fontSize: 34)),
+            const Text('All done', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+            const SizedBox(height: 4),
+            Text('Nothing needs your decision.', style: TextStyle(color: cs.onSurfaceVariant)),
+          ]))
+          else Padding(padding: const EdgeInsets.fromLTRB(2, 0, 2, 8), child: sub('$waiting waiting${decide || pw.isNotEmpty || ce.isNotEmpty ? ' for you' : ''}')),
+          for (final k in rc) card(
+            head: '${k['receipt_no']} · ${inr(k['amount'] as num)}', kind: 'Receipt cancellation', fg: Brand.crimsonDeep, bg: Brand.crimsonTint,
+            lines: [
+              sub('Asked by ${k['asked_by'] ?? 'Accounts'} on ${_dm(k['asked_at'])} · ${k['student']}${(k['class'] ?? '').toString().isNotEmpty ? ', ${k['class']}' : ''} · paid ${_dmy(k['paid_at'])} (${k['mode']})'),
+              Text('Reason: ${k['reason']}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            ],
+            onApprove: decide ? () => _receipt(context, ref, k, true) : null, onDecline: decide ? () => _receipt(context, ref, k, false) : null),
+          for (final r in tc) card(
+            head: '${r['student']}${(r['class'] ?? '').toString().isNotEmpty ? ' · ${r['class']}' : ''}', kind: 'TC request', fg: Brand.blue, bg: Brand.blueTint,
+            lines: [
+              sub([if ((r['reason'] ?? r['leaving_reason']) != null) '${r['reason'] ?? r['leaving_reason']}', ((r['dues'] ?? 0) as num) > 0 ? 'Fees due: ${inr(r['dues'] as num)}' : 'No dues ✓', 'Office has filled the TC'].join(' · ')),
+              sub('Asked by ${r['asked_by'] ?? 'the office'} on ${_dm(r['asked_at'])}'),
+            ],
+            onApprove: decide ? () => _decide(context, ref, r, true, what: 'TC · ${r['student']}', body: 'The TC gets its number now and is kept. The office prints it from Certificates.') : null,
+            onDecline: decide ? () => _decide(context, ref, r, false, what: 'TC · ${r['student']}', body: 'The TC is not issued. The office is told.') : null),
+          for (final r in dc) Builder(builder: (_) {
+            final ch = [for (final x in (r['changes'] as List?) ?? const []) Map<String, dynamic>.from(x as Map)];
+            String v(dynamic x) => x == null ? '—' : RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch('$x') ? DateFormat('dd-MM-yyyy').format(DateTime.parse('$x')) : '$x';
+            final what = ch.map((c) => c['field']).join(', ');
+            return card(
+              head: '$what · ${r['student']}', kind: 'Data correction', fg: Brand.amber, bg: Brand.amberTint,
+              lines: [
+                for (final c in ch) Text('${c['field']}: ${v(c['from'])} → ${v(c['to'])}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                sub('Asked by ${r['asked_by'] ?? 'the office'} on ${_dm(r['asked_at'])}${r['reason'] != null ? ' · ${r['reason']}' : ''}'),
               ],
-            ])),
-          ])),
-          if (lv.isNotEmpty) Panel(title: 'Leave requests (${lv.length})', child: Column(children: [
-            for (final l in lv) Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: CardRow(children: [
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('${l['student']}${(l['class'] ?? '').toString().isNotEmpty ? ' · ${l['class']}' : ''}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                sub('${l['from_date'] == l['to_date'] ? _dmy(l['from_date']) : '${_dm(l['from_date'])} – ${_dmy(l['to_date'])}'} · ${l['reason']}${l['note'] != null ? ' — ${l['note']}' : ''}'),
-              ])),
-              TextButton(onPressed: () => _leave(context, ref, l['id'], false), child: const Text('Decline', style: TextStyle(color: Brand.crimson, fontWeight: FontWeight.w800))),
-              FilledButton(onPressed: () => _leave(context, ref, l['id'], true), child: const Text('Approve')),
-            ])),
-          ])),
+              onApprove: decide ? () => _decide(context, ref, r, true, what: '$what · ${r['student']}', body: 'The record is changed now and the change is written in the activity log.') : null,
+              onDecline: decide ? () => _decide(context, ref, r, false, what: '$what · ${r['student']}', body: 'Nothing is changed. The office is told.') : null);
+          }),
+          const DeletionRequestsPanel(),
+          if (ref.watch(sessionProvider).value?.hasRole('it_admin') ?? false) const StaffFirstPasswordsPanel(),
+          if (pw.isNotEmpty) Panel(title: 'Password help (${pw.length})', child: Column(children: [for (final st in pw) PasswordRequestRow(st)])),
           if (ce.isNotEmpty) Panel(title: 'Certificates still to give (${ce.length})', child: Column(children: [
             for (final st in ce) Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: CardRow(children: [
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -107,8 +151,37 @@ class StaffApprovalsScreen extends ConsumerWidget {
               OutlinedButton(onPressed: () => openStudentRecord(context, st['id']).then((_) => ref.invalidate(approvalsInboxProvider)), child: const Text('Open')),
             ])),
           ])),
+          if (mine.isNotEmpty) MyReceiptCancels(rows: mine),
         ]);
       },
     ));
+  }
+}
+
+/// "Receipt cancellations you asked for" — waiting / approved / not approved (Accounts see it on Today too).
+class MyReceiptCancels extends StatelessWidget {
+  final List<Map<String, dynamic>> rows;
+  const MyReceiptCancels({super.key, required this.rows});
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Panel(title: 'Receipt cancellations you asked for', child: Column(children: [
+      for (final k in rows) Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: CardRow(children: [
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${k['receipt_no']} · ${k['student']} · ${inr(k['amount'] as num)}', style: const TextStyle(fontWeight: FontWeight.w800)),
+          Text([
+            'Asked ${_dm(k['asked_at'])}',
+            if (k['decided_at'] != null) 'decided ${_dm(k['decided_at'])}',
+            if (k['note'] != null) 'Note: ${k['note']}',
+          ].join(' · '), style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+        ])),
+        const SizedBox(width: 8),
+        switch (k['status']) {
+          'approved' => const Pill('Cancelled ✓', fg: Brand.green, bg: Brand.greenTint),
+          'rejected' => const Pill('Not approved', fg: Brand.crimsonDeep, bg: Brand.crimsonTint),
+          _ => const Pill('Waiting for the Principal', fg: Brand.amber, bg: Brand.amberTint),
+        },
+      ])),
+    ]));
   }
 }
