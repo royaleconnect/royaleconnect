@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../core/config.dart';
+import '../core/errors.dart';
 import '../core/theme.dart';
 import '../widgets/auth_layout.dart';
 import '../widgets/common.dart';
@@ -37,7 +38,8 @@ class SplashScreen extends ConsumerStatefulWidget {
 }
 
 class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerProviderStateMixin {
-  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(milliseconds: 3600));
+  // the sequence below is written in 3.6 s steps and played in 2 s
+  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(milliseconds: 2000));
   bool _started = false;
 
   @override
@@ -59,7 +61,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
 
   @override
   Widget build(BuildContext context) {
-    final checking = ref.watch(sessionProvider).isLoading || !ref.watch(splashDoneProvider);   // 4-second splash on every opening
+    final checking = ref.watch(sessionProvider).isLoading || !ref.watch(splashDoneProvider);   // 2-second splash on every opening
     final w = MediaQuery.sizeOf(context).width.clamp(280.0, 480.0);
     final small = GoogleFonts.manrope(fontSize: 11.5, fontWeight: FontWeight.w600);
     final logoW = w * .74;
@@ -110,7 +112,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
     final footer = '${AppConfig.schoolName} · Kalyan Nagar';
     return Scaffold(
       backgroundColor: SplashScreen.ivory,
-      body: Container(
+      // a tap anywhere skips the rest of the opening animation
+      body: GestureDetector(behavior: HitTestBehavior.translucent, onTap: () { if (c.isAnimating) c.value = 1; ref.read(splashDoneProvider.notifier).skip(); }, child: Container(
         decoration: const BoxDecoration(gradient: RadialGradient(center: Alignment(0, -.25), radius: 1.1, colors: [Color(0xFFFFFDF8), Color(0xFFF3ECE0)])),
         child: Stack(children: [
           const Positioned.fill(child: GoldParticles(count: 46, color: Color(0xFFC9A24A), maxRadius: 1.8, speed: .8)),
@@ -149,7 +152,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
             ))),
           ]),
         ]),
-      ),
+      )),
     );
   }
 
@@ -209,7 +212,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _run(Future<void> Function() f) async {
     setState(() { busy = true; error = null; });
-    try { await f(); } on AuthError catch (e) { setState(() => error = e.message); } catch (e) { setState(() => error = 'Could not complete sign-in: $e'); }
+    try { await f(); } on AuthError catch (e) { setState(() => error = e.message); } catch (e) { setState(() => error = friendlyError(e)); }
     if (mounted) setState(() => busy = false);
   }
 
@@ -245,6 +248,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ))),
         ],
         const SizedBox(height: 16),
+        Center(child: TextButton(onPressed: () => context.push('/privacy'), child: const Text('Privacy policy'))),
+        const SizedBox(height: 4),
         const NoteBox('Same login for the student and the parents — the same admission number and password work on every phone in the family. Brothers and sisters each have their own; add them once and switch between them from Home.'),
       ],
     );
@@ -290,7 +295,7 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
           if (a.text != b.text) { setState(() => error = "The two passwords don't match."); return; }
           setState(() { busy = true; error = null; });
           try { await ref.read(sessionProvider.notifier).changePassword(a.text); if (mounted) context.go('/'); }
-          on AuthError catch (e) { setState(() => error = e.message); } catch (e) { setState(() => error = 'Could not complete: $e'); }
+          on AuthError catch (e) { setState(() => error = e.message); } catch (e) { setState(() => error = friendlyError(e)); }
           if (mounted) setState(() => busy = false);
         }),
       ],
