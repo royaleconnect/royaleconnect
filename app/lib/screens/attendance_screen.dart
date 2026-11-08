@@ -5,6 +5,7 @@ import 'package:intl/intl.dart' show DateFormat;
 import '../auth/session.dart';
 import '../core/cache.dart';
 import '../core/data.dart';
+import '../core/errors.dart';
 import '../core/theme.dart';
 import '../widgets/hub_tabs.dart';
 import '../widgets/royal_extras.dart' show GoldLoading;
@@ -40,7 +41,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
     final cs = Theme.of(context).colorScheme;
     return AppPage(title: 'Attendance', hub: Hub.attendance, body: a.when(
       loading: () => const GoldLoading(),
-      error: (e, _) => Center(child: Text('$e')),
+      error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(friendlyError(e), textAlign: TextAlign.center))),
       data: (d) => RRefresh(onRefresh: () async => ref.invalidate(attendanceSummaryProvider), child: ListView(padding: const EdgeInsets.all(16), children: [
         if (d == null || (d['year_days'] ?? 0) == 0)
           Padding(padding: const EdgeInsets.all(30), child: Text('Attendance will appear here once the class teacher starts marking it in the app.', textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant)))
