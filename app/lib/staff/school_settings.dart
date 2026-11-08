@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 import '../auth/session.dart';
 import '../core/data.dart';
+import '../core/errors.dart';
 import '../core/data3.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
@@ -15,7 +15,7 @@ import '../core/cache.dart';
 
 /// School settings (IT): who can use which page, features on/off, the move-up dates and the school's details.
 /// Everything is stored in school_setting and takes effect the next time a page opens.
-String _msg(Object e) => e is PostgrestException ? e.message : e.toString().replaceFirst('Exception: ', '');
+String _msg(Object e) => friendlyError(e);
 
 Future<void> saveSettings(WidgetRef ref, Map<String, String> values) async {
   final me = ref.read(sessionProvider).value?.staff?['id'];
@@ -86,7 +86,8 @@ class _AccessTabState extends ConsumerState<_AccessTab> {
       for (final m in [...staffMenu, ...staffSubPages]) {
         if (m.locked) continue;
         final c = chosen[m.path]!;
-        if (c.length != maxRolesOf(m).length) out[m.path] = c.toList();
+        final normal = defaultRolesOf(m).toSet();
+        if (c.length != normal.length || !c.containsAll(normal)) out[m.path] = c.toList();
       }
       await saveSettings(ref, {'staff_access': jsonEncode(out)});
       if (mounted) toast(context, 'Saved. Staff see the change the next time they open the app.');
