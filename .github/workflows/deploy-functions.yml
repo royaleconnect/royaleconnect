@@ -50,7 +50,7 @@ jobs:
 
       - name: Deploy
         run: |
-          for f in login-student login-staff password nightly-fees send-notifications razorpay-order razorpay-webhook; do
+          for f in login-student login-staff password nightly-fees send-notifications razorpay-order razorpay-webhook geocode; do
             supabase functions deploy "$f" --project-ref "$PROJECT_REF" --no-verify-jwt
           done
 
@@ -58,4 +58,4 @@ jobs:
         run: |
           curl -s -X POST "https://$PROJECT_REF.supabase.co/functions/v1/login-student" \
             -H "apikey: sb_publishable_8mtHFfZ9Fk3p1YdG6gwydw_IXlULRxR" -H "content-type: application/json" \
-            -d '{"admission_no":"LK/10/2014","password":"Welcome1"}' | head -c 300; echo
+            -d '{"admission_no":"LK/10/2014","password":"check-only"}' | head -c 300; echo
