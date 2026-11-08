@@ -9,6 +9,7 @@ import '../widgets/royal_extras.dart' show GoldLoading;
 import '../widgets/royal_motion.dart' show CountUp, FadeRise, ShineSweep;
 import '../widgets/hub_tabs.dart';
 import '../widgets/r_refresh.dart';
+import '../core/errors.dart';
 
 /// Board Toppers (Class X · Class XII) and the Hall of Fame — one page with three tabs.
 /// Toppers: pick a year → the top 3 on a podium, then every subject centum (100 / 100).
@@ -61,7 +62,7 @@ class _ToppersViewState extends ConsumerState<ToppersView> {
     final results = ref.watch(boardResultsProvider(widget.boardClass)).value ?? const {};
     return all.when(
       loading: () => const GoldLoading(),
-      error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('Could not load: $e'))),
+      error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(friendlyError(e), textAlign: TextAlign.center))),
       data: (rows) {
         final years = {for (final r in rows) (r['year'] as num).toInt(), ...results.keys}.toList()..sort((a, b) => b.compareTo(a));
         if (years.isEmpty) {
@@ -210,7 +211,7 @@ class _FameWallState extends ConsumerState<FameWall> {
     final cs = Theme.of(context).colorScheme;
     return ref.watch(hallOfFameProvider).when(
       loading: () => const GoldLoading(),
-      error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('Could not load: $e'))),
+      error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(friendlyError(e), textAlign: TextAlign.center))),
       data: (all) {
         if (all.isEmpty) return ListView(padding: const EdgeInsets.all(20), children: const [NoteBox('Our Hall of Fame will appear here once the school adds former students.', icon: Icons.star_outline_rounded, iconColor: Brand.gold)]);
         final spot = all.where((r) => r['spotlight'] == true).toList();
