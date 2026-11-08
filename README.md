@@ -18,6 +18,7 @@ supabase/
     _shared/lib.ts                  token minting, password hashing, phone/admission normalising, audit
     _shared/fee_engine.ts           late-fee + bucket logic (same as engine/)
     login-student/                  admission number + password → session token (+ sibling linking)
+    login-staff/                    school email + password → staff token (staff_id + roles)
     login-otp/                      mobile OTP → all children on that number; bus crew → crew token
     password/                       change · reset (office / class teacher) · sign out all phones
     nightly-fees/                   adds late-fee rows, queues fee reminders (−3/0/+3/+6/+10 days)
@@ -36,6 +37,9 @@ app/                                Flutter app (see "Running the app")
   lib/core/data.dart                fees, announcements, diary, unread, transport providers
   lib/auth/session.dart             login / OTP / sibling / change-password / sign-out, secure storage
   lib/auth/login_screen.dart        Splash, Login (Admission number | Mobile OTP), Set password
+  lib/staff/                        Staff panel: desktop sidebar layout (phone mode on mobile) — Overview, Messages inbox,
+                                    Announcements, Class diary, Leave, Exams & portions, Marks entry, Monthly plan, Worksheets,
+                                    Star, Class moments, Parent feedback, Fees desk, Transport, Students (password slips), Staff & settings
   lib/screens/                      Home, Fees, Pay, Receipts, Diary, Announcements, Messages + Chat, Timetable, Exams,
                                     Monthly plan, Worksheets, Star, Calendar, Report cards, Gallery, Leave, Profile,
                                     Feedback, Bus (stops / live map / alerts), Driver (start / end trip), Settings
@@ -81,10 +85,10 @@ Quick test from any terminal (uses the publishable key only):
 ```bash
 curl -X POST https://upgvxhsxmdihmfmzknlq.supabase.co/functions/v1/login-student \
   -H "apikey: sb_publishable_8mtHFfZ9Fk3p1YdG6gwydw_IXlULRxR" -H "content-type: application/json" \
-  -d '{"admission_no":"LK/10/2014","password":"Welcome1"}'
+  -d '{"admission_no":"<demo admission no.>","password":"<demo password>"}'
 ```
 
-Expected: a JSON with `token`, `students` (Aarav) and `must_change_password: true`.
+Expected: a JSON with `token` and `students`. (The demo family login is kept by IT for app-store reviewers; it is not written here.)
 
 ## Step 3 — running the app (any laptop with Flutter installed)
 
@@ -100,7 +104,7 @@ flutter run -d chrome                                             # web, instant
 flutter run                                                      # phone/emulator
 ```
 
-Sign in with `LK/10/2014` / `Welcome1` (sample data). First build on a new machine takes a few minutes;
+Sign in with the demo family login (ask IT). First build on a new machine takes a few minutes;
 afterwards changes hot-reload in a second.
 
 Builds for the stores: `flutter build appbundle` (Play) · `flutter build ipa` (App Store, Mac only) ·
@@ -121,12 +125,19 @@ Create a Firebase project (free) → add Android + iOS apps → download `google
 
 ## Login model
 
-* **Student / parent** — admission number (e.g. `LK/10/2014`) + password. `login-student` checks the PBKDF2
-  hash, then mints a token carrying `student_ids: [...]` — the signed-in student plus any siblings added on this
-  phone. First sign-in forces a new password. 5 wrong attempts → 15-minute lock.
+* **Student / parent** — admission number + password. `login-student` checks the PBKDF2 hash, then mints a token
+  (90 days) carrying `student_ids: [...]` — the signed-in student plus brothers/sisters already proved on this phone
+  (a sibling is added only with that child's own admission number + password). First sign-in forces a new password:
+  until then the token works for nothing but the password change. 5 wrong attempts → 15-minute lock; 20 wrong tries
+  from one network address in 15 minutes → pause.
 * **Mobile OTP** — either parent's number → one token with every child on that number. A driver's or
   conductor's number opens the trip screen instead.
-* **Staff** — school email + password → token with `staff_id` and `roles` (next pass, with the web panel).
+* **Staff** — school email + password (`login-staff`) → token (30 days) with `staff_id` and `roles`. Same link: "School staff? Sign in here".
+  Every staff member gets an own first password from IT (printed slip) and chooses her own at the first sign-in.
+  The sample staff logins of the demo data are switched off on the live system.
+* **Bus crew** — login ID (dr7 / as7) + an own 6-digit first password → token (30 days) with `crew_id` (never `staff_id`).
+* Every request is checked against the sign-in record (PostgREST pre-request `public.check_session`): signed out on
+  every phone, made inactive, or left the school → refused at once.
 * Office / IT (or the class teacher, own section only) can reset a password; the student gets a one-time
   password and must change it. "Sign out all phones" invalidates every session for that student.
 
@@ -143,7 +154,7 @@ Create a Firebase project (free) → add Android + iOS apps → download `google
 
 1. Import scripts for the school's Excel sheets (students + phones, fee plan, timetable, routes).
 2. Receipt PDF generation + email copy to the parent.
-3. Staff web panel (same Flutter code, web build) + teacher phone mode.
+3. Import tool for the school's Excel sheets; route/stop/crew editing screens; report-card PDF generation.
 4. Street-map tiles for the live bus map (optional), diary file submissions table.
 5. Spec + demo script, store listings, launch.
 
