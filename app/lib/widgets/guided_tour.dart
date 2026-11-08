@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show BoxHitTestResult;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -45,9 +46,9 @@ String tourRoleFor(Session s) {
 const tourSteps = <String, List<TourStep>>{
   'family': [
     TourStep('Your child', 'Tap here for the profile and the ID card. With two children, tap to switch between them.', Icons.person_rounded, at: ['f-child']),
-    TourStep('Today · needs you', 'Only what needs you: a fee to pay (with a Pay button), homework for the next school day, new notices. When it says “All done for today”, you are free.', Icons.task_alt_rounded, at: ['f-needs']),
+    TourStep('Your day', 'School day or holiday at the top, then only what needs you: a fee to pay (with a Pay button), homework for the next school day, new notices — and My list to tick off. When it says “All done for today”, you are free.', Icons.task_alt_rounded, at: ['f-needs']),
     TourStep('Attendance streak', 'Days present in a row. A gold celebration at 30 and 60 days.', Icons.local_fire_department_rounded, at: ['f-streak'], optional: true),
-    TourStep('Notices', 'Every school notice comes here, with a notification on your phone. New ones also show in the Today card on Home.', Icons.campaign_rounded, at: ['f-notices', 'nav:/announcements']),
+    TourStep('Notices', 'Every school notice comes here, with a notification on your phone. New ones also show in the Your day card on Home.', Icons.campaign_rounded, at: ['f-notices', 'nav:/announcements']),
     TourStep('Diary', 'Today’s homework and notes from the teachers, plus My list to tick off what is done.', Icons.menu_book_rounded, at: ['f-diary', 'nav:/diary']),
     TourStep('Fees', 'See what is due, pay online and download receipts.', Icons.account_balance_wallet_rounded, at: ['f-fees', 'nav:/fees']),
     TourStep('Bus', 'Watch the bus live and get an alert 10 and 5 minutes before it reaches your stop.', Icons.directions_bus_rounded, at: ['f-bus', 'nav:/bus'], optional: true),
@@ -83,6 +84,31 @@ const tourSteps = <String, List<TourStep>>{
 };
 
 String _key(String role) => 'rc_tour_done_$role';
+
+/// Anything shown full screen over the app (the Principal's welcome letter, a birthday wish) holds the tour back:
+/// the tour starts only after it is closed (e.g. with Continue), so its gold boxes never sit on top of the letter.
+final _holds = <String>{};
+final _holdTick = ValueNotifier<int>(0);
+void setTourHold(String who, bool on) {
+  final changed = on ? _holds.add(who) : _holds.remove(who);
+  if (changed) _holdTick.value++;
+}
+
+Future<void> _waitForClearScreen() async {
+  await Future<void>.delayed(const Duration(milliseconds: 60));
+  var waited = false;
+  while (_holds.isNotEmpty) {
+    waited = true;
+    final done = Completer<void>();
+    void check() { if (_holds.isEmpty && !done.isCompleted) done.complete(); }
+    _holdTick.addListener(check);
+    check();
+    await done.future;
+    _holdTick.removeListener(check);
+    await Future<void>.delayed(const Duration(milliseconds: 500));   // another letter may follow (an event after the welcome)
+  }
+  if (waited) await Future<void>.delayed(const Duration(milliseconds: 900));   // the letter fades out and Home settles
+}
 final _shownThisRun = <String>{};
 
 /// Call once the first screen after sign-in is on screen. Shows the tour only the first time on this device for this role.
@@ -112,6 +138,8 @@ Future<void> maybeShowTour(BuildContext context, String role) async {
 
 /// Always shows the tour (Help → "Take the tour again"). Marks it as seen when it closes (finished or skipped).
 Future<void> showTour(BuildContext context, String role, {List<TourStep>? steps}) async {
+  await _waitForClearScreen();
+  if (!context.mounted) return;
   var list = [...(steps ?? tourSteps[role] ?? const <TourStep>[])];
   // a step whose part is not on this screen (e.g. Bus for a child who does not take the bus) is left out
   list = [for (final t in list) if (!t.optional || t.at.any((id) => _rectOfId(id) != null)) t];
@@ -155,7 +183,30 @@ Rect? _rectOfId(String id) {
   final ro = ctx.findRenderObject();
   if (ro is! RenderBox || !ro.hasSize || !ro.attached) return null;
   final r = ro.localToGlobal(Offset.zero) & ro.size;
-  return r.isEmpty ? null : r;
+  if (r.isEmpty || !_onTop(ro, r)) return null;
+  return r;
+}
+
+/// Is this part really visible, or is something else (a full-screen letter, a dialog) lying on top of it?
+/// A few points inside the part are checked: if any of them reaches the part, it counts as visible.
+bool _onTop(RenderBox ro, Rect r) {
+  final app = TourLayer._live?._appKey.currentContext?.findRenderObject();
+  if (app is! RenderBox || !app.attached || !app.hasSize) return true;
+  final above = <RenderObject>{};
+  for (RenderObject? p = ro.parent; p != null; p = p.parent) { above.add(p); }
+  var covered = false;
+  for (final pt in [r.center, Offset(r.left + r.width * .25, r.center.dy), Offset(r.left + r.width * .75, r.center.dy),
+      Offset(r.center.dx, r.top + r.height * .3), Offset(r.center.dx, r.top + r.height * .7)]) {
+    final res = BoxHitTestResult();
+    app.hitTest(res, position: app.globalToLocal(pt));
+    if (res.path.isEmpty) continue;
+    if (res.path.any((e) => identical(e.target, ro))) return true;
+    final first = res.path.first.target;
+    // the point fell on the page behind the part (an empty spot inside it): no answer from this point
+    if (first is RenderObject && above.contains(first)) continue;
+    covered = true;
+  }
+  return !covered;
 }
 
 /// A layer over the WHOLE app window — above the laptop side menu and the phone-width frame — so the tour can
@@ -170,6 +221,7 @@ class TourLayer extends StatefulWidget {
 
 class _TourLayerState extends State<TourLayer> {
   Widget? top;
+  final _appKey = GlobalKey(debugLabel: 'tour:app');
   void show(Widget? w) { if (mounted) setState(() => top = w); }
   @override
   void initState() { super.initState(); TourLayer._live = this; }
@@ -177,7 +229,7 @@ class _TourLayerState extends State<TourLayer> {
   void dispose() { if (TourLayer._live == this) TourLayer._live = null; super.dispose(); }
   @override
   Widget build(BuildContext context) => Stack(textDirection: TextDirection.ltr, fit: StackFit.expand, children: [
-        widget.child,
+        KeyedSubtree(key: _appKey, child: widget.child),
         if (top != null) Positioned.fill(child: TweenAnimationBuilder<double>(tween: Tween(begin: 0, end: 1), duration: const Duration(milliseconds: 260),
             builder: (_, v, c) => Opacity(opacity: v, child: c), child: top)),
       ]);
