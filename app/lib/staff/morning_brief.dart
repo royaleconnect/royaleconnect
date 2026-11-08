@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../auth/session.dart';
@@ -10,9 +9,9 @@ import '../core/data.dart';
 import '../core/theme.dart';
 import '../widgets/royal_motion.dart' show reduceMotion;
 
-/// Morning brief: the card at the top of the staff Today page. The sun rises behind a soft hill (the moon at night),
-/// with the greeting, a few chips (classes today, diary notes pending, new messages, leave requests) and today's
-/// periods, the current one outlined in gold. One database call: staff_morning_brief().
+/// Morning brief: the greeting card at the top of the staff Today page. The sun rises behind a soft hill (the moon at night).
+/// The counts (leave, messages, diary) are NOT repeated here — they live in the one NEEDS YOU card below it.
+/// [TodayPeriods] lists today's periods. One database call: staff_morning_brief().
 final morningBriefProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   ref.cacheFor();
   final r = await db.rpc('staff_morning_brief');
@@ -80,41 +79,50 @@ class _MorningBriefState extends ConsumerState<MorningBrief> with SingleTickerPr
     final sky = _skyFor(now.hour, dark);
     final greet = now.hour < 5 || now.hour >= 19 ? 'Good evening' : now.hour < 12 ? 'Good morning' : now.hour < 17 ? 'Good afternoon' : 'Good evening';
     final name = '${b['name'] ?? s?.staff?['name'] ?? ''}'.trim();
-    final periods = [for (final p in (b['periods'] as List?) ?? const []) Map<String, dynamic>.from(p as Map)];
-    final weekday = (b['weekday'] as num?)?.toInt() ?? now.weekday;
-    int n(String k) => (b[k] as num?)?.toInt() ?? 0;
-
-    final chips = <(String, String)>[
-      if (b['has_timetable'] == true && periods.isNotEmpty) ('${periods.length} ${periods.length == 1 ? 'class' : 'classes'} today', '/staff/diary'),
-      if (weekday <= 5 && n('diary_pending') > 0) ('${n('diary_pending')} diary ${n('diary_pending') == 1 ? 'note' : 'notes'} pending', '/staff/diary'),
-      if (n('unread') > 0) ('${n('unread')} new ${n('unread') == 1 ? 'message' : 'messages'}', '/staff/messages'),
-      if (b['class_teacher'] == true && n('leaves') > 0) ('${n('leaves')} leave ${n('leaves') == 1 ? 'request' : 'requests'}', '/staff/leave'),
-    ];
-
-    final card = ClipRRect(borderRadius: BorderRadius.circular(18), child: ConstrainedBox(constraints: const BoxConstraints(minHeight: 150), child: Stack(children: [
+    final card = ClipRRect(borderRadius: BorderRadius.circular(18), child: ConstrainedBox(constraints: const BoxConstraints(minHeight: 120), child: Stack(children: [
       Positioned.fill(child: DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: sky.sky)))),
       if (sky.night) const Positioned.fill(child: CustomPaint(painter: _MbStars())),
       // the sun (or moon) rises: moved with a transform, never by changing its position
-      Positioned(right: 46, bottom: 26, width: 80, height: 80, child: RepaintBoundary(child: AnimatedBuilder(animation: _rise, builder: (_, child) {
+      Positioned(right: 46, bottom: 18, width: 80, height: 80, child: RepaintBoundary(child: AnimatedBuilder(animation: _rise, builder: (_, child) {
         final v = Curves.easeOutCubic.transform(_rise.value);
         return Transform.translate(offset: Offset(0, 90 * (1 - v)), child: child);
       }, child: sky.night ? const CustomPaint(painter: _MbMoon()) : const DecoratedBox(decoration: BoxDecoration(shape: BoxShape.circle,
           gradient: RadialGradient(colors: [Color(0xFFFFE38A), Color(0xFFF8B84A), Color(0x00F6A93B)], stops: [0, .55, 1])))))),
       // the soft hill in front of it
-      Positioned(left: 0, right: 0, bottom: 0, height: 46, child: CustomPaint(painter: _MbHill(sky.hill))),
-      Padding(padding: const EdgeInsets.fromLTRB(20, 18, 20, 22), child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+      Positioned(left: 0, right: 0, bottom: 0, height: 40, child: CustomPaint(painter: _MbHill(sky.hill))),
+      Padding(padding: const EdgeInsets.fromLTRB(20, 18, 20, 26), child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
         Text(DateFormat('EEEE, d MMMM').format(now), style: TextStyle(fontSize: 13, color: sky.soft, fontWeight: FontWeight.w700)),
         Padding(padding: const EdgeInsets.only(right: 90), child: Text(name.isEmpty ? greet : '$greet, $name',
             style: GoogleFonts.cormorantGaramond(fontSize: MediaQuery.sizeOf(context).width < 700 ? 26 : 32, fontWeight: FontWeight.w700, color: sky.ink, height: 1.15))),
-        if (chips.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4, right: 60), child: Wrap(spacing: 6, runSpacing: 0, children: [
-          for (final (i, c) in chips.indexed) _MbChip(label: c.$1, bg: sky.chip, fg: sky.ink, anim: CurvedAnimation(parent: _rise, curve: Interval((.35 + i * .1).clamp(0, .8), (.65 + i * .1).clamp(.3, 1), curve: Curves.easeOut)),
-              onTap: () => context.go(c.$2)),
-        ])),
       ])),
     ])));
+    return Padding(padding: const EdgeInsets.only(bottom: 14), child: card);
+  }
+}
 
-    if (periods.isEmpty) return Padding(padding: const EdgeInsets.only(bottom: 14), child: card);
+/// "Your periods today" — shown only when the timetable has periods for this teacher today.
+/// The current period is outlined in gold; "Now" and "Next" move on by themselves.
+class TodayPeriods extends ConsumerStatefulWidget {
+  const TodayPeriods({super.key});
+  @override
+  ConsumerState<TodayPeriods> createState() => _TodayPeriodsState();
+}
 
+class _TodayPeriodsState extends ConsumerState<TodayPeriods> {
+  Timer? _tick;
+  @override
+  void initState() { super.initState(); _tick = Timer.periodic(const Duration(minutes: 1), (_) { if (mounted) setState(() {}); }); }
+  @override
+  void dispose() { _tick?.cancel(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) {
+    final b = ref.watch(morningBriefProvider).value ?? const <String, dynamic>{};
+    final periods = [for (final p in (b['periods'] as List?) ?? const []) Map<String, dynamic>.from(p as Map)];
+    if (b['has_timetable'] != true || periods.isEmpty) return const SizedBox.shrink();
+    final now = DateTime.now();
+    final weekday = (b['weekday'] as num?)?.toInt() ?? now.weekday;
+    final cs = Theme.of(context).colorScheme;
     // Now / Next: a period lasts until the next one starts (or 40 minutes for the last one, or after a long gap)
     final today = DateTime(now.year, now.month, now.day);
     DateTime at(String hhmm) { final p = hhmm.split(':'); return today.add(Duration(hours: int.parse(p[0]), minutes: int.parse(p[1]))); }
@@ -128,19 +136,15 @@ class _MorningBriefState extends ConsumerState<MorningBrief> with SingleTickerPr
       final isNow = isToday && !now.isBefore(st) && now.isBefore(end);
       final done = isToday && !now.isBefore(end);
       final tag = isNow ? 'Now' : done ? 'done' : i == nextIdx ? 'Next' : '';
-      rows.add(_MbPeriod(time: DateFormat('h:mm').format(st), what: [periods[i]['section'], periods[i]['subject']].where((x) => x != null && '$x'.isNotEmpty).join(' · '), tag: tag, now: isNow));
+      rows.add(_MbPeriod(time: DateFormat('h:mm a').format(st).toLowerCase(), what: [periods[i]['section'], periods[i]['subject']].where((x) => x != null && '$x'.isNotEmpty).join(' · '), tag: tag, now: isNow));
     }
-    return Padding(padding: const EdgeInsets.only(bottom: 14), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [card, ...rows]));
+    return Container(margin: const EdgeInsets.only(bottom: 14), padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(18), border: Border.all(color: cs.outline.withValues(alpha: .6))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text(isToday ? 'YOUR PERIODS TODAY' : 'YOUR PERIODS ON ${const ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'][(weekday - 1).clamp(0, 6)]}', style: TextStyle(fontSize: 11, letterSpacing: 1.6, fontWeight: FontWeight.w800, color: cs.onSurfaceVariant)),
+        ...rows,
+      ]));
   }
-}
-
-class _MbChip extends StatelessWidget {
-  final String label; final Color bg, fg; final Animation<double> anim; final VoidCallback onTap;
-  const _MbChip({required this.label, required this.bg, required this.fg, required this.anim, required this.onTap});
-  @override
-  Widget build(BuildContext context) => FadeTransition(opacity: anim, child: SlideTransition(position: Tween(begin: const Offset(0, .3), end: Offset.zero).animate(anim),
-      child: Padding(padding: const EdgeInsets.only(top: 8), child: Material(color: bg, borderRadius: BorderRadius.circular(99), child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(99),
-          child: Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), child: Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: fg))))))));
 }
 
 class _MbPeriod extends StatelessWidget {
