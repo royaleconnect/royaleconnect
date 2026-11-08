@@ -31,7 +31,7 @@ class _StaffToppersScreenState extends ConsumerState<StaffToppersScreen> {
     final s = ref.watch(sessionProvider).value!;
     final canEdit = s.isOffice;
     return StaffPage(
-      title: 'Board Toppers & Hall of Fame', scroll: false, hub: Hub.staffHonours,
+      title: 'Honours', scroll: false, hub: Hub.staffHonours,
       subtitle: 'The same page families see in the app.',
       actions: [if (canEdit) FilledButton.icon(onPressed: () => context.go('/staff/toppers/edit'), icon: const Icon(Icons.edit_rounded, size: 18), label: const Text('Add or change'))],
       body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
