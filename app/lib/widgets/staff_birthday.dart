@@ -10,6 +10,7 @@ import '../core/theme.dart';
 import '../staff/staff_shell.dart' show Panel, toast;
 import 'royal_extras.dart' show EmojiDrift, DriftMode;
 import 'royal_motion.dart' show ConfettiBurst, FadeRise, GoldText, GoldParticles;
+import 'guided_tour.dart' show setTourHold;
 import '../core/errors.dart';
 
 /// Staff birthdays.
@@ -73,6 +74,7 @@ class _StaffBirthdayGateState extends ConsumerState<StaffBirthdayGate> {
     final dob = on ? ref.watch(myBirthdayProvider).value : null;
     if (s?.staff?['id'] != null && dob != null) WidgetsBinding.instance.addPostFrameCallback((_) => _check('${s!.staff!['id']}', dob));
     final first = '${s?.staff?['name'] ?? ''}'.trim().split(RegExp(r'\s+')).where((w) => !RegExp(r'^(mr|mrs|ms|miss|dr)\.?$', caseSensitive: false).hasMatch(w)).firstOrNull ?? '';
+    WidgetsBinding.instance.addPostFrameCallback((_) => setTourHold('staff-bday', show));
     return Stack(children: [
       widget.child,
       if (show) Positioned.fill(child: TweenAnimationBuilder<double>(tween: Tween(begin: 0, end: 1), duration: const Duration(milliseconds: 700),
