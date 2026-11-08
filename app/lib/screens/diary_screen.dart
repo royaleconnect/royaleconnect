@@ -8,6 +8,7 @@ import '../widgets/royal_extras.dart' show GoldLoading;
 import '../auth/session.dart';
 import '../widgets/empty_state.dart';
 import 'my_list.dart';
+import '../core/errors.dart';
 
 class DiaryScreen extends ConsumerStatefulWidget {
   const DiaryScreen({super.key});
@@ -47,7 +48,7 @@ class _DiaryScreenState extends ConsumerState<DiaryScreen> {
       ])),
       Expanded(child: tab == 1 ? const MyListView() : entries.when(
         loading: () => const GoldLoading(),
-        error: (e, _) => Center(child: Text('Could not load the diary.\n$e', textAlign: TextAlign.center)),
+        error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(32), child: Text(friendlyError(e), textAlign: TextAlign.center))),
         data: (list) => list.isEmpty
             ? (iso == DateFormat('yyyy-MM-dd').format(DateTime.now())
                 ? EmptyState(kind: EmptyKind.homework, title: 'No homework today', line: 'Enjoy your evening, ${(ref.watch(sessionProvider).value?.active?.fullName ?? '').split(' ').first}.')
@@ -62,7 +63,6 @@ class _DiaryScreenState extends ConsumerState<DiaryScreen> {
                   if (e.body != null && e.body!.isNotEmpty) ...[const SizedBox(height: 4), Text(e.body!, style: TextStyle(fontSize: 13, height: 1.45, color: cs.onSurfaceVariant))],
                   const SizedBox(height: 8),
                   Text(e.by, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
-                  if (e.needsSubmission) ...[const SizedBox(height: 12), OutlinedButton.icon(onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('File submission opens once storage is switched on.'))), icon: const Icon(Icons.upload_file_rounded), label: const Text('Submit file'))],
                 ]));
               }))),
     ]));
