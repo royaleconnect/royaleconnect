@@ -8,7 +8,9 @@ class HelpItem {
   final String? route;        // screen the button opens
   final String? button;
   final bool popular;
-  const HelpItem(this.id, this.topic, this.question, this.steps, {this.keywords = '', this.route, this.button, this.popular = false});
+  /// Staff help: the page a person must be able to open to see this answer (when it is not the same as [route]).
+  final String? needs;
+  const HelpItem(this.id, this.topic, this.question, this.steps, {this.keywords = '', this.route, this.button, this.popular = false, this.needs});
 
   bool matches(String q) {
     final words = q.toLowerCase().split(RegExp(r'\s+')).where((w) => w.length > 1);
@@ -119,8 +121,16 @@ const familyHelp = <HelpItem>[
   ], keywords: 'forgot password reset locked cannot login sign in', popular: true),
   HelpItem('s-change', 'Sign-in', 'How do I change my password?', [
     'On Home, tap ⚙ (Settings) at the top.',
-    'Tap Change password and type the new one twice.',
+    'Tap Change password, type your current password, then the new one twice.',
   ], keywords: 'change password new password', route: '/settings', button: 'Open settings'),
+  HelpItem('s-privacy', 'Sign-in', 'Who can see my child’s information?', ['On Home, tap ⚙ (Settings) at the top.', 'Tap Privacy policy.'], keywords: 'privacy data information who sees policy', route: '/privacy', button: 'Open privacy policy'),
+  HelpItem('s-delete', 'Sign-in', 'How do I delete our account?', ['On Home, tap ⚙ (Settings) at the top.', 'Tap Request account deletion and send.', 'The school office will contact you.'], keywords: 'delete account remove close data', route: '/settings', button: 'Open settings'),
+  HelpItem('f-today', 'Home', 'What is the “Today · needs you” card?', ['It shows only what needs you: a fee to pay (with a Pay button), homework for the next school day, and new notices.', 'When it says “All done for today ✨”, there is nothing to do.'], keywords: 'today needs you card home pay homework notice', route: '/'),
+  HelpItem('bus_pin', 'Bus', 'How do I change my bus pickup point?', ['Open Bus.', 'Tap Change on “Pickup point”.', 'Choose “Use my location now” or “Move the pin on the map”.'], keywords: 'pin pickup location bus point', route: '/bus', button: 'Open Bus'),
+  HelpItem('bus_pins_staff', 'Transport', 'How do I check the children’s home pins?', ['Open Check pins.', 'Choose the bus.', 'Press “Place pins from addresses” once.', 'Amber = please check: tap the child, then tap the right spot on the map.'], keywords: 'pins geocode map address home', route: '/staff/bus-pins', button: 'Open Check pins'),
+  HelpItem('bus_end_trip', 'Transport', 'A driver forgot to end the trip', ['Open Transport.', 'Under “Buses running now” press End trip.', 'Trips also end by themselves 15 minutes after reaching school, or after 3 hours.'], keywords: 'end trip running forgot bus', route: '/staff/transport', button: 'Open Transport'),
+  HelpItem('class-logins', 'Students', 'A parent forgot the password — what do I do?', ['Open Class logins.', 'Tap Reset next to the child.', 'Read the new password to the parent. They choose their own at the first sign-in.'], keywords: 'password login forgot slip reset class', route: '/staff/class-logins', button: 'Open Class logins'),
+  HelpItem('staff-first-pw', 'Office', 'How do staff get their first password?', ['IT: open Approvals and tap “Make and print slips”.', 'Give each person their slip.', 'Everyone chooses their own password at the first sign-in.'], keywords: 'staff password slip first login new teacher', route: '/staff/approvals', button: 'Open Approvals'),
   HelpItem('s-family', 'Sign-in', 'Can both parents use the app?', [
     'Yes. Both parents (and the student) use the same admission number and password.',
     'Sign in on each phone once. Everyone gets the same notices and alerts.',
@@ -216,63 +226,63 @@ const staffHelp = <HelpItem>[
   ], keywords: 'forgot reset password locked'),
   HelpItem('t-menu', 'Getting started', 'Where is everything?', [
     'Start on Today: it shows what is waiting for you, with the button to do it.',
-    'On a laptop, the menu is on the left in groups: Today · My class · Exams & reports · Students · School · Me.',
+    'On a laptop, the menu is on the left in groups (for example Today · My class · School · Me). Each page has the same name as in the menu.',
     'On a phone, the 4 most used pages are at the bottom. Tap ☰ (top right) for the full menu.',
     'You only see the pages for your role. IT can change this in School settings.',
   ], keywords: 'menu find page navigation missing'),
   HelpItem('t-diary', 'Class', 'How do I post homework in the diary?', [
-    'Open Class diary.',
+    'Open Diary.',
     'Choose the class and subject.',
     'Choose Homework / To bring / Test, type it and tap “Post entry”. Parents get it at once.',
-  ], keywords: 'homework diary classwork post add assignment', route: '/staff/diary', button: 'Open Class diary', popular: true),
+  ], keywords: 'homework diary classwork post add assignment', route: '/staff/diary', button: 'Open Diary', popular: true),
   HelpItem('t-leave', 'Class', 'How do I approve a leave request?', [
-    'Open Leave requests.',
-    'Tap Approve or Decline. The parent gets a notification.',
+    'Class teachers: Today shows “N leave requests” — tap it, or open Leave requests in the menu.',
+    'Tap Approve or Decline. The family is told at once.',
   ], keywords: 'leave absent approve decline', route: '/staff/leave', button: 'Open Leave requests'),
   HelpItem('t-moments', 'Class', 'How do I share class photos?', [
-    'Open Class moments → choose the class → tap “Add photos” and write a caption.',
+    'Open Class photos → choose the class → tap “Add photos” and write a caption.',
     'Only children whose parents allowed photos should be in them.',
-  ], keywords: 'photo picture moments gallery upload', route: '/staff/moments', button: 'Open Class moments'),
+  ], keywords: 'photo picture moments gallery upload', route: '/staff/moments', button: 'Open Class photos'),
   HelpItem('t-star', 'Class', 'How do I choose the Star of the month?', [
     'Open Star of the month → choose the class and the student → write why.',
   ], keywords: 'star month award', route: '/staff/star', button: 'Open Star of the month'),
   HelpItem('t-marks', 'Marks', 'How do I enter marks?', [
-    'Open Marks entry.',
+    'Open Exams & marks → Marks entry.',
     'Choose the exam, class and subject.',
     'Type each student’s marks and tap “Save marks”. You can change them later until the report card is published.',
   ], keywords: 'marks enter exam score result', route: '/staff/marks', button: 'Open Marks entry', popular: true),
   HelpItem('t-report', 'Marks', 'How do I make report cards?', [
-    'Open Report cards (class teachers).',
+    'Open Exams & marks → Report cards (class teachers).',
     'Choose your class and term. Fill attendance, height, weight, co-scholastic grades and remarks.',
     'Tap Preview PDF to check one, then Publish. Parents see it at once.',
   ], keywords: 'report card remarks publish term attendance co-scholastic', route: '/staff/reports', button: 'Open Report cards'),
   HelpItem('t-exams', 'Marks', 'How do I add exam dates and portions?', [
-    'Open Exams & portions → New exam → choose the grade and subjects.',
+    'Open Exams & marks → New exam → choose the grade and subjects.',
     'Add dates and portions for each subject, then Publish.',
-  ], keywords: 'exam portion syllabus date schedule', route: '/staff/exams', button: 'Open Exams & portions'),
+  ], keywords: 'exam portion syllabus date schedule', route: '/staff/exams', button: 'Open Exams & marks'),
   HelpItem('t-notice', 'Notices', 'How do I send a notice to parents?', [
-    'Open Announcements → New announcement.',
-    'Choose who gets it: whole school, some grades or some classes.',
+    'Open Notices → New notice.',
+    'Choose who gets it. Class teachers send to their own class; coordinators to their grades; the office to the whole school, grades, classes or bus families.',
     'Type the notice, add a PDF or photo if needed, and send. You can also schedule it for later.',
-  ], keywords: 'announcement circular notice send parents all', route: '/staff/announcements', button: 'Open Announcements', popular: true),
+  ], keywords: 'announcement circular notice send parents all', route: '/staff/announcements', button: 'Open Notices', popular: true),
   HelpItem('t-seen', 'Notices', 'How do I know which parents read a notice?', [
-    'Open Announcements. Each notice shows how many families read it.',
+    'Open Notices. Each notice shows how many families read it.',
     'Tap Remind to send it again only to those who have not read it.',
-  ], keywords: 'read seen remind not read', route: '/staff/announcements', button: 'Open Announcements'),
+  ], keywords: 'read seen remind not read', route: '/staff/announcements', button: 'Open Notices'),
   HelpItem('t-msg', 'Parents', 'How do I reply to a parent’s message?', [
     'Open Messages. New messages show a red number.',
     'Tap the message, type your reply and send.',
     'Messages sent between 12 am and 5 am reach the parent at 5 am.',
   ], keywords: 'message chat reply parent', route: '/staff/messages', button: 'Open Messages', popular: true),
   HelpItem('t-slip', 'Parents', 'A parent forgot their password', [
-    'Open Students → find the student.',
-    'Teachers: tap ⋮ → “Reset password (print slip)”. Office: open the student → “New password slip”.',
+    'When a parent asks for help from the sign-in page, it shows on Today for the class teacher (and in Approvals for the office).',
+    'Or open Students → find the student. Class teacher: tap ⋮ → “Reset password (print slip)”. Office: open the student → “New password slip”.',
     'Give the slip to the parent.',
   ], keywords: 'parent forgot password reset slip', route: '/staff/students', button: 'Open Students'),
   HelpItem('o-fees', 'Office', 'How do I check a student’s fees?', [
-    'Open Fees desk and search the student’s name or admission number.',
+    'Open Fees & receipts and search the student’s name or admission number.',
     'You see every fee, what is paid and what is due. Tap a payment to print its receipt.',
-  ], keywords: 'fees due paid receipt balance', route: '/staff/fees', button: 'Open Fees desk'),
+  ], keywords: 'fees due paid receipt balance', route: '/staff/fees', button: 'Open Fees & receipts'),
   HelpItem('o-cal', 'Office', 'How do I add a holiday or event?', [
     'Open School calendar → tap a date → choose Holiday, Event, Exam or Parents’ meeting.',
     'Keep “Tell families now” on to send a notification.',
@@ -311,16 +321,16 @@ const staffHelp = <HelpItem>[
     '1 March: Grades VIII, IX and XI move up (XI → XII keep the same sections).',
     '15 May: every other class moves up and Grades X and XII become past students.',
     'It happens by itself. IT and the Principal get a reminder a week before. IT can change the dates in School settings → Year dates.',
-  ], keywords: 'move up promotion new year 1 march 15 may past students year end'),
+  ], keywords: 'move up promotion new year 1 march 15 may past students year end', needs: '/staff/sections'),
   HelpItem('s-toppers', 'Setup', 'How do I add Board Toppers or Hall of Fame?', [
-    'Open Board Toppers & Hall of Fame → Add or change (office, IT, Principal).',
+    'Open Honours → Add or change (office, IT, Principal).',
     'Choose Class X or XII, add the year, then the top 3 (with photos) and the subject centums.',
     'For the Hall of Fame, tap “Add a person”.',
-  ], keywords: 'toppers board results centum hall of fame alumni photo', route: '/staff/toppers/edit', button: 'Open Toppers'),
+  ], keywords: 'toppers board results centum hall of fame alumni photo', route: '/staff/toppers/edit', button: 'Open Honours'),
   HelpItem('s-report', 'Office', 'How do I get the monthly report?', [
     'Principal / IT: on Today (the whole-school page), tap “Monthly report”.',
     'Choose the month, type the month’s highlights if you like, and tap “Make the PDF” — then Print or Share.',
-  ], keywords: 'monthly report pdf management meeting summary principal'),
+  ], keywords: 'monthly report pdf management meeting summary principal', needs: '/staff/week'),
   HelpItem('s-desk', 'Setup', 'How does the Principal send a message to everyone?', [
     'IT / Principal: Principal’s Desk → New message. Write a title and the message (leave an empty line between paragraphs).',
     'The design is chosen from the title by itself: Annual Day (stage curtains), Sports Day (running track), Hackathon / RoAI (glowing circuits), MUN (globe); anything else gets the royal gold design.',
@@ -339,26 +349,30 @@ const staffHelp = <HelpItem>[
     '“Who can use what” — tick the roles that see each page. “Features” — switch features on or off for families.',
   ], keywords: 'settings permission access role feature switch off hide page', route: '/staff/settings', button: 'Open School settings'),
   HelpItem('s-import', 'Setup', 'How do I import a list from Excel?', [
-    'Open Classes & fees → Import from Excel.',
+    'Open School setup → Import from Excel.',
     'Choose what you are importing and upload the file. Columns are matched for you.',
     'Check the list of problems (nothing is saved yet), then tap Import.',
-  ], keywords: 'excel import upload sheet list bulk mcb', route: '/staff/setup', button: 'Open Classes & fees'),
+  ], keywords: 'excel import upload sheet list bulk mcb', route: '/staff/setup', button: 'Open School setup'),
   HelpItem('s-classes', 'Setup', 'How do I change a class teacher or subject teacher?', [
-    'Open Classes & fees → Classes → tap the class.',
+    'Open School setup → Classes → tap the class.',
     'Choose the class teacher and the teacher for each subject, then Save.',
-  ], keywords: 'class teacher subject teacher assign section', route: '/staff/setup', button: 'Open Classes & fees'),
+  ], keywords: 'class teacher subject teacher assign section', route: '/staff/setup', button: 'Open School setup'),
   // ---- Release F
   HelpItem('t-search', 'Getting started', 'How do I find a student quickly?', ['Click the search box at the top of any page, or press Ctrl + K (⌘ + K on a Mac).', 'Type 2–3 letters of the name, the admission number, a parent’s phone or a receipt number.', 'Use ↑ ↓ and Enter, or click the student. You only see students you are allowed to see.'], keywords: 'search find student phone receipt admission ctrl k'),
   HelpItem('t-attendance', 'Class', 'How do I take attendance?', ['Open Attendance. Everyone starts as present.', 'Tap the students who are absent (tap again for late), then Save.', 'Families of absent students are told at once. You can correct the last 7 days; older days go to the office.'], keywords: 'attendance absent present late register', route: '/staff/attendance', button: 'Open Attendance'),
   HelpItem('t-also-send', 'Class', 'Can I post the same homework to my other sections?', ['Yes. When you post in the diary, “Also send to” lists your other sections of the same grade for the same subject, already ticked.', 'Untick any you don’t want. Other grades are never offered.'], keywords: 'diary post other sections same homework', route: '/staff/diary', button: 'Open Diary'),
-  HelpItem('t-undo', 'Getting started', 'I deleted something by mistake', ['Tap Undo on the bar at the bottom right away.', 'Later: IT or the Principal can bring it back from School setup → Bin for 30 days.'], keywords: 'delete undo bin restore mistake'),
+  HelpItem('t-undo', 'Getting started', 'I deleted something by mistake', ['Tap Undo on the bar at the bottom right away.', 'Later: IT or the Principal can bring it back from the Bin (in School setup) for 30 days.'], keywords: 'delete undo bin restore mistake'),
   HelpItem('t-msg-edit', 'Parents', 'Can I edit or delete a message I sent?', ['Press and hold your message (right-click on a laptop) → Edit or Delete for everyone.', 'Allowed for 2 days after sending.'], keywords: 'message delete edit wrong unsend chat'),
   HelpItem('t-notice-unsend', 'Notices', 'Can I take back a notice?', ['Tap ⋮ on the notice → Unsend, within 10 minutes. It disappears from every phone.', 'After that the office can delete it. You can always Edit it; families see “Updated”.'], keywords: 'notice unsend delete edit wrong'),
   HelpItem('s-houses', 'Setup', 'How do I add house points?', ['Open Honours → Houses. Tap the house, type the points and a short reason, then Add.', 'Coordinators, the office and the Principal can add points. IT / the Principal can let other teachers add them under House in-charges.', 'A wrong entry: tap the bin icon next to it (Undo is offered).'], keywords: 'house points athena ares artemis apollo pe add', route: '/staff/houses', button: 'Open Houses'),
   HelpItem('s-thanks', 'Class', 'Where are my Teachers’ Day thank-you notes?', ['During Teachers’ Day week a gold card on Today shows your notes. Tap it to open your wall.', 'The notes stay with you after the week.'], keywords: 'thank you notes teachers day wall', route: '/staff/thanks', button: 'Open my wall'),
-  HelpItem('staff_approvals', 'Office', 'Where do I approve things?', ['Open Approvals in the menu.', 'Password help, leave requests, receipts to cancel and certificates still to give are all in one list.', 'The number on the menu shows how many are waiting.'], keywords: 'approve approvals password leave receipt cancel certificate', route: '/staff/approvals', button: 'Open Approvals'),
-  HelpItem('t-inactive', 'Setup', 'A teacher has left. What do I do?', ['School setup → Staff → open the teacher → switch off “Working here”.', 'Choose who takes each of their classes, then Make inactive. Everything they wrote stays.'], keywords: 'staff left inactive resign handover classes'),
+  HelpItem('staff_approvals', 'Office', 'Where do I approve things?', ['Open Approvals in the menu. The number next to it shows how many are waiting.', 'The Principal decides three things there: receipt cancellations, TC requests and data corrections (name, date of birth, parents’ names).', 'The office and IT also see password help and certificates still to give.', 'Leave requests are not here — the class teacher approves them on the Leave requests page.'], keywords: 'approve approvals password leave receipt cancel certificate tc correction', route: '/staff/approvals', button: 'Open Approvals'),
+  HelpItem('t-inactive', 'Setup', 'A teacher has left. What do I do?', ['School setup → Staff → open the teacher → switch off “Working here”.', 'Choose who takes each of their classes, then Make inactive. Everything they wrote stays.'], keywords: 'staff left inactive resign handover classes', needs: '/staff/users'),
   HelpItem('t-tour', 'Getting started', 'How do I see the app tour again?', ['Open Help at the bottom of the menu.', 'Tap “Take the tour again” at the top.'], keywords: 'tour guide intro walkthrough how to use new'),
   HelpItem('o-cert', 'Office', 'How do I print a TC, Study, Bonafide or No dues certificate?', ['Open Certificates → type the student’s name or admission number (past students are found too).', 'Tap the certificate. What the app knows is filled in; yellow boxes are for you to type in. Every box can be changed.', 'Tap Print / PDF. The certificate gets its own number (for example RCISKN/TC/2026-27/0001) and is kept, so it can be printed again exactly the same from “Issued recently”.', 'A No dues certificate can be printed only when no fees are due till today.'], keywords: 'tc transfer certificate study bonafide no dues certificate print issue reprint leaving', route: '/staff/certificates', button: 'Open Certificates'),
   HelpItem('s-idcards', 'Office', 'How do I print ID cards?', ['Open ID cards and pick a class, or All classes.', 'The "Not ready" list shows what is missing for each student (photo, blood group, parent phone, address, bus route).', 'Tap Print: the ready cards come on A4 at the real card size, fronts on one page and backs on the next. Print both sides, flip on long edge, actual size (100%).', 'For the card printer, tap Excel / photos pack.', 'When every student is ready, the page and the ID cards menu item glow gold.'], keywords: 'id card identity print vendor photo blood group', route: '/staff/id-cards', button: 'Open ID cards'),
+  // ---- Release H
+  HelpItem('o-correction', 'Office', 'How do I correct a student’s name or date of birth?', ['Open Students → the student → Edit details. Change what is needed and tap Save.', 'The name, date of birth, father’s name and mother’s name appear on certificates, so the Principal approves those first. Type why (for example “birth certificate seen”) and tap Send.', 'Everything else (address, phones, blood group…) is saved at once.', 'The student’s page shows “Waiting for the Principal” until it is decided. You get a notification either way.'], keywords: 'correct correction name spelling date of birth dob father mother change wrong', route: '/staff/students', button: 'Open Students'),
+  HelpItem('p-decide', 'Office', 'How do I approve a data correction, TC or receipt cancellation?', ['Open Approvals. Each card shows what is asked, who asked and why.', 'Tap Approve or Decline. On Decline you can add a line for the office.', 'An approved correction is saved in the student’s record and written in the activity log. An approved TC gets its number and the office prints it from Certificates.'], keywords: 'principal approve decline correction tc receipt cancel', route: '/staff/approvals', button: 'Open Approvals', needs: '/staff/desk'),
+  HelpItem('a-cancel', 'Office', 'I asked for a receipt to be cancelled. What happened?', ['Accounts: your Today page shows “Receipt cancellations you asked for” — waiting, cancelled or not approved, with the Principal’s note.', 'You also get a notification when it is decided.'], keywords: 'receipt cancel status accounts principal waiting', route: '/staff/fees', button: 'Open Fees & receipts'),
 ];
