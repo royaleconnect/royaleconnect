@@ -2,7 +2,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 import '../auth/session.dart';
 import '../core/data.dart';
 import '../core/theme.dart';
@@ -13,10 +12,11 @@ import '../widgets/royal_extras.dart' show GoldLoading;
 import '../core/cache.dart';
 import '../widgets/hub_tabs.dart';
 import '../widgets/r_refresh.dart';
+import '../core/errors.dart';
 
 /// Student Council — this year's council (photos, line by line), earlier councils as year tabs,
 /// and voting when the school opens the elections. One vote per post; nobody can see who voted for whom.
-String _msg(Object e) => e is PostgrestException ? e.message : e.toString().replaceFirst('Exception: ', '');
+String _msg(Object e) => friendlyError(e);
 
 /// Councils with their posts and members, newest first (families see published ones; staff see all).
 final councilTermsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
