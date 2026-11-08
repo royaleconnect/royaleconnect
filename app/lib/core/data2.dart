@@ -1,4 +1,7 @@
+import 'dart:async';
 import 'dart:math' as math;
+import 'package:flutter/widgets.dart' show AppLifecycleListener;
+import 'package:intl/intl.dart' show DateFormat;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../auth/session.dart';
@@ -113,22 +116,6 @@ final examsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((re
   return List<Map<String, dynamic>>.from(data);
 });
 
-final monthlyPlanProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, monthIso) async {
-  ref.cacheFor();
-  final e = await ref.watch(enrolmentProvider.future);
-  if (e == null) return [];
-  final data = await db.from('monthly_plan').select('topics,assessment,subject:subject_id(name)').eq('grade_id', e['section']['grade']['id']).eq('month', monthIso).not('published_at', 'is', null);
-  return List<Map<String, dynamic>>.from(data);
-});
-
-final worksheetsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
-  ref.cacheFor();
-  final e = await ref.watch(enrolmentProvider.future);
-  if (e == null) return [];
-  final data = await db.from('worksheet').select('id,kind,title,file_path,answer_key_path,answer_key_release_on,created_at,subject:subject_id(name),author:author_id(display_name)')
-      .or('section_id.eq.${e['section']['id']},grade_id.eq.${e['section']['grade']['id']}').order('created_at', ascending: false);
-  return List<Map<String, dynamic>>.from(data);
-});
 
 final starProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   ref.cacheFor();
@@ -220,25 +207,79 @@ final routeDetailProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((r
   return {...r, 'my_stop': t['stop']};
 });
 
-/// The running trip on the student's route, if any (polled every 10 s by the Bus screen).
-final liveTripProvider = StreamProvider.autoDispose<Map<String, dynamic>?>((ref) async* {
-  final t = await ref.watch(transportProvider.future);
-  if (t == null) { yield null; return; }
-  while (true) {
+/// '3:52 pm' — 12-hour times everywhere on the bus pages.
+String time12(DateTime d) => DateFormat('h:mm a').format(d.toLocal()).toLowerCase();
+String time12Iso(String? iso) => iso == null ? '' : time12(DateTime.parse(iso));
+
+/// True while the parent Bus page is on screen (set by the page itself). Fast polling happens only then.
+final busPageVisibleProvider = StateProvider<bool>((ref) => false);
+
+/// Everything the parent Bus page shows, from one server call (`bus_family`): the bus, this child's private pickup pin,
+/// the running trip with the time to the pin, today's driver and bus assistant, the last trip and the next trip.
+/// Refreshes every 3 s ONLY while a trip is running, the Bus page is visible and the app is in front; otherwise every 2 minutes.
+/// Stops completely when the Bus page is closed (nothing else watches it).
+final busFamilyProvider = StreamProvider.autoDispose<Map<String, dynamic>?>((ref) {
+  final s = ref.watch(sessionProvider).value?.active;
+  final ctrl = StreamController<Map<String, dynamic>?>();
+  if (s == null) { ctrl.add(null); ctrl.close(); return ctrl.stream; }
+  var alive = true, busy = false, front = true, again = false;
+  Timer? timer; Map<String, dynamic>? last; var got = false;
+  Future<void> tick() async {
+    if (!alive) return;
+    if (busy) { again = true; return; }
+    busy = true; timer?.cancel();
     try {
-      yield await db.from('trip').select('id,kind,started_at,status,last_lat,last_lng,last_fix_at,next_stop_seq').eq('route_id', t['route']['id']).eq('status', 'running').maybeSingle();
-    } catch (_) {/* a dropped network moment: keep the last position on screen and try again */}
-    await Future.delayed(const Duration(seconds: 3));   // the bus phone sends every second; parents refresh every 3 s and the marker glides between
+      final r = await db.rpc('bus_family', params: {'p_student': s.id});
+      last = r == null ? null : Map<String, dynamic>.from(r as Map); got = true;
+      if (alive) ctrl.add(last);
+    } catch (e) {
+      if (alive && !got) ctrl.addError(e);   // a dropped network moment later on: keep the last picture on screen
+    } finally { busy = false; }
+    if (!alive) return;
+    if (again) { again = false; tick(); return; }
+    final fast = last?['trip'] != null && front && ref.read(busPageVisibleProvider);
+    timer = Timer(fast ? const Duration(seconds: 3) : const Duration(minutes: 2), tick);
   }
+  final life = AppLifecycleListener(
+    onResume: () { front = true; tick(); },
+    onHide: () => front = false,
+    onPause: () => front = false,
+  );
+  ref.listen<bool>(busPageVisibleProvider, (_, v) { if (v) tick(); });
+  ref.onDispose(() { alive = false; timer?.cancel(); life.dispose(); ctrl.close(); });
+  tick();
+  return ctrl.stream;
 });
 
-/// When there is no trip running: the last trip of today, so the Bus page can say "Bus parked · last trip ended 4:10 pm".
-final lastTripProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
+/// Same provider under the name the Release H brief uses (the parent Bus page's live trip).
+final liveTripProvider = busFamilyProvider;
+
+/// One line for the Home "Your day" card: 'Bus 7 · pickup about 7:32 am' (null when the child is not on a bus).
+final busHomeLineProvider = FutureProvider.autoDispose<String?>((ref) async {
+  ref.cacheFor(const Duration(minutes: 30));
   final t = await ref.watch(transportProvider.future);
   if (t == null) return null;
-  final today = DateTime.now(); final start = DateTime(today.year, today.month, today.day).toUtc().toIso8601String();
-  return await db.from('trip').select('kind,ended_at').eq('route_id', t['route']['id']).neq('status', 'running').gte('started_at', start).order('ended_at', ascending: false).limit(1).maybeSingle();
+  final name = '${t['route']?['name'] ?? ''}';
+  final bus = RegExp(r'\d+').firstMatch(name)?.group(0) ?? name;
+  final at = await ref.watch(myPickupTimeProvider.future);
+  return 'Bus $bus${at == null ? '' : ' · pickup about $at'}';
 });
+
+/// The child's own pickup time in 12-hour format ('7:32 am'): learned from recent trips passing the pickup pin,
+/// else the stop time, else the bus start time. Null when the child is not on a bus. For the Home "Your day" card.
+final myPickupTimeProvider = FutureProvider.autoDispose<String?>((ref) async {
+  ref.cacheFor(const Duration(minutes: 30));
+  final s = ref.watch(sessionProvider).value?.active;
+  if (s == null) return null;
+  final t = await ref.watch(transportProvider.future);
+  if (t == null) return null;
+  try { return (await db.rpc('my_pickup_time', params: {'p_student': s.id})) as String?; } catch (_) { return null; }
+});
+
+/// Save this child's pickup point (the family, or the transport office on Check pins). Only that family, transport / office / IT
+/// and the crew of that bus can ever read it.
+Future<void> savePin(String studentId, double lat, double lng) =>
+    db.rpc('pin_set', params: {'p_student': studentId, 'p_lat': lat, 'p_lng': lng});
 
 final etaPrefProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final s = ref.watch(sessionProvider).value?.active;
@@ -248,21 +289,23 @@ final etaPrefProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) a
 
 Future<void> saveEtaPref(Map<String, dynamic> p) => db.from('eta_alert_pref').upsert(p);
 
-// crew side
-final crewRouteProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
+// ---------------------------------------------------------------- crew side (driver / bus assistant)
+/// Me, my usual bus, the running trip (with the children's pins — first names only), the school gate. One server call.
+final crewStateProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
   final s = ref.watch(sessionProvider).value;
   if (s == null || s.kind != 'crew') return null;
-  final staffId = s.crew?['staff_id'];
-  final q = db.from('route').select('id,name,bus_reg_no,route_stop(id,seq,name,lat,lng,morning_eta,afternoon_eta)').eq('active', true);
-  final r = staffId == null ? await q.limit(1).maybeSingle() : await q.or('driver_staff_id.eq.$staffId,conductor_staff_id.eq.$staffId').maybeSingle();
-  return r;
+  final r = await db.rpc('crew_state');
+  return r == null ? null : Map<String, dynamic>.from(r as Map);
 });
 
-final crewTripProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
-  final r = await ref.watch(crewRouteProvider.future);
-  if (r == null) return null;
-  return await db.from('trip').select('id,kind,started_at,next_stop_seq,tracker,last_lat,last_lng,last_fix_at,tracker_staff:tracker_staff(display_name)').eq('route_id', r['id']).eq('status', 'running').maybeSingle();
-});
+/// "Which bus today?" → {ok, bus, running, mine, message}
+Future<Map<String, dynamic>> checkBus(String bus) async => Map<String, dynamic>.from(await db.rpc('crew_check_bus', params: {'p_bus': bus}) as Map);
+
+/// Start the trip on that bus (morning / afternoon from the clock), or take over the bus that is already running.
+Future<String> crewStart(String bus, double? lat, double? lng, {bool takeOver = false}) async {
+  final r = await db.rpc('crew_start', params: {'p_bus': bus, 'p_device': await deviceId(), 'p_lat': lat, 'p_lng': lng, 'p_take_over': takeOver});
+  return (r as Map)['trip_id'] as String;
+}
 
 /// This phone's own id (made once, kept on the phone). The trip remembers which phone sends its location.
 String? _deviceId;
@@ -278,16 +321,13 @@ Future<String> deviceId() async {
   return _deviceId = id;
 }
 
-/// Start a trip (kind 'morning' | 'afternoon') from this phone. The server tells the families on this route.
-Future<String> startTrip(String routeId, String kind, String staffId) async =>
-    (await db.rpc('start_trip', params: {'p_route': routeId, 'p_kind': kind, 'p_device': await deviceId()})) as String;
-
+/// End a trip. Crew: the morning trip only at school (the server checks). Transport / office / IT: any trip, anywhere.
 Future<void> endTrip(String tripId) => db.rpc('end_trip', params: {'p_trip': tripId});
 
 /// This phone takes over sending the location (the other crew phone stops).
 Future<void> takeOverTrip(String tripId) async { await db.rpc('take_over_trip', params: {'p_trip': tripId, 'p_device': await deviceId()}); }
 
-/// One GPS position. The server updates the live position, keeps history every 10 s, and sends the stop alerts.
+/// One GPS position. The server updates the live position, keeps history every 10 s, and sends the alerts.
 /// Returns {running: false} when the trip has ended, {elsewhere: true} when another phone is sending.
 Future<Map<String, dynamic>> pushFix(String tripId, double lat, double lng, double? speed, double? acc) async {
   final r = await db.rpc('bus_fix', params: {'p_trip': tripId, 'p_lat': lat, 'p_lng': lng, 'p_speed': speed, 'p_acc': acc, 'p_device': await deviceId()});
@@ -300,12 +340,35 @@ Future<List<List<double>>> tripTrail(String tripId) async {
   return [for (final p in (r as List)) [(p[0] as num).toDouble(), (p[1] as num).toDouble()]];
 }
 
+// ---------------------------------------------------------------- staff side (transport in-charge / office / IT)
+/// Trips running now (Transport page). Refreshed every 15 s while the page is open.
+final busRunningProvider = StreamProvider.autoDispose<List<Map<String, dynamic>>>((ref) async* {
+  var alive = true; ref.onDispose(() => alive = false);
+  while (alive) {
+    try { yield List<Map<String, dynamic>>.from(await db.rpc('bus_running') as List); } catch (_) {}
+    await Future.delayed(const Duration(seconds: 15));
+  }
+});
+
+final busRoutesProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.cacheFor();
+  return List<Map<String, dynamic>>.from(await db.from('route').select('id,name,bus_reg_no').eq('active', true).order('name', ascending: true));
+});
+
+/// Check pins: the children of one bus with their pins.
+final pinsForRouteProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, routeId) async =>
+    List<Map<String, dynamic>>.from(await db.rpc('pins_for_route', params: {'p_route': routeId}) as List));
+
+// ---------------------------------------------------------------- map maths
 /// Straight-line distance in metres.
 double metresBetween(double lat1, double lng1, double lat2, double lng2) {
   double rad(double d) => d * math.pi / 180;
   final a = math.pow(math.sin(rad(lat2 - lat1) / 2), 2) + math.cos(rad(lat1)) * math.cos(rad(lat2)) * math.pow(math.sin(rad(lng2 - lng1) / 2), 2);
   return 6371000 * 2 * math.asin(math.min(1, math.sqrt(a)));
 }
+
+/// '600 m' / '2.4 km'
+String distText(num m) => m >= 1000 ? '${(m / 1000).toStringAsFixed(1)} km' : '${(m / 10).round() * 10} m';
 
 /// Stops in the order the bus visits them (morning: stop order; afternoon: reverse).
 List<Map<String, dynamic>> travelOrder(List<Map<String, dynamic>> stops, bool morning) {
@@ -317,7 +380,6 @@ List<Map<String, dynamic>> travelOrder(List<Map<String, dynamic>> stops, bool mo
 /// Roads are ~35% longer than a straight line; city school-bus speed ~18 km/h including stops.
 (double metres, int minutes) etaTo(double busLat, double busLng, List<Map<String, dynamic>> order, int fromIdx, int toIdx) {
   if (fromIdx < 0 || toIdx < fromIdx || toIdx >= order.length) return (0.0, 0);
-  // stops not yet pinned on the map are skipped
   var m = 0.0;
   var lat = busLat, lng = busLng;
   for (var i = fromIdx; i <= toIdx; i++) {
