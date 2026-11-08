@@ -13,10 +13,11 @@ import '../widgets/common.dart';
 import '../widgets/royal_extras.dart' show GoldLoading, PressScale;
 import '../widgets/royal_motion.dart';
 import 'academics_screens.dart' show AppPage;
+import '../core/errors.dart';
 
 /// Teachers' Day thank-you wall (family side). Open only in Teachers' Day week, 2–8 September (India time):
 /// one short note to each of the child's teachers, once a year. The teacher keeps the notes on her own wall.
-String _msg(Object e) => e is PostgrestException ? e.message : e.toString().replaceFirst('Exception: ', '');
+String _msg(Object e) => friendlyError(e);
 
 DateTime _nowIst() => DateTime.now().toUtc().add(const Duration(hours: 5, minutes: 30));
 /// True during Teachers' Day week (2–8 September, India time).
