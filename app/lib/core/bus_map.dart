@@ -10,6 +10,8 @@ import '../widgets/royal_extras.dart' show PulseRing;
 /// Map pictures are kept on the phone after the first look, so the same streets are not downloaded again.
 /// [stops] in the order the bus visits them; [nextIdx] = index of the next stop (null when not running / finished).
 /// The bus glides smoothly to each new position and the map follows it until the user moves the map.
+/// [pins] = children's pickup points (crew: first names; Check pins: green / amber), [home] = this family's own pickup point,
+/// [onTap] = tap the map to place a pin.
 class BusMap extends StatefulWidget {
   final List<Map<String, dynamic>> stops;
   final String? myStopId;
@@ -19,8 +21,11 @@ class BusMap extends StatefulWidget {
   final bool running;
   final Duration glide;
   final EdgeInsets padding;
+  final List<MapPin> pins;
+  final LatLng? home;
+  final void Function(LatLng point)? onTap;
   const BusMap({super.key, required this.stops, this.myStopId, this.busLat, this.busLng, this.trail = const [], this.nextIdx, this.running = false,
-      this.glide = const Duration(seconds: 3), this.padding = EdgeInsets.zero});
+      this.glide = const Duration(seconds: 3), this.padding = EdgeInsets.zero, this.pins = const [], this.home, this.onTap});
   @override
   State<BusMap> createState() => _BusMapState();
 }
@@ -40,6 +45,10 @@ class _BusMapState extends State<BusMap> with SingleTickerProviderStateMixin {
   @override
   void didUpdateWidget(BusMap old) {
     super.didUpdateWidget(old);
+    // the pins arrive after the map: show them all once
+    if (_shown == null && widget.busLat == null && old.pins.isEmpty && old.home == null && (widget.pins.isNotEmpty || widget.home != null)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _fitAll(); });
+    }
     if (widget.busLat == null) { _shown = _to = null; return; }
     final p = LatLng(widget.busLat!, widget.busLng!);
     if (_to == p) return;
@@ -60,7 +69,8 @@ class _BusMapState extends State<BusMap> with SingleTickerProviderStateMixin {
   LatLng? _ll(Map<String, dynamic> s) => s['lat'] == null || s['lng'] == null ? null : LatLng((s['lat'] as num).toDouble(), (s['lng'] as num).toDouble());
 
   void _fitAll() {
-    final pts = [for (final s in widget.stops) if (_ll(s) != null) _ll(s)!, if (_shown != null) _shown!];
+    final pts = [for (final s in widget.stops) if (_ll(s) != null) _ll(s)!, if (_shown != null) _shown!,
+      for (final p in widget.pins) LatLng(p.lat, p.lng), if (widget.home != null) widget.home!];
     if (pts.isEmpty || !_ready) return;
     try {
       if (pts.length == 1) { _mc.move(pts.first, 15); return; }
@@ -81,7 +91,8 @@ class _BusMapState extends State<BusMap> with SingleTickerProviderStateMixin {
       for (final (i, s) in stops.indexed) if ((!widget.running || next == null || i >= next) && _ll(s) != null) _ll(s)!,
     ];
     final trail = [for (final p in widget.trail) LatLng(p[0], p[1]), if (_shown != null && widget.trail.isNotEmpty) _shown!];
-    final start = _shown ?? stops.map(_ll).whereType<LatLng>().firstOrNull ?? const LatLng(13.0244, 77.6410);
+    final start = _shown ?? widget.home ?? stops.map(_ll).whereType<LatLng>().firstOrNull
+        ?? (widget.pins.isEmpty ? null : LatLng(widget.pins.first.lat, widget.pins.first.lng)) ?? const LatLng(13.0216, 77.6418);
 
     Widget stopDot(int i, Map<String, dynamic> s) {
       final mine = s['id'] == widget.myStopId;
@@ -102,6 +113,7 @@ class _BusMapState extends State<BusMap> with SingleTickerProviderStateMixin {
           initialCenter: start, initialZoom: 15, minZoom: 10, maxZoom: 18,
           onMapReady: () { _ready = true; if (_shown == null) _fitAll(); },
           onPositionChanged: (camera, hasGesture) { if (hasGesture && _follow) setState(() => _follow = false); },
+          onTap: widget.onTap == null ? null : (_, p) => widget.onTap!(p),
         ),
         children: [
           TileLayer(
@@ -115,6 +127,9 @@ class _BusMapState extends State<BusMap> with SingleTickerProviderStateMixin {
             if (trail.length > 1) Polyline(points: trail, color: Brand.crimson, strokeWidth: 6, borderColor: Colors.white, borderStrokeWidth: 1.5),
           ]),
           MarkerLayer(markers: [
+            for (final p in widget.pins) Marker(point: LatLng(p.lat, p.lng), width: 90, height: p.label == null ? 40 : 58, alignment: Alignment.topCenter,
+                child: _PinMark(pin: p)),
+            if (widget.home != null) Marker(point: widget.home!, width: 40, height: 46, alignment: Alignment.topCenter, child: const _HomeMark()),
             for (final (i, s) in stops.indexed) if (_ll(s) != null) Marker(point: _ll(s)!, width: s['id'] == widget.myStopId ? 34 : 18, height: s['id'] == widget.myStopId ? 34 : 18, child: stopDot(i, s)),
             if (_shown != null) Marker(point: _shown!, width: 52, height: 52, child: Container(
               decoration: BoxDecoration(color: Brand.green, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 3),
@@ -134,4 +149,37 @@ class _BusMapState extends State<BusMap> with SingleTickerProviderStateMixin {
       ])),
     ]);
   }
+}
+
+/// One child's pickup point on the map.
+class MapPin {
+  final double lat, lng;
+  final String? label;      // first name (crew) — never shown to other families
+  final Color color;
+  final bool selected;
+  const MapPin({required this.lat, required this.lng, this.label, this.color = Brand.crimsonDeep, this.selected = false});
+}
+
+class _PinMark extends StatelessWidget {
+  final MapPin pin;
+  const _PinMark({required this.pin});
+  @override
+  Widget build(BuildContext context) => Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.end, children: [
+    if (pin.label != null) Container(padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+        decoration: BoxDecoration(color: Colors.white.withValues(alpha: .9), borderRadius: BorderRadius.circular(6)),
+        child: Text(pin.label!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: pin.color))),
+    Icon(Icons.location_on_rounded, size: pin.selected ? 38 : 32, color: pin.color,
+        shadows: [Shadow(color: pin.selected ? Colors.black : Colors.black38, blurRadius: pin.selected ? 6 : 3)]),
+  ]);
+}
+
+/// This family's pickup point: a house in a crimson drop.
+class _HomeMark extends StatelessWidget {
+  const _HomeMark();
+  @override
+  Widget build(BuildContext context) => Stack(alignment: Alignment.topCenter, children: [
+    const Icon(Icons.location_on_rounded, size: 44, color: Brand.crimsonDeep, shadows: [Shadow(color: Colors.black38, blurRadius: 4)]),
+    Positioned(top: 8, child: Container(width: 20, height: 20, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+        child: const Icon(Icons.home_rounded, size: 15, color: Brand.crimsonDeep))),
+  ]);
 }
