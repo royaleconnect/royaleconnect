@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -320,7 +321,9 @@ class EmojiDrift extends StatefulWidget {
   final List<String> emojis; final DriftMode mode; final int count; final double size;
   final List<Color> confetti;     // optional coloured paper (e.g. tricolour)
   final bool snow; final double opacity;
-  const EmojiDrift({super.key, required this.emojis, this.mode = DriftMode.fall, this.count = 26, this.size = 30, this.confetti = const [], this.snow = false, this.opacity = 1});
+  /// keep everything in the left and right edges (14% each) so nothing floats over the page's buttons
+  final bool sides;
+  const EmojiDrift({super.key, required this.emojis, this.mode = DriftMode.fall, this.count = 26, this.size = 30, this.confetti = const [], this.snow = false, this.opacity = 1, this.sides = false});
   @override
   State<EmojiDrift> createState() => _EmojiDriftState();
 }
@@ -366,13 +369,15 @@ class _EmojiDriftState extends State<EmojiDrift> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     if (reduceMotion(context)) return const SizedBox.shrink();
-    return IgnorePointer(child: RepaintBoundary(child: CustomPaint(size: Size.infinite, painter: _DriftPainter(c, p, glyphs, widget.mode, widget.confetti, widget.snow, widget.opacity))));
+    return IgnorePointer(child: RepaintBoundary(child: CustomPaint(size: Size.infinite, painter: _DriftPainter(c, p, glyphs, widget.mode, widget.confetti, widget.snow, widget.opacity, widget.sides))));
   }
 }
 
 class _DriftPainter extends CustomPainter {
-  final Animation<double> a; final List<List<double>> p; final List<ui.Image> g; final DriftMode mode; final List<Color> confetti; final bool snow; final double opacity;
-  _DriftPainter(this.a, this.p, this.g, this.mode, this.confetti, this.snow, this.opacity) : super(repaint: a);
+  final Animation<double> a; final List<List<double>> p; final List<ui.Image> g; final DriftMode mode; final List<Color> confetti; final bool snow; final double opacity; final bool sides;
+  _DriftPainter(this.a, this.p, this.g, this.mode, this.confetti, this.snow, this.opacity, [this.sides = false]) : super(repaint: a);
+  /// where across the width a 0–1 value lands (only the outer edges when [sides])
+  double _x(double v, double w) => sides ? (v < .5 ? v * .28 : .86 + (v - .5) * .28) * w : v * w;
   late final Paint _img = Paint()..filterQuality = FilterQuality.medium..color = Colors.white.withValues(alpha: opacity);
   @override
   void paint(Canvas canvas, Size s) {
@@ -381,15 +386,15 @@ class _DriftPainter extends CustomPainter {
       final prog = (q[1] + t * q[2]) % 1;
       double x, y;
       switch (mode) {
-        case DriftMode.fall: x = q[0] * s.width + math.sin(t * .8 + q[3]) * 24; y = -60 + prog * (s.height + 120);
-        case DriftMode.rise: x = q[0] * s.width + math.sin(t * .7 + q[3]) * 20; y = s.height + 60 - prog * (s.height + 120);
-        case DriftMode.float: x = q[0] * s.width + math.sin(t * .4 + q[3]) * 30; y = q[1] * s.height + math.cos(t * .5 + q[3]) * 26;
+        case DriftMode.fall: x = _x(q[0], s.width) + math.sin(t * .8 + q[3]) * (sides ? 10 : 24); y = -60 + prog * (s.height + 120);
+        case DriftMode.rise: x = _x(q[0], s.width) + math.sin(t * .7 + q[3]) * (sides ? 10 : 20); y = s.height + 60 - prog * (s.height + 120);
+        case DriftMode.float: x = _x(q[0], s.width) + math.sin(t * .4 + q[3]) * (sides ? 12 : 30); y = q[1] * s.height + math.cos(t * .5 + q[3]) * 26;
         case DriftMode.walk: x = -80 + prog * (s.width + 160); y = s.height - 70 - (i % 3) * 46 - (math.sin(t * 8 + q[3]).abs() * 8);
       }
       // snow and confetti alongside the emoji
-      if (snow && i.isEven) { canvas.drawCircle(Offset(q[0] * s.width + math.sin(t + q[3]) * 30, ((q[4] + t * .05) % 1) * s.height), 2 + q[4] * 2, Paint()..color = Colors.white.withValues(alpha: .85)); }
+      if (snow && i.isEven) { canvas.drawCircle(Offset(_x(q[0], s.width) + math.sin(t + q[3]) * (sides ? 10 : 30), ((q[4] + t * .05) % 1) * s.height), 2 + q[4] * 2, Paint()..color = Colors.white.withValues(alpha: .85)); }
       if (confetti.isNotEmpty && i % 2 == 1) {
-        canvas.save(); canvas.translate(q[0] * s.width + math.cos(t + q[3]) * 40, ((q[1] + t * .07) % 1) * s.height); canvas.rotate(t * 2 + q[3]);
+        canvas.save(); canvas.translate(_x(q[0], s.width) + math.cos(t + q[3]) * (sides ? 12 : 40), ((q[1] + t * .07) % 1) * s.height); canvas.rotate(t * 2 + q[3]);
         canvas.drawRect(const Rect.fromLTWH(-5, -2.5, 10, 5), Paint()..color = confetti[q[5].toInt() % confetti.length]); canvas.restore();
         continue;
       }
@@ -412,126 +417,418 @@ class _DriftPainter extends CustomPainter {
 class Festival {
   final String key, greeting, line; final List<String> emojis; final DriftMode mode; final List<Color> colors; final List<Color> confetti; final bool snow;
   final String mark;   // the big symbol on the banner
-  const Festival(this.key, this.greeting, this.line, this.mark, this.emojis, this.mode, this.colors, {this.confetti = const [], this.snow = false});
+  /// days shown before / after the festival day; a minor day gives way when a main festival is on at the same time
+  final int before, after; final bool minor;
+  /// 'MM-DD' for a festival on the same date every year, and/or exact dates ('yyyy-MM-dd') for moving festivals
+  final String? everyYear; final List<String> dates;
+  const Festival(this.key, this.greeting, this.line, this.mark, this.emojis, this.mode, this.colors,
+      {this.confetti = const [], this.snow = false, this.before = 1, this.after = 2, this.minor = false, this.everyYear, this.dates = const []});
+
+  static Color _c(dynamic v) {
+    final h = '$v'.replaceFirst('#', '');
+    return Color(int.tryParse(h.length == 6 ? 'FF$h' : h, radix: 16) ?? 0xFF7E0A10);
+  }
+  static Festival? fromJson(dynamic j) {
+    if (j is! Map || j['key'] == null) return null;
+    List<String> strs(dynamic v) => [for (final x in (v is List ? v : const [])) '$x'];
+    final cols = [for (final c in (j['colors'] is List ? j['colors'] as List : const [])) _c(c)];
+    return Festival('${j['key']}', '${j['greeting'] ?? ''}', '${j['line'] ?? ''}', '${j['mark'] ?? '✨'}', strs(j['emojis']),
+        DriftMode.values.firstWhere((m) => m.name == j['mode'], orElse: () => DriftMode.fall),
+        cols.length >= 2 ? cols : const [Color(0xFFB5121A), Color(0xFF7E0A10)],
+        confetti: [for (final c in (j['confetti'] is List ? j['confetti'] as List : const [])) _c(c)],
+        snow: j['snow'] == true, before: (j['before'] as num?)?.toInt() ?? 1, after: (j['after'] as num?)?.toInt() ?? 2, minor: j['minor'] == true,
+        everyYear: j['every_year'] as String?, dates: strs(j['dates']));
+  }
+
+  /// This festival's days around [year] (its fixed date and any exact dates).
+  List<DateTime> daysNear(int year) => [
+        if (everyYear != null && everyYear!.length == 5) for (final y in [year - 1, year, year + 1])
+          DateTime(y, int.tryParse(everyYear!.substring(0, 2)) ?? 1, int.tryParse(everyYear!.substring(3)) ?? 1),
+        for (final d in dates) if (DateTime.tryParse(d) != null) DateTime.parse(d),
+      ];
 }
 
-const _tricolour = [Color(0xFFFF9933), Colors.white, Color(0xFF138808)];
-
-const festivals = <Festival>[
-  Festival('halloween', 'Happy Halloween!', 'Spooky fun from all of us at Royale Concorde', '🎃', ['🎃', '🦇', '👻', '🎃', '🍬'], DriftMode.fall, [Color(0xFFFF7A00), Color(0xFF3A1A00)]),
-  Festival('diwali', 'Happy Diwali!', 'May the festival of lights fill your home with joy', '🪔', ['🪔', '✨', '🪔', '🎆', '✨'], DriftMode.rise, [Color(0xFFFFB300), Color(0xFF7A1F00)]),
-  Festival('dussehra', 'Happy Dussehra!', 'May goodness always win', '🏹', ['🌼', '🏹', '🌼', '✨'], DriftMode.fall, [Color(0xFFFF8F00), Color(0xFF8E1B0A)]),
-  Festival('eid', 'Eid Mubarak!', 'Wishing you peace, joy and blessings', '🌙', ['🌙', '⭐', '✨', '⭐'], DriftMode.float, [Color(0xFF0F5E4B), Color(0xFF062A24)]),
-  Festival('bakrid', 'Eid al-Adha Mubarak!', 'Wishing you and your family peace and blessings', '🌙', ['🐑', '🐑', '🐑'], DriftMode.walk, [Color(0xFF0F5E4B), Color(0xFF062A24)]),
-  Festival('christmas', 'Merry Christmas!', 'Warm wishes for a joyful Christmas', '🎄', ['🎄', '🎁', '❄️', '⭐'], DriftMode.fall, [Color(0xFF0E6B3A), Color(0xFF7E0A10)], snow: true),
-  Festival('republic', 'Happy Republic Day!', 'Proud to be Indian', '🇮🇳', ['🇮🇳'], DriftMode.fall, [Color(0xFFFF9933), Color(0xFF138808)], confetti: _tricolour),
-  Festival('independence', 'Happy Independence Day!', 'Freedom in the mind, faith in the words, pride in our souls', '🇮🇳', ['🇮🇳'], DriftMode.fall, [Color(0xFFFF9933), Color(0xFF138808)], confetti: _tricolour),
-  Festival('gandhi', 'Gandhi Jayanti', 'Truth · Non-violence · Simplicity', '👓', ['🕊️', '👓', '🕊️'], DriftMode.float, [Color(0xFF6D6D6D), Color(0xFF2B2B2B)]),
-  Festival('teachers', "Happy Teachers' Day!", 'Thank you, teachers, for everything you do', '🍎', ['❤️', '💐', '📚', '🍎', '💖'], DriftMode.rise, [Color(0xFFD81B60), Color(0xFF6A0F3A)]),
-  Festival('children', "Happy Children's Day!", 'Keep shining, keep smiling!', '🎈', ['🎈', '🌹', '🎉', '⭐', '🎈'], DriftMode.rise, [Color(0xFF7B2FF7), Color(0xFF2E0F6B)]),
-];
-
-/// Festival days. Fixed dates every year, plus the moving festivals (from the school-holiday calendars; Eid dates depend on the moon,
-/// and the celebration lasts a week, so a day's difference does not matter).
-List<(String, DateTime)> _festivalDays(int y) => [
-      ('republic', DateTime(y, 1, 26)), ('independence', DateTime(y, 8, 15)), ('teachers', DateTime(y, 9, 5)), ('gandhi', DateTime(y, 10, 2)),
-      ('halloween', DateTime(y, 10, 31)), ('children', DateTime(y, 11, 14)), ('christmas', DateTime(y, 12, 25)),
-      ...?{
-        2026: [('dussehra', DateTime(2026, 10, 20)), ('diwali', DateTime(2026, 11, 8))],
-        2027: [('eid', DateTime(2027, 3, 10)), ('bakrid', DateTime(2027, 5, 17)), ('dussehra', DateTime(2027, 10, 9)), ('diwali', DateTime(2027, 10, 29))],
-        2028: [('eid', DateTime(2028, 2, 27)), ('bakrid', DateTime(2028, 5, 6)), ('dussehra', DateTime(2028, 9, 27)), ('diwali', DateTime(2028, 10, 17))],
-      }[y],
-    ];
-
-/// How many days (before, after) its day each festival shows — the big ones about a week and a half, like Diwali.
-/// 2026: Dussehra 16–24 Oct · Halloween 30 Oct–2 Nov · Diwali 4–12 Nov · Children's Day 13–16 Nov · Christmas 21–29 Dec.
+/// The festivals, their dates and greetings. IT can change them without an app update: school setting 'festivals_json'
+/// holds a list like this one (empty = this built-in list). 'every_year' is 'MM-DD'; 'dates' are the moving festivals'
+/// days; 'before' / 'after' are how many days the greeting shows around the day; 'minor' days give way to a main one.
 /// Eid and Bakrid start 3 days early because the exact day depends on the moon.
-const _window = {
-  'diwali': (4, 4), 'dussehra': (4, 4), 'christmas': (4, 4), 'eid': (3, 4), 'bakrid': (3, 4),
-  'republic': (2, 2), 'independence': (2, 2),
-  'teachers': (1, 2), 'gandhi': (1, 2), 'children': (1, 2), 'halloween': (1, 2),
-};
-/// Small days that always give way when a main festival is on at the same time (Diwali at the end of October, Dussehra near 2 October).
-const _minor = {'halloween', 'gandhi'};
+const defaultFestivalsJson = r"""
+[
+ {
+  "key": "halloween",
+  "greeting": "Happy Halloween!",
+  "line": "Spooky fun from all of us at Royale Concorde",
+  "mark": "🎃",
+  "emojis": [
+   "🎃",
+   "🦇",
+   "👻",
+   "🎃",
+   "🍬"
+  ],
+  "mode": "fall",
+  "colors": [
+   "#FF7A00",
+   "#3A1A00"
+  ],
+  "before": 1,
+  "after": 2,
+  "minor": true,
+  "every_year": "10-31"
+ },
+ {
+  "key": "diwali",
+  "greeting": "Happy Diwali!",
+  "line": "May the festival of lights fill your home with joy",
+  "mark": "🪔",
+  "emojis": [
+   "🪔",
+   "✨",
+   "🪔",
+   "🎆",
+   "✨"
+  ],
+  "mode": "rise",
+  "colors": [
+   "#FFB300",
+   "#7A1F00"
+  ],
+  "before": 4,
+  "after": 4,
+  "dates": [
+   "2026-11-08",
+   "2027-10-29",
+   "2028-10-17"
+  ]
+ },
+ {
+  "key": "dussehra",
+  "greeting": "Happy Dussehra!",
+  "line": "May goodness always win",
+  "mark": "🏹",
+  "emojis": [
+   "🌼",
+   "🏹",
+   "🌼",
+   "✨"
+  ],
+  "mode": "fall",
+  "colors": [
+   "#FF8F00",
+   "#8E1B0A"
+  ],
+  "before": 4,
+  "after": 4,
+  "dates": [
+   "2026-10-20",
+   "2027-10-09",
+   "2028-09-27"
+  ]
+ },
+ {
+  "key": "eid",
+  "greeting": "Eid Mubarak!",
+  "line": "Wishing you peace, joy and blessings",
+  "mark": "🌙",
+  "emojis": [
+   "🌙",
+   "⭐",
+   "✨",
+   "⭐"
+  ],
+  "mode": "float",
+  "colors": [
+   "#0F5E4B",
+   "#062A24"
+  ],
+  "before": 3,
+  "after": 4,
+  "dates": [
+   "2027-03-10",
+   "2028-02-27"
+  ]
+ },
+ {
+  "key": "bakrid",
+  "greeting": "Eid al-Adha Mubarak!",
+  "line": "Wishing you and your family peace and blessings",
+  "mark": "🌙",
+  "emojis": [
+   "🐑",
+   "🐑",
+   "🐑"
+  ],
+  "mode": "walk",
+  "colors": [
+   "#0F5E4B",
+   "#062A24"
+  ],
+  "before": 3,
+  "after": 4,
+  "dates": [
+   "2027-05-17",
+   "2028-05-06"
+  ]
+ },
+ {
+  "key": "christmas",
+  "greeting": "Merry Christmas!",
+  "line": "Warm wishes for a joyful Christmas",
+  "mark": "🎄",
+  "emojis": [
+   "🎄",
+   "🎁",
+   "❄️",
+   "⭐"
+  ],
+  "mode": "fall",
+  "colors": [
+   "#0E6B3A",
+   "#7E0A10"
+  ],
+  "snow": true,
+  "before": 4,
+  "after": 4,
+  "every_year": "12-25"
+ },
+ {
+  "key": "republic",
+  "greeting": "Happy Republic Day!",
+  "line": "Proud to be Indian",
+  "mark": "🇮🇳",
+  "emojis": [
+   "🇮🇳"
+  ],
+  "mode": "fall",
+  "colors": [
+   "#FF9933",
+   "#138808"
+  ],
+  "confetti": [
+   "#FF9933",
+   "#FFFFFF",
+   "#138808"
+  ],
+  "before": 2,
+  "after": 2,
+  "every_year": "01-26"
+ },
+ {
+  "key": "independence",
+  "greeting": "Happy Independence Day!",
+  "line": "Freedom in the mind, faith in the words, pride in our souls",
+  "mark": "🇮🇳",
+  "emojis": [
+   "🇮🇳"
+  ],
+  "mode": "fall",
+  "colors": [
+   "#FF9933",
+   "#138808"
+  ],
+  "confetti": [
+   "#FF9933",
+   "#FFFFFF",
+   "#138808"
+  ],
+  "before": 2,
+  "after": 2,
+  "every_year": "08-15"
+ },
+ {
+  "key": "gandhi",
+  "greeting": "Gandhi Jayanti",
+  "line": "Truth · Non-violence · Simplicity",
+  "mark": "👓",
+  "emojis": [
+   "🕊️",
+   "👓",
+   "🕊️"
+  ],
+  "mode": "float",
+  "colors": [
+   "#6D6D6D",
+   "#2B2B2B"
+  ],
+  "before": 1,
+  "after": 2,
+  "minor": true,
+  "every_year": "10-02"
+ },
+ {
+  "key": "teachers",
+  "greeting": "Happy Teachers' Day!",
+  "line": "Thank you, teachers, for everything you do",
+  "mark": "🍎",
+  "emojis": [
+   "❤️",
+   "💐",
+   "📚",
+   "🍎",
+   "💖"
+  ],
+  "mode": "rise",
+  "colors": [
+   "#D81B60",
+   "#6A0F3A"
+  ],
+  "before": 1,
+  "after": 2,
+  "every_year": "09-05"
+ },
+ {
+  "key": "children",
+  "greeting": "Happy Children's Day!",
+  "line": "Keep shining, keep smiling!",
+  "mark": "🎈",
+  "emojis": [
+   "🎈",
+   "🌹",
+   "🎉",
+   "⭐",
+   "🎈"
+  ],
+  "mode": "rise",
+  "colors": [
+   "#7B2FF7",
+   "#2E0F6B"
+  ],
+  "before": 1,
+  "after": 2,
+  "every_year": "11-14"
+ }
+]
+""";
 
-/// The festival being celebrated today (when two overlap, the later festival wins).
-Festival? festivalToday([DateTime? now]) {
+List<Festival> _parseFestivals(String raw) {
+  try {
+    final j = jsonDecode(raw);
+    final list = j is Map ? j['festivals'] : j;
+    if (list is! List) return const [];
+    return [for (final x in list) Festival.fromJson(x)].whereType<Festival>().toList();
+  } catch (_) {
+    return const [];
+  }
+}
+
+List<Festival>? _defaultFestivals;
+/// The festival list in use: the school's own (school setting 'festivals_json') when it is filled in and readable,
+/// otherwise the built-in list.
+List<Festival> festivalsFrom(Map<String, String>? settings) {
+  final own = (settings?['festivals_json'] ?? '').trim();
+  if (own.isNotEmpty) {
+    final l = _parseFestivals(own);
+    if (l.isNotEmpty) return l;
+  }
+  return _defaultFestivals ??= _parseFestivals(defaultFestivalsJson);
+}
+
+/// The festival being celebrated today (when two overlap, the later festival wins; a minor day always gives way).
+Festival? festivalToday([Map<String, String>? settings, DateTime? now]) {
   final d = now ?? DateTime.now();
   final today = DateTime(d.year, d.month, d.day);
-  (String, DateTime)? best;
-  for (final f in [..._festivalDays(d.year + 1), ..._festivalDays(d.year), ..._festivalDays(d.year - 1)]) {
-    final (before, after) = _window[f.$1] ?? (1, 2);
-    final diff = today.difference(f.$2).inDays;
-    if (diff < -before || diff > after) continue;
-    final minor = _minor.contains(f.$1), bestMinor = best != null && _minor.contains(best.$1);
-    if (best == null || (bestMinor && !minor) || (minor == bestMinor && f.$2.isAfter(best.$2))) best = f;
+  (Festival, DateTime)? best;
+  for (final f in festivalsFrom(settings)) {
+    for (final day in f.daysNear(d.year)) {
+      final diff = today.difference(day).inDays;
+      if (diff < -f.before || diff > f.after) continue;
+      final bestMinor = best != null && best.$1.minor;
+      if (best == null || (bestMinor && !f.minor) || (f.minor == bestMinor && day.isAfter(best.$2))) best = (f, day);
+    }
   }
-  if (best == null) return null;
-  return festivals.firstWhere((f) => f.key == best!.$1);
+  return best?.$1;
 }
 
-/// The festive banner on Home (families) and Today (all staff), during the festival's days.
+/// Tapping the festival banner plays the celebration again.
+final festivalReplay = ValueNotifier<int>(0);
+
+/// The festive banner on Home (families) and Today (all staff), all through the festival's days, with a soft glow.
+/// Tap it to see the celebration again.
 class FestiveBanner extends ConsumerWidget {
   const FestiveBanner({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final fest = featureOn(ref.watch(appSettingsProvider).value, 'festivals') ? festivalToday() : null;
+    final settings = ref.watch(appSettingsProvider).value;
+    final fest = featureOn(settings, 'festivals') ? festivalToday(settings) : null;
     if (fest == null) return const SizedBox.shrink();
-    return Padding(padding: const EdgeInsets.only(bottom: 14), child: Container(
-      height: 92, clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: fest.colors),
-          boxShadow: [BoxShadow(color: fest.colors.first.withValues(alpha: .35), blurRadius: 18, offset: const Offset(0, 6))]),
-      child: Stack(children: [
-        Positioned.fill(child: EmojiDrift(emojis: fest.emojis, mode: fest.mode == DriftMode.walk ? DriftMode.walk : DriftMode.float, count: 8, size: 18, confetti: fest.confetti, snow: fest.snow)),
-        ShineSweep(delay: const Duration(milliseconds: 800), every: const Duration(milliseconds: 5000), shine: const Color(0x44FFFFFF), child: Padding(padding: const EdgeInsets.symmetric(horizontal: 18), child: Row(children: [
-          _Bob(child: Text(fest.mark, style: const TextStyle(fontSize: 44))),
+    return Padding(padding: const EdgeInsets.only(bottom: 14), child: GestureDetector(
+      onTap: () => festivalReplay.value++,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 88), clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: fest.colors),
+            border: Border.all(color: const Color(0xFFE8C97A).withValues(alpha: .55)),
+            boxShadow: [BoxShadow(color: fest.colors.first.withValues(alpha: .45), blurRadius: 24, spreadRadius: 1, offset: const Offset(0, 6))]),
+        child: ShineSweep(delay: const Duration(milliseconds: 800), shine: const Color(0x44FFFFFF), child: Padding(padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10), child: Row(children: [
+          Text(fest.mark, style: TextStyle(fontSize: 40, shadows: [Shadow(color: const Color(0xFFFFE08A).withValues(alpha: .7), blurRadius: 18)])),
           const SizedBox(width: 14),
           Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(fest.greeting, style: GoogleFonts.greatVibes(fontSize: 30, color: Colors.white, height: 1.1, shadows: const [Shadow(color: Colors.black38, blurRadius: 6)])),
+            FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(fest.greeting, maxLines: 1, style: GoogleFonts.greatVibes(fontSize: 30, color: Colors.white, height: 1.1, shadows: const [Shadow(color: Colors.black38, blurRadius: 6)]))),
             Text(fest.line, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withValues(alpha: .92), fontSize: 13, fontWeight: FontWeight.w600)),
           ])),
         ]))),
-      ]),
+      ),
     ));
   }
 }
 
-/// The festival's animation over the whole page (Home / Today), all the time while the page is open during the
-/// festival week. Touches pass straight through to the page.
-class FestiveSky extends ConsumerWidget {
+/// The festival's celebration over the page (Home / Today): for the first 15 seconds after the app is opened (once a
+/// day), then it fades away gently. At most 8 floating items, kept to the two sides so they never sit over buttons;
+/// touches pass straight through. Tapping the banner plays it again. With "reduce motion" only the banner shows.
+class FestiveSky extends ConsumerStatefulWidget {
   final Widget child;
   const FestiveSky({super.key, required this.child});
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final f = featureOn(ref.watch(appSettingsProvider).value, 'festivals') ? festivalToday() : null;
-    if (f == null || liteMotion(context)) return child;     // the festive banner still shows
-    final phone = MediaQuery.sizeOf(context).width < 600;   // on phones: fewer emoji, a little see-through
+  ConsumerState<FestiveSky> createState() => _FestiveSkyState();
+}
+
+class _FestiveSkyState extends ConsumerState<FestiveSky> {
+  bool _on = false, _mounted = false;   // _on: fully visible · _mounted: still in the tree (while it fades out)
+  Timer? _end, _gone;
+  String? _checkedFor;
+
+  @override
+  void initState() { super.initState(); festivalReplay.addListener(_play); }
+  @override
+  void dispose() { festivalReplay.removeListener(_play); _end?.cancel(); _gone?.cancel(); super.dispose(); }
+
+  /// once a day per festival on this device
+  Future<void> _maybeStart(Festival f) async {
+    final now = DateTime.now();
+    final key = 'rc_fest_${f.key}_${now.year}-${now.month}-${now.day}';
+    if (_checkedFor == key) return;
+    _checkedFor = key;
+    final p = await SharedPreferences.getInstance();
+    if (p.getBool(key) == true) return;
+    await p.setBool(key, true);
+    _play();
+  }
+
+  void _play() {
+    if (!mounted) return;
+    _end?.cancel(); _gone?.cancel();
+    setState(() { _on = true; _mounted = true; });
+    _end = Timer(const Duration(seconds: 15), () { if (mounted) setState(() => _on = false); });
+    _gone = Timer(const Duration(milliseconds: 16800), () { if (mounted) setState(() => _mounted = false); });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = ref.watch(appSettingsProvider).value;
+    final f = featureOn(settings, 'festivals') ? festivalToday(settings) : null;
+    if (f == null || liteMotion(context)) return widget.child;     // the festive banner still shows
+    _maybeStart(f);
+    if (!_mounted) return widget.child;
+    final phone = MediaQuery.sizeOf(context).width < 600;
     return Stack(children: [
-      child,
-      Positioned.fill(child: IgnorePointer(child: Stack(children: [
-        Positioned.fill(child: EmojiDrift(emojis: f.emojis, mode: f.mode, count: f.mode == DriftMode.walk ? (phone ? 5 : 8) : (phone ? 9 : 16), size: f.mode == DriftMode.walk ? (phone ? 32 : 40) : (phone ? 24 : 30), confetti: f.confetti, snow: f.snow, opacity: phone ? .6 : .85)),
-        if (f.key == 'diwali') const Positioned(left: 0, right: 0, bottom: 0, height: 70, child: _DiyaRow()),
-        if (f.key == 'eid' || f.key == 'bakrid') Positioned(right: 24, top: 70, child: Text('🌙', style: TextStyle(fontSize: 64, shadows: [Shadow(color: Colors.amber.withValues(alpha: .7), blurRadius: 30)]))),
-      ]))),
+      widget.child,
+      Positioned.fill(child: IgnorePointer(child: AnimatedOpacity(opacity: _on ? 1 : 0, duration: const Duration(milliseconds: 1600), curve: Curves.easeOut, child: Stack(children: [
+        Positioned.fill(child: EmojiDrift(emojis: f.emojis, mode: f.mode == DriftMode.walk ? DriftMode.float : f.mode, count: phone ? 6 : 8, size: phone ? 24 : 30,
+            confetti: f.confetti, snow: f.snow, opacity: phone ? .7 : .85, sides: true)),
+        if (f.key == 'diwali') const Positioned(left: 0, right: 0, bottom: 0, height: 64, child: _DiyaRow()),
+        if (f.key == 'eid' || f.key == 'bakrid') Positioned(right: 18, top: 70, child: Text('🌙', style: TextStyle(fontSize: 54, shadows: [Shadow(color: Colors.amber.withValues(alpha: .7), blurRadius: 30)]))),
+      ])))),
     ]);
   }
-}
-
-class _Bob extends StatefulWidget {
-  final Widget child; const _Bob({required this.child});
-  @override
-  State<_Bob> createState() => _BobState();
-}
-
-class _BobState extends State<_Bob> with SingleTickerProviderStateMixin {
-  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1800));
-  @override
-  void didChangeDependencies() { super.didChangeDependencies(); loopWhileVisible(context, c, reverse: true); }
-  @override
-  void dispose() { c.dispose(); super.dispose(); }
-  @override
-  Widget build(BuildContext context) => RepaintBoundary(child: AnimatedBuilder(animation: c, child: widget.child,
-      builder: (_, child) => Transform.translate(offset: Offset(0, -4 * Curves.easeInOut.transform(c.value)), child: Transform.rotate(angle: (c.value - .5) * .12, child: child))));
 }
 
 /// A row of flickering diyas along the bottom (Diwali).
@@ -549,10 +846,10 @@ class _DiyaRowState extends State<_DiyaRow> with SingleTickerProviderStateMixin 
   void dispose() { c.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) => RepaintBoundary(child: AnimatedBuilder(animation: c, builder: (_, __) => LayoutBuilder(builder: (_, b) {
-        final n = (b.maxWidth / 70).floor().clamp(4, 24);
+        final n = (b.maxWidth / 80).floor().clamp(4, 14);
         return Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-          for (var i = 0; i < n; i++) Transform.scale(scale: .92 + .1 * math.sin(c.value * 6.28 * 2 + i), child: Text('🪔', style: TextStyle(fontSize: 34,
-              shadows: [Shadow(color: const Color(0xFFFFB300).withValues(alpha: .6 + .3 * math.sin(c.value * 6.28 * 3 + i * 1.7)), blurRadius: 22)]))),
+          for (var i = 0; i < n; i++) Transform.scale(scale: .92 + .1 * math.sin(c.value * 6.28 * 2 + i), child: Text('🪔', style: TextStyle(fontSize: 30,
+              shadows: [Shadow(color: const Color(0xFFFFB300).withValues(alpha: .6 + .3 * math.sin(c.value * 6.28 * 3 + i * 1.7)), blurRadius: 18)]))),
         ]);
       })));
 }
