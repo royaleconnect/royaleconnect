@@ -6,6 +6,7 @@ import '../core/data3.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
 import '../widgets/royal_motion.dart' show ConfettiBurst;
+import '../core/errors.dart';
 
 /// Asked once, at the family's first sign-in (India's Digital Personal Data Protection law).
 class ConsentScreen extends ConsumerStatefulWidget {
@@ -23,7 +24,7 @@ class _ConsentScreenState extends ConsumerState<ConsentScreen> {
       await db.rpc('give_consent');
       ref.invalidate(consentGivenProvider);
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not save. Please check the internet and try again.\n$e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(friendlyError(e))));
       if (mounted) setState(() => busy = false);
     }
   }
@@ -107,4 +108,3 @@ class BirthdayCard extends StatelessWidget {
     ]),
   );
 }
-
