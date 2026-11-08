@@ -6,7 +6,6 @@ import '../auth/session.dart';
 import '../core/data.dart';
 import '../core/data2.dart';
 import '../core/data3.dart';
-import 'consent_screen.dart' show BirthdayCard;
 import '../core/theme.dart';
 import '../widgets/common.dart';
 import '../widgets/royal_motion.dart';
@@ -14,83 +13,84 @@ import 'desk_screen.dart' show DeskHomeCard;
 import '../widgets/royal_extras.dart';
 import '../widgets/hub_tabs.dart';
 import 'attendance_screen.dart' show StreakCard, attendanceSummaryProvider;
-import 'my_list.dart' show MyListHomeSummary, myListProvider;
+import 'family_today.dart';
+import 'my_list.dart' show MyListHomeSummary, myListProvider, diaryTabProvider;
+import 'notice_extras.dart' show noticeExtrasProvider;
 import 'thanks_screen.dart' show ThanksHomeBanner;
 import 'year_review_screen.dart' show YearReviewHomeCard;
 import '../widgets/r_refresh.dart';
 import '../widgets/guided_tour.dart' show TourTarget;
 import 'now_next.dart';
 
+/// The family Home. One "Today · needs you" card holds everything that needs the family (fee to pay, homework for the
+/// next school day, new notices); the rest is calm: festival banner, Principal's Desk, My list, the bus line, the tiles.
+/// Phones: one column · tablets (600–959 px): two columns · laptops (960 px+): the side menu does the navigating.
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
+
+  Future<void> _refresh(WidgetRef ref) async {
+    for (final p in <ProviderOrFamily>[calendarProvider, feesProvider, noticesProvider, noticeExtrasProvider, unreadMessagesProvider, myListProvider, latestDiaryProvider, homeworkForProvider, transportProvider, enrolmentProvider]) {
+      ref.invalidate(p);
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ref.watch(sessionProvider).value!;
     final st = s.active!;
-    final fees = ref.watch(feesProvider);
-    final notices = ref.watch(noticesProvider);
-    final unread = ref.watch(unreadMessagesProvider).value ?? 0;
-    final transport = ref.watch(transportProvider).value;
-    final calendar = ref.watch(calendarProvider).value ?? const [];
-    final enrol = ref.watch(enrolmentProvider).value;
-    final gradeCode = enrol?['section']?['grade']?['code'] as String?;
-    // the class as it is today (after a move-up the saved sign-in still has the old one)
-    final cls = gradeCode == null ? st.cls : (shownSection(enrol?['section']) == null ? '$gradeCode · section to be announced' : '$gradeCode-${shownSection(enrol?['section'])}');
     final settings = ref.watch(appSettingsProvider).value;
-    bool on(String k) => featureOn(settings, k);
-    final birthday = isBirthday(ref.watch(profileProvider).value?['dob'] as String?);
-    final cs = Theme.of(context).colorScheme;
-    final t = Theme.of(context).textTheme;
+    final cls = classNow(ref, st);
+    final width = MediaQuery.sizeOf(context).width;
     final now = DateTime.now();
     final greet = now.hour < 12 ? 'Good morning' : now.hour < 17 ? 'Good afternoon' : 'Good evening';
-    final unreadNotices = notices.value?.where((n) => !n.read).length ?? 0;
+    final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
 
-    // Laptop / large tablet: the side menu (parent_layout.dart) does the navigating; Home shows four cards at once.
-    if (MediaQuery.sizeOf(context).width >= 960) {
+    // ---------------------------------------------------------------- laptop / large tablet
+    if (width >= 960) {
+      final notices = familyVisibleNotices(ref);
       final diary = ref.watch(latestDiaryProvider);
-      Widget card(String title, String link, VoidCallback go, Widget child) => _CardShell(lift: false, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Widget card(String title, String link, VoidCallback go, Widget child) => _CardShell(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16))), TextButton(onPressed: go, child: Text(link))]),
         const SizedBox(height: 4), child]));
       return Scaffold(body: FestiveSky(child: RRefresh(
-        onRefresh: () async { ref.invalidate(calendarProvider); ref.invalidate(feesProvider); ref.invalidate(noticesProvider); ref.invalidate(latestDiaryProvider); },
+        onRefresh: () => _refresh(ref),
         child: ListView(padding: const EdgeInsets.fromLTRB(34, 28, 34, 40), children: [
           Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(DateFormat('EEEE, d MMMM').format(now), style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
-              Row(children: [Text(greet, style: t.headlineMedium), const SizedBox(width: 10), const TimeOfDayIcon(size: 34)]),
+              Row(children: [Flexible(child: Text(greet, style: t.headlineMedium)), const SizedBox(width: 10), const TimeOfDayIcon(size: 34)]),
             ])),
-            Text('${st.fullName} · $cls', style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w700)),
+            Flexible(child: Text('${st.fullName} · $cls', textAlign: TextAlign.right, style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w700))),
           ]),
           const SizedBox(height: 18),
-          if (birthday && on('birthdays')) BirthdayCard(st.fullName),
+          const BirthdayHomeCard(),
           const FestiveBanner(),
-          const NowNextLine(), const ExamCountdownChip(),
-          const FadeRise(delayMs: 150, child: DeskHomeCard()),
+          FadeRise(delayMs: 120, child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Expanded(flex: 5, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              TourTarget('f-needs', child: TodayNeedsCard()),
+              NowNextLine(), ExamCountdownChip(),
+              MyListHomeSummary(),
+            ])),
+            const SizedBox(width: 18),
+            const Expanded(flex: 4, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              HomeBusLine(),
+              TourTarget('f-streak', child: HomeStreak()),
+              DeskHomeCard(),
+            ])),
+          ])),
           const ThanksHomeBanner(),
           const YearReviewHomeCard(),
-          FadeRise(delayMs: 200, child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: TourTarget('f-needs', child: NeedsToday(fees: fees.value, unreadNotices: unreadNotices))),
-            const SizedBox(width: 18),
-            const Expanded(child: TourTarget('f-streak', child: HomeStreak())),
-          ])),
-          const FadeRise(delayMs: 220, child: MyListHomeSummary()),
-          ...?notices.value?.where((n) => n.urgent && !n.read).map((n) => Padding(padding: const EdgeInsets.only(bottom: 14), child: Material(color: Brand.crimson, borderRadius: BorderRadius.circular(16),
-              child: ListTile(onTap: () => context.push('/notice/${n.id}'), leading: const Icon(Icons.warning_amber_rounded, color: Colors.white), title: Text(n.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)), trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white))))),
-          IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Expanded(flex: 5, child: _MorningCard(fees: fees.value, transport: transport, cls: cls, calendar: calendar, grade: gradeCode)),
-            const SizedBox(width: 18),
-            Expanded(flex: 4, child: fees.when(loading: () => const _CardShell(child: const GoldLoading()), error: (e, _) => _CardShell(child: Text('Could not load fees.', style: TextStyle(color: cs.onSurfaceVariant))), data: (f) => _FeeCard(f))),
-          ])),
-          const SizedBox(height: 18),
+          const SizedBox(height: 4),
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(child: card('Latest announcements', 'See all', () => context.go('/announcements'), Column(children: [
-              for (final n in (notices.value ?? []).take(4)) Padding(padding: const EdgeInsets.only(bottom: 8), child: _NoticeRow(n, () => context.push('/notice/${n.id}'))),
-              if (notices.value?.isEmpty ?? false) Text('No announcements yet.', style: TextStyle(color: cs.onSurfaceVariant)),
+            Expanded(child: card('Latest notices', 'See all', () => context.go('/announcements'), Column(children: [
+              for (final n in notices.take(4)) Padding(padding: const EdgeInsets.only(bottom: 8), child: _NoticeRow(n, () => context.push('/notice/${n.id}'))),
+              if (ref.watch(noticesProvider).value != null && notices.isEmpty) Text('No notices yet.', style: TextStyle(color: cs.onSurfaceVariant)),
             ]))),
             const SizedBox(width: 18),
-            Expanded(child: diary.when(loading: () => const _CardShell(child: SizedBox(height: 120, child: const GoldLoading())), error: (e, _) => _CardShell(child: Text('$e')), data: (d) => card(
-              d.$1 == null ? 'Class diary' : 'Class diary · ${d.$1 == DateFormat('yyyy-MM-dd').format(now) ? 'today' : DateFormat('EEE d MMM').format(DateTime.parse(d.$1!))}', 'Open diary', () => context.go('/diary'),
+            Expanded(child: diary.when(loading: () => const _CardShell(child: SizedBox(height: 120, child: GoldLoading())), error: (e, _) => const SizedBox.shrink(), data: (d) => card(
+              d.$1 == null ? 'Class diary' : 'Class diary · ${d.$1 == DateFormat('yyyy-MM-dd').format(now) ? 'today' : DateFormat('EEE d MMM').format(DateTime.parse(d.$1!))}', 'Open diary',
+              () { ref.read(diaryTabProvider.notifier).state = 0; context.go('/diary'); },
               Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 if (d.$2.isEmpty) Text('Nothing posted recently.', style: TextStyle(color: cs.onSurfaceVariant)),
                 for (final e in d.$2) Padding(padding: const EdgeInsets.only(bottom: 10), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -105,225 +105,170 @@ class HomeScreen extends ConsumerWidget {
         ]))));
     }
 
+    // ---------------------------------------------------------------- phone & tablet
+    final tablet = width >= 600;
+    final header = SliverToBoxAdapter(child: BrandHeader(padding: EdgeInsets.fromLTRB(tablet ? 28 : 20, 12, tablet ? 28 : 20, 20), hairline: false, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _TopRow(st: st, cls: cls, many: s.students.length > 1),
+      const SizedBox(height: 18),
+      Text(DateFormat('EEEE, d MMMM').format(now), style: TextStyle(color: Colors.white.withValues(alpha: .85), fontSize: 13)),
+      Row(children: [Flexible(child: Text(greet, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.headlineMedium?.copyWith(color: Colors.white))), const SizedBox(width: 10), const TimeOfDayIcon(size: 30)]),
+    ])));
+
+    const top = [BirthdayHomeCard(), FestiveBanner()];
+    final today = [
+      const FadeRise(delayMs: 120, child: TourTarget('f-needs', child: TodayNeedsCard())),
+      const NowNextLine(), const ExamCountdownChip(),
+    ];
+    const calm = [
+      FadeRise(delayMs: 200, child: DeskHomeCard()),
+      ThanksHomeBanner(),
+      YearReviewHomeCard(),
+    ];
+    final tiles = FadeRise(delayMs: 260, child: _Tiles(settings: settings));
+    final List<Widget> body;
+    if (tablet) {
+      body = [
+        ...top,
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            ...today,
+            const FadeRise(delayMs: 200, child: MyListHomeSummary()),
+            const TourTarget('f-streak', child: HomeStreak()),
+          ])),
+          const SizedBox(width: 18),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const HomeBusLine(),
+            tiles,
+            const SizedBox(height: 14),
+            ...calm,
+          ])),
+        ]),
+      ];
+    } else {
+      body = [
+        ...top,
+        ...today,
+        ...calm,
+        const FadeRise(delayMs: 230, child: MyListHomeSummary()),
+        const HomeBusLine(),
+        const FadeRise(delayMs: 240, child: TourTarget('f-streak', child: HomeStreak())),
+        tiles,
+      ];
+    }
     return Scaffold(
       body: FestiveSky(child: RRefresh(
-        onRefresh: () async { ref.invalidate(calendarProvider); ref.invalidate(feesProvider); ref.invalidate(noticesProvider); ref.invalidate(unreadMessagesProvider); ref.invalidate(myListProvider); },
+        onRefresh: () => _refresh(ref),
         child: CustomScrollView(slivers: [
-          SliverToBoxAdapter(child: BrandHeader(padding: const EdgeInsets.fromLTRB(20, 12, 20, 20), hairline: false, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              TourTarget('f-child', child: InkWell(onTap: () => context.push(s.students.length > 1 ? '/students' : '/profile'), borderRadius: BorderRadius.circular(999),
-                  child: Container(padding: const EdgeInsets.fromLTRB(6, 6, 12, 6), decoration: BoxDecoration(color: Colors.white.withValues(alpha: .14), borderRadius: BorderRadius.circular(999)),
-                      child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        Avatar(st.initials, bg: Colors.white, fg: Brand.crimsonDeep, size: 34), const SizedBox(width: 10),
-                        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(st.fullName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14)),
-                          Text('${st.grade ?? ''} · ${st.sectionText}', style: TextStyle(color: Colors.white.withValues(alpha: .9), fontSize: 11)),
-                        ]),
-                        if (s.students.length > 1) const Padding(padding: EdgeInsets.only(left: 6), child: Icon(Icons.expand_more_rounded, color: Colors.white, size: 18)),
-                      ])))),
-              const Spacer(),
-              if (on('messages')) ...[_HeaderIcon(Icons.chat_bubble_outline_rounded, unread, () => context.push('/messages')), const SizedBox(width: 8)],
-              _HeaderIcon(Icons.notifications_none_rounded, unreadNotices, () => context.go('/announcements')),
-              const SizedBox(width: 8),
-              _HeaderIcon(Icons.settings_outlined, 0, () => context.push('/settings')),
-            ]),
-            const SizedBox(height: 18),
-            Text(DateFormat('EEEE, d MMMM').format(now), style: TextStyle(color: Colors.white.withValues(alpha: .85), fontSize: 13)),
-            Row(children: [Text(greet, style: t.headlineMedium?.copyWith(color: Colors.white)), const SizedBox(width: 10), const TimeOfDayIcon(size: 30)]),
-            const SizedBox(height: 16),
-            // morning card — sits inside the header
-            _MorningCard(fees: fees.value, transport: transport, cls: cls, calendar: calendar, grade: gradeCode),
-          ]))),
-          SliverPadding(padding: const EdgeInsets.fromLTRB(20, 16, 20, 24), sliver: SliverList(delegate: SliverChildListDelegate([
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              if (birthday && on('birthdays')) BirthdayCard(st.fullName),
-              const FestiveBanner(),
-              const NowNextLine(), const ExamCountdownChip(),
-              const FadeRise(delayMs: 150, child: DeskHomeCard()),
-              const ThanksHomeBanner(),
-              const YearReviewHomeCard(),
-              FadeRise(delayMs: 200, child: TourTarget('f-needs', child: NeedsToday(fees: fees.value, unreadNotices: unreadNotices))),
-              const FadeRise(delayMs: 230, child: TourTarget('f-streak', child: HomeStreak())),
-              const FadeRise(delayMs: 245, child: MyListHomeSummary()),
-              // urgent banner(s)
-              ...?notices.value?.where((n) => n.urgent && !n.read).map((n) => Padding(padding: const EdgeInsets.only(bottom: 14), child: Material(color: Brand.crimson, borderRadius: BorderRadius.circular(16),
-                  child: InkWell(onTap: () => context.push('/notice/${n.id}'), borderRadius: BorderRadius.circular(16), child: Padding(padding: const EdgeInsets.all(14), child: Row(children: [
-                    const Avatar('!', bg: Colors.white, fg: Brand.crimson, size: 40), const SizedBox(width: 12),
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Eyebrow('Urgent', color: Brand.gold2), Text(n.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700))])),
-                    const Icon(Icons.chevron_right_rounded, color: Colors.white),
-                  ])))))),
-              // fee card
-              FadeRise(delayMs: 260, child: fees.when(
-                loading: () => const _CardShell(child: SizedBox(height: 90, child: const GoldLoading())),
-                error: (e, _) => _CardShell(child: Text('Could not load fees. Pull to refresh.', style: TextStyle(color: cs.onSurfaceVariant))),
-                data: (f) => _FeeCard(f),
-              )),
-              const SizedBox(height: 18),
-              // tiles
-              // 3 × 3 tiles: the main places, one tap each (the rest sits inside them as tabs)
-              FadeRise(delayMs: 380, child: GridView.count(crossAxisCount: 3, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: .98, children: [
-                TourTarget('f-diary', child: _Tile('Diary', Icons.menu_book_outlined, Brand.blue, Brand.blueTint, () => context.go('/diary'))),
-                TourTarget('f-notices', child: _Tile('Notices', Icons.campaign_outlined, Brand.crimsonDeep, Brand.crimsonTint, () => context.go('/announcements'), badge: unreadNotices)),
-                if (on('messages')) _Tile('Messages', Icons.chat_bubble_outline_rounded, Brand.amber, Brand.amberTint, () => context.push('/messages'), badge: unread),
-                _Tile('Calendar', Icons.calendar_month_outlined, Brand.green, Brand.greenTint, () => context.push('/calendar')),
-                _Tile('Attendance', Icons.event_available_outlined, Brand.violet, Brand.violetTint, () => context.push('/attendance')),
-                _Tile('Reports', Icons.school_outlined, Brand.crimsonDeep, Brand.crimsonTint, () => context.go('/reports')),
-                TourTarget('f-fees', child: _Tile('Fees', Icons.account_balance_wallet_outlined, Brand.green, Brand.greenTint, () => context.go('/fees'))),
-                if (on('gallery')) _Tile('Gallery', Icons.image_outlined, Brand.blue, Brand.blueTint, () => context.push('/gallery')),
-                if (const ['star', 'toppers', 'fame', 'council', 'houses'].any(on)) _Tile('Honours', Icons.emoji_events_outlined, Brand.amber, Brand.amberTint, () => context.push(hubStart(Hub.honours, settings))),
-              ])),
-              const SizedBox(height: 18),
-              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text("What's new", style: t.titleLarge?.copyWith(fontSize: 16)), TextButton(onPressed: () => context.go('/announcements'), child: const Text('See all'))]),
-              ...?notices.value?.where((n) => !n.urgent).take(2).map((n) => Padding(padding: const EdgeInsets.only(bottom: 10), child: _NoticeRow(n, () => context.push('/notice/${n.id}')))),
-              if (notices.value?.isEmpty ?? false) const NoteBox('No announcements yet. New ones from the school appear here and you get a notification.'),
-            ]),
-          ]))),
+          header,
+          SliverPadding(padding: EdgeInsets.fromLTRB(tablet ? 28 : 16, 16, tablet ? 28 : 16, 90), sliver: SliverToBoxAdapter(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: body))),
         ]),
       )),
     );
   }
 }
 
-class _HeaderIcon extends StatelessWidget {
-  final IconData icon; final int badge; final VoidCallback onTap;
-  const _HeaderIcon(this.icon, this.badge, this.onTap);
+/// The child chip (tap: profile, or switch child) and the three round buttons: messages (with the unread count),
+/// notices (with the unread count, same list as the Notices page) and settings.
+class _TopRow extends ConsumerWidget {
+  final StudentRef st; final String cls; final bool many;
+  const _TopRow({required this.st, required this.cls, required this.many});
   @override
-  Widget build(BuildContext context) => Stack(clipBehavior: Clip.none, children: [
+  Widget build(BuildContext context, WidgetRef ref) {
+    final msgsOn = featureOn(ref.watch(appSettingsProvider).value, 'messages');
+    final unreadMsgs = msgsOn ? (ref.watch(unreadMessagesProvider).value ?? 0) : 0;
+    final unreadNotices = unreadFamilyNotices(ref);
+    return Row(children: [
+      Flexible(child: TourTarget('f-child', child: InkWell(onTap: () => context.push(many ? '/students' : '/profile'), borderRadius: BorderRadius.circular(999),
+          child: Container(padding: const EdgeInsets.fromLTRB(6, 6, 12, 6), decoration: BoxDecoration(color: Colors.white.withValues(alpha: .14), borderRadius: BorderRadius.circular(999)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Avatar(st.initials, bg: Colors.white, fg: Brand.crimsonDeep, size: 34), const SizedBox(width: 10),
+                Flexible(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                  Text(st.fullName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14)),
+                  Text(cls, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withValues(alpha: .9), fontSize: 11.5, fontWeight: FontWeight.w600)),
+                ])),
+                if (many) const Padding(padding: EdgeInsets.only(left: 6), child: Icon(Icons.expand_more_rounded, color: Colors.white, size: 18)),
+              ]))))),
+      const SizedBox(width: 8),
+      if (msgsOn) ...[_HeaderIcon(Icons.chat_bubble_outline_rounded, unreadMsgs, () => context.push('/messages'), tip: 'Messages'), const SizedBox(width: 6)],
+      _HeaderIcon(Icons.notifications_none_rounded, unreadNotices, () => context.go('/announcements'), tip: 'Notices'),
+      const SizedBox(width: 6),
+      _HeaderIcon(Icons.settings_outlined, 0, () => context.push('/settings'), tip: 'Settings'),
+    ]);
+  }
+}
+
+class _HeaderIcon extends StatelessWidget {
+  final IconData icon; final int badge; final VoidCallback onTap; final String tip;
+  const _HeaderIcon(this.icon, this.badge, this.onTap, {required this.tip});
+  @override
+  Widget build(BuildContext context) => Tooltip(message: tip, child: Stack(clipBehavior: Clip.none, children: [
         Material(color: Colors.white.withValues(alpha: .14), borderRadius: BorderRadius.circular(12),
-            child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(12), child: SizedBox(width: 44, height: 44, child: Icon(icon, color: Colors.white, size: 22)))),
-        if (badge > 0) Positioned(top: 6, right: 6, child: Container(padding: const EdgeInsets.symmetric(horizontal: 5), height: 18, constraints: const BoxConstraints(minWidth: 18), alignment: Alignment.center,
-            decoration: BoxDecoration(color: Brand.gold, borderRadius: BorderRadius.circular(9)), child: Text('$badge', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Brand.ink)))),
-      ]);
+            child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(12), child: SizedBox(width: 42, height: 42, child: Icon(icon, color: Colors.white, size: 22)))),
+        if (badge > 0) Positioned(top: -3, right: -3, child: Container(padding: const EdgeInsets.symmetric(horizontal: 5), height: 18, constraints: const BoxConstraints(minWidth: 18), alignment: Alignment.center,
+            decoration: BoxDecoration(color: Brand.gold, borderRadius: BorderRadius.circular(9)),
+            child: MediaQuery.withNoTextScaling(child: Text(badge > 99 ? '99+' : '$badge', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Brand.ink))))),
+      ]));
+}
+
+/// The tiles: the main places, one tap each (4 across like the approved mock; 3 across when that fills the rows better).
+/// Each tile's height grows with the phone's text size, so large text never spills out.
+class _Tiles extends ConsumerWidget {
+  final Map<String, String>? settings;
+  const _Tiles({required this.settings});
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    bool on(String k) => featureOn(settings, k);
+    final onBus = ref.watch(transportProvider).value != null && on('bus');
+    final unreadNotices = unreadFamilyNotices(ref);
+    final list = <Widget>[
+      TourTarget('f-diary', child: _Tile('Diary', Icons.menu_book_outlined, Brand.blue, Brand.blueTint, () { ref.read(diaryTabProvider.notifier).state = 0; context.go('/diary'); })),
+      TourTarget('f-notices', child: _Tile('Notices', Icons.campaign_outlined, Brand.crimsonDeep, Brand.crimsonTint, () => context.go('/announcements'), badge: unreadNotices)),
+      TourTarget('f-fees', child: _Tile('Fees', Icons.account_balance_wallet_outlined, Brand.green, Brand.greenTint, () => context.go('/fees'))),
+      if (onBus) _Tile('Bus', Icons.directions_bus_outlined, Brand.blue, Brand.blueTint, () => context.go('/bus')),
+      _Tile('Calendar', Icons.calendar_month_outlined, Brand.green, Brand.greenTint, () => context.push('/calendar')),
+      _Tile('Attendance', Icons.event_available_outlined, Brand.violet, Brand.violetTint, () => context.push('/attendance')),
+      _Tile('Reports', Icons.school_outlined, Brand.crimsonDeep, Brand.crimsonTint, () => context.go('/reports')),
+      if (const ['star', 'toppers', 'fame', 'council', 'houses'].any(on)) _Tile('Honours', Icons.emoji_events_outlined, Brand.amber, Brand.amberTint, () => context.push(hubStart(Hub.honours, settings))),
+      if (on('gallery')) _Tile('Gallery', Icons.image_outlined, Brand.blue, Brand.blueTint, () => context.push('/gallery')),
+    ];
+    final cols = list.length % 4 == 0 ? 4 : list.length % 3 == 0 ? 3 : 4;
+    final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
+    return GridView(
+      shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), padding: EdgeInsets.zero,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: cols, mainAxisSpacing: 8, crossAxisSpacing: 8, mainAxisExtent: 70 + 18 * scale.clamp(1.0, 2.2)),
+      children: list,
+    );
+  }
 }
 
 class _CardShell extends StatelessWidget {
-  final Widget child; final bool lift;
-  const _CardShell({required this.child, this.lift = true});
+  final Widget child;
+  const _CardShell({required this.child});
   @override
-  Widget build(BuildContext context) => Container(padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, borderRadius: BorderRadius.circular(22),
-          boxShadow: lift ? [BoxShadow(color: Brand.crimsonDeep.withValues(alpha: .12), blurRadius: 30, offset: const Offset(0, 10))] : null),
+  Widget build(BuildContext context) => Container(padding: const EdgeInsets.all(18), margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, borderRadius: BorderRadius.circular(22)),
       child: child);
-}
-
-String _hm(dynamic t) { final x = (t ?? '').toString(); return x.length >= 5 ? x.substring(0, 5) : x; }
-
-class _MorningCard extends ConsumerWidget {
-  final FeeSummary? fees; final Map<String, dynamic>? transport; final String cls;
-  final List<Map<String, dynamic>> calendar; final String? grade;
-  const _MorningCard({this.fees, this.transport, required this.cls, this.calendar = const [], this.grade});
-
-  static String _iso(DateTime d) => DateFormat('yyyy-MM-dd').format(d);
-  /// 'Onam Holiday' → 'Onam', 'Dussehra break (Holiday)' → 'Dussehra break'
-  static String _clean(String t) => t.replaceAll(RegExp(r'\s*\(holiday\)|\s*[–-]\s*holiday\b|\s+holiday$', caseSensitive: false), '').trim();
-
-  /// Calendar entries on [d] that are meant for this student's grade.
-  List<Map<String, dynamic>> _on(DateTime d) {
-    final x = _iso(d);
-    return calendar.where((e) => (e['starts_on'] as String).compareTo(x) <= 0 && ((e['ends_on'] ?? e['starts_on']) as String).compareTo(x) >= 0 && eventIsFor(e, grade)).toList();
-  }
-  Map<String, dynamic>? _holiday(DateTime d) { for (final e in _on(d)) { if (e['kind'] == 'holiday') return e; } return null; }
-  bool _schoolDay(DateTime d) => (d.weekday < 6 || isWorkingSaturday(d, grade)) && _holiday(d) == null;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final now = DateTime.now(); final today = DateTime(now.year, now.month, now.day);
-    final workingSat = isWorkingSaturday(today, grade);
-    final weekend = now.weekday == 7 || (now.weekday == 6 && !workingSat); // no school by the week pattern
-    final tomorrow = today.add(const Duration(days: 1));
-    // the next day the student actually has school (skips Sundays, off Saturdays and holidays)
-    var back = tomorrow;
-    for (var i = 0; i < 30 && !_schoolDay(back); i++) { back = back.add(const Duration(days: 1)); }
-    final gap = back.difference(today).inDays;
-    final resume = gap == 1 ? 'tomorrow' : gap < 7 ? DateFormat('EEEE').format(back) : DateFormat('EEEE, d MMM').format(back);
-
-    final hol = _holiday(today);
-    final todays = _on(today).where((e) => e['kind'] != 'holiday').toList();
-    final holTomorrow = hol == null && !weekend ? _holiday(tomorrow) : null;
-    final keyTomorrow = hol == null ? _on(tomorrow).where((e) => e['kind'] == 'exam' || e['kind'] == 'ptm').toList() : const <Map<String, dynamic>>[];
-    const holidayRed = Color(0xFFFF6B6B), examAmber = Color(0xFFF2B84B), ptmViolet = Color(0xFFB79CF0);
-    String label(String k) => k == 'exam' ? 'Exam' : k == 'ptm' ? 'Parent–teacher meeting' : 'At school today';
-    Color dot(String k) => k == 'exam' ? examAmber : k == 'ptm' ? ptmViolet : Brand.blue;
-
-    final next = fees?.unpaid.isNotEmpty == true ? fees!.unpaid.first : null;
-    // homework and projects due on the next school day
-    final hw = ref.watch(homeworkDueProvider(_iso(back))).value ?? 0;
-    final noSchool = hol != null || weekend;
-    final items = <(String, String, Color)>[
-      if (hol != null) ('Holiday · ${_clean(hol['title'])}', 'No school today · classes resume $resume', holidayRed)
-      else if (weekend) ('No school today', 'Classes resume $resume', Brand.muted)
-      else if (workingSat) ('Working Saturday', 'School is on today (${saturdayOrdinal(today)} Saturday)', Brand.blue)
-      else ('School day', 'Check the timetable for what to carry', Brand.blue),
-      for (final e in todays.take(3)) (e['title'] as String, label(e['kind']), dot(e['kind'])),
-      if (hw > 0) ('$hw homework for ${gap == 1 ? 'tomorrow' : resume}', 'See what to do in the Diary', Brand.gold2),
-      if (todays.length > 3) ('+${todays.length - 3} more today', 'See the calendar', Brand.muted),
-      if (holTomorrow != null) ('Tomorrow: ${_clean(holTomorrow['title'])}', 'Holiday · no school tomorrow', holidayRed)
-      else if (!noSchool && isWorkingSaturday(tomorrow, grade)) ('Tomorrow is a working Saturday', 'School is on (${saturdayOrdinal(tomorrow)} Saturday)', Brand.blue),
-      for (final e in keyTomorrow.take(2)) ('Tomorrow: ${e['title']}', label(e['kind']), dot(e['kind'])),
-      if (next != null) ('Fee: ${inr(next.amount)} ${next.overdue ? 'overdue' : 'due ${DateFormat('d MMM').format(DateTime.parse(next.dueOn))}'}', next.title, next.overdue ? holidayRed : Brand.green),
-      if (transport != null && !noSchool) ('Bus · ${transport!['route']?['name'] ?? ''}', '${transport!['stop']?['name'] ?? ''} · drop ${_hm(transport!['route']?['afternoon_start'])}', Brand.blue),
-    ];
-    return Container(padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-        decoration: BoxDecoration(gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF1D1A20), Color(0xFF2C2730)]),
-            border: Border.all(color: Brand.gold.withValues(alpha: .55)), borderRadius: BorderRadius.circular(20)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Eyebrow('Your day · ${DateFormat('EEEE').format(now)}', color: Brand.gold), Text(cls, style: TextStyle(color: Colors.white.withValues(alpha: .7), fontSize: 11))]),
-          const SizedBox(height: 10),
-          for (final (i, (a, b, c)) in items.indexed) FadeRise(delayMs: 350 + i * 140, dy: 14, child: Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Container(width: 8, height: 8, margin: const EdgeInsets.only(top: 6), decoration: BoxDecoration(color: c, shape: BoxShape.circle)), const SizedBox(width: 12),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(a, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)), Text(b, style: TextStyle(color: Colors.white.withValues(alpha: .75), fontSize: 11))])),
-          ]))),
-        ]));
-  }
-}
-
-class _FeeCard extends StatelessWidget {
-  final FeeSummary f;
-  const _FeeCard(this.f);
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    if (f.unpaid.isEmpty) {
-      return _CardShell(child: Row(children: [const Avatar('✓', bg: Brand.greenTint, fg: Brand.green), const SizedBox(width: 14),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('All fees paid for this year', style: TextStyle(fontWeight: FontWeight.w800)), Text('${inr(f.total)} received · receipts under Fees', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant))]))]));
-    }
-    final dark = Theme.of(context).brightness == Brightness.dark; // brighter red / amber so the label reads on the dark card
-    final od = f.overdue; final odAmt = od.fold<num>(0, (a, r) => a + r.amount);
-    final next = f.dueSoon.isNotEmpty ? f.dueSoon.first : (f.upcoming.isNotEmpty ? f.upcoming.first : null);
-    final head = od.isNotEmpty ? od.firstWhere((r) => !r.isLate, orElse: () => od.first) : next!;
-    return InkWell(onTap: () => context.go('/fees'), borderRadius: BorderRadius.circular(22), child: _CardShell(child: Column(children: [
-      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Eyebrow(od.isNotEmpty ? 'Overdue · since ${DateFormat('d MMM').format(DateTime.parse(head.dueOn))}' : 'Due ${DateFormat('d MMM').format(DateTime.parse(head.dueOn))} · ${head.daysUntil()} days left', color: od.isNotEmpty ? (dark ? const Color(0xFFFF6B6B) : Brand.crimsonDeep) : (dark ? const Color(0xFFF2B84B) : Brand.amber)),
-          CountUpText(inr(od.isNotEmpty ? odAmt : head.amount), style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -.5)),
-          Text(od.isNotEmpty && od.any((r) => r.isLate) ? '${head.title} incl. late fee' : head.title, style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
-        ])),
-        Container(height: 44, padding: const EdgeInsets.symmetric(horizontal: 18), alignment: Alignment.center, decoration: BoxDecoration(gradient: Brand.buttonGradient, borderRadius: BorderRadius.circular(12)),
-            child: const Text('Pay now', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 14))),
-      ]),
-      const SizedBox(height: 14), Divider(height: 1, color: cs.outline), const SizedBox(height: 12),
-      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        Expanded(child: Text(od.isNotEmpty && next != null ? 'Next: ${next.title.split(' — ').first} · ${inr(next.amount)} due ${DateFormat('d MMM').format(DateTime.parse(next.dueOn))}' : 'Balance for the year ${inr(f.balance)}', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant))),
-        Row(mainAxisSize: MainAxisSize.min, children: [Text('of year paid  ', style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)), GoldRing(f.pct.toDouble(), size: 46)]),
-      ]),
-    ])));
-  }
 }
 
 class _Tile extends StatelessWidget {
   final String label; final IconData icon; final Color fg, bg; final VoidCallback onTap; final int badge;
   const _Tile(this.label, this.icon, this.fg, this.bg, this.onTap, {this.badge = 0});
   @override
-  Widget build(BuildContext context) => Material(color: Theme.of(context).colorScheme.surface, borderRadius: BorderRadius.circular(18),
-      child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(18), child: Stack(children: [
-        Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(width: 44, height: 44, decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(14)), child: Icon(icon, color: fg, size: 22)),
-          const SizedBox(height: 8),
-          Padding(padding: const EdgeInsets.symmetric(horizontal: 6), child: Text(label, textAlign: TextAlign.center, maxLines: 2, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, height: 1.15))),
-        ])),
-        if (badge > 0) Positioned(top: 10, right: 10, child: Container(height: 18, constraints: const BoxConstraints(minWidth: 18), alignment: Alignment.center, padding: const EdgeInsets.symmetric(horizontal: 5),
-            decoration: BoxDecoration(color: Brand.gold, borderRadius: BorderRadius.circular(9)), child: Text('$badge', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Brand.ink)))),
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Material(color: Theme.of(context).colorScheme.surface, borderRadius: BorderRadius.circular(16),
+      child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(16), child: Stack(children: [
+        Center(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 4), child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(width: 40, height: 40, decoration: BoxDecoration(color: dark ? fg.withValues(alpha: .22) : bg, borderRadius: BorderRadius.circular(13)), child: Icon(icon, color: context.tone(fg), size: 21)),
+          const SizedBox(height: 7),
+          FittedBox(fit: BoxFit.scaleDown, child: Text(label, maxLines: 1, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, height: 1.15))),
+        ]))),
+        if (badge > 0) Positioned(top: 6, right: 6, child: Container(height: 18, constraints: const BoxConstraints(minWidth: 18), alignment: Alignment.center, padding: const EdgeInsets.symmetric(horizontal: 5),
+            decoration: BoxDecoration(color: Brand.gold, borderRadius: BorderRadius.circular(9)),
+            child: MediaQuery.withNoTextScaling(child: Text(badge > 99 ? '99+' : '$badge', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Brand.ink))))),
       ])));
+  }
 }
 
 class _NoticeRow extends StatelessWidget {
@@ -332,57 +277,13 @@ class _NoticeRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Material(color: cs.surface, borderRadius: BorderRadius.circular(16), child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(16), child: Padding(padding: const EdgeInsets.all(14), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return Material(color: cs.surfaceContainerHighest.withValues(alpha: .35), borderRadius: BorderRadius.circular(14), child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(14), child: Padding(padding: const EdgeInsets.all(12), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Container(width: 8, height: 8, margin: const EdgeInsets.only(top: 6), decoration: BoxDecoration(color: n.read ? Colors.transparent : Brand.crimson, shape: BoxShape.circle)), const SizedBox(width: 12),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Eyebrow('${n.category.replaceAll('_', ' ')} · ${n.audience}', color: context.tone(Brand.crimsonDeep)),
         Text(n.title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
         Text('${n.by} · ${DateFormat('d MMM, h:mm a').format(DateTime.parse(n.when).toLocal())}', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
       ])),
     ]))));
-  }
-}
-
-/// "Needs you today": only the things that need the family to do something. When there is nothing: "All done ✓".
-class NeedsToday extends ConsumerWidget {
-  final FeeSummary? fees; final int unreadNotices;
-  const NeedsToday({super.key, required this.fees, required this.unreadNotices});
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final cs = Theme.of(context).colorScheme;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final tomorrow = DateFormat('yyyy-MM-dd').format(DateTime.now().add(const Duration(days: 1)));
-    final hw = ref.watch(homeworkDueProvider(tomorrow)).value ?? 0;
-    final items = <(String, String, VoidCallback)>[];
-    final over = fees?.overdue ?? const <FeeRow>[];
-    final soon = [for (final r in fees?.dueSoon ?? const <FeeRow>[]) if (r.daysUntil() <= 7) r];
-    if (over.isNotEmpty) {
-      items.add(('${over.length == 1 ? over.first.title : '${over.length} fees'} overdue', 'Pay', () => context.go('/fees')));
-    } else if (soon.isNotEmpty) {
-      final d = soon.first.daysUntil();
-      items.add(('${soon.first.title} due ${d == 0 ? 'today' : d == 1 ? 'tomorrow' : DateFormat('EEEE').format(DateTime.parse(soon.first.dueOn))}', 'Pay', () => context.go('/fees')));
-    }
-    if (unreadNotices > 0) items.add(('$unreadNotices notice${unreadNotices > 1 ? 's' : ''} unread', 'Read', () => context.go('/announcements')));
-    if (hw > 0) items.add(('$hw homework due tomorrow', 'Open', () => context.go('/diary')));
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14), padding: const EdgeInsets.fromLTRB(14, 10, 8, 6),
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(18),
-          gradient: LinearGradient(colors: dark ? [const Color(0xFF2A2017), const Color(0xFF221B14)] : [const Color(0xFFFFF8E8), const Color(0xFFFCEFD2)]),
-          border: Border.all(color: dark ? const Color(0xFF4A3A22) : const Color(0xFFEFD9A6))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('NEEDS YOU TODAY', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1.2, color: dark ? Brand.gold2 : const Color(0xFFA8822F))),
-        if (items.isEmpty) Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Row(children: [
-          const Icon(Icons.check_circle_rounded, color: Brand.green, size: 20), const SizedBox(width: 8),
-          Text('All done for today', style: TextStyle(fontWeight: FontWeight.w800, color: cs.onSurface)),
-        ])),
-        for (final (i, it) in items.indexed) Container(
-          decoration: BoxDecoration(border: i == items.length - 1 ? null : Border(bottom: BorderSide(color: dark ? const Color(0xFF3A2E1E) : const Color(0xFFEBD9AE)))),
-          child: Row(children: [
-            Expanded(child: Text(it.$1, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5))),
-            TextButton(onPressed: it.$3, child: Text('${it.$2} ›', style: const TextStyle(color: Brand.crimson, fontWeight: FontWeight.w800))),
-          ])),
-      ]),
-    );
   }
 }
 
