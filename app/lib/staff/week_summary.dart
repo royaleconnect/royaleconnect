@@ -33,11 +33,11 @@ class WeekSummaryScreen extends ConsumerWidget {
     final s = ref.watch(sessionProvider).value;
     final cs = Theme.of(context).colorScheme;
     if (s == null || !(s.hasRole('principal') || s.hasRole('it_admin') || s.hasRole('vice_principal'))) {
-      return const StaffPage(title: 'Your week at Royale', body: Panel(child: Text('This summary is for the Principal.')));
+      return const StaffPage(title: 'Your week', body: Panel(child: Text('This summary is for the Principal.')));
     }
     final w = ref.watch(weekSummaryProvider);
     return StaffPage(
-      title: 'Your week at Royale',
+      title: 'Your week',
       subtitle: w.value == null ? 'Last week, in five lines' : '${w.value!['dates']} · last week, in five lines',
       body: w.when(
         loading: () => const Padding(padding: EdgeInsets.all(32), child: GoldLoading()),
@@ -68,7 +68,7 @@ class WeekSummaryScreen extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(20, 18, 20, 18), margin: const EdgeInsets.only(bottom: 14),
               decoration: BoxDecoration(gradient: Brand.headerGradient, borderRadius: BorderRadius.circular(20)),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                GoldText('Your week at Royale', align: TextAlign.left, style: Theme.of(context).textTheme.headlineSmall!.copyWith(fontSize: 24)),
+                GoldText('Your week', align: TextAlign.left, style: Theme.of(context).textTheme.headlineSmall!.copyWith(fontSize: 24)),
                 const SizedBox(height: 4),
                 Text('${d['dates']}', style: TextStyle(color: Colors.white.withValues(alpha: .9), fontWeight: FontWeight.w600)),
               ]),
