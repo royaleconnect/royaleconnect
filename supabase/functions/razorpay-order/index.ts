@@ -2,13 +2,13 @@
 //  { student_id, fee_ledger_ids: [...] }
 // Validates the selection with the fee engine (late fee rides with its installment, no partial payments),
 // creates a Razorpay order for the exact amount, records a 'created' payment row, returns what the app needs to open Checkout.
-import { admin, json, preflight, verifyToken, env, audit } from "../_shared/lib.ts";
+import { admin, json, preflight, liveClaims, env, audit } from "../_shared/lib.ts";
 import { computeFees, buildSelection } from "../_shared/fee_engine.ts";
 
 Deno.serve(async (req) => {
   const pf = preflight(req); if (pf) return pf;
   try {
-    const c = await verifyToken(req);
+    const c = await liveClaims(req);
     if (!c) return json({ error: "Please sign in again." }, 401);
     if (c.view_only) return json({ error: "This is a read-only view — nothing can be paid from here." }, 403);
     if (!Deno.env.get("RAZORPAY_KEY_ID") || !Deno.env.get("RAZORPAY_KEY_SECRET")) {
