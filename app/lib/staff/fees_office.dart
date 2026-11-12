@@ -13,7 +13,7 @@ import 'staff_data.dart';
 import 'staff_shell.dart';
 
 /// Fees desk extras for the office and accounts:
-///   • Fee reports with Excel download (Collection · Dues · Cancelled receipts)
+///   • Fee reports with Excel download (Payments · Month wise · Dues · Cancelled receipts · Concessions)
 ///   • "Remind everyone who hasn't paid" (once a day)
 ///   • Recent payments with "Cancel receipt…" (reason → the Principal approves in Approvals)
 ///   • Fee type of a student (Regular / RTE / Staff ward / Special) and, for RTE, waiving the fees still to come
@@ -174,11 +174,16 @@ class RecentPaymentsPanel extends ConsumerWidget {
 }
 
 // ================================================================== fee reports + Excel
-typedef _RepKey = (String from, String to, String grade);
+typedef _RepKey = (String from, String to, String grade, String kind);
 
-final _collectionProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, _RepKey>((ref, k) async {
+final _paymentsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, _RepKey>((ref, k) async {
   ref.cacheFor();
-  final r = await db.rpc('fee_report_collection', params: {'p_from': k.$1, 'p_to': k.$2, 'p_grade': k.$3.isEmpty ? null : k.$3});
+  final r = await db.rpc('fee_report_payments', params: {'p_from': k.$1, 'p_to': k.$2, 'p_grade': k.$3.isEmpty ? null : k.$3, 'p_kind': k.$4.isEmpty ? null : k.$4});
+  return [for (final x in (r as List?) ?? const []) Map<String, dynamic>.from(x as Map)];
+});
+final _monthsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, grade) async {
+  ref.cacheFor();
+  final r = await db.rpc('fee_report_months', params: {'p_grade': grade.isEmpty ? null : grade});
   return [for (final x in (r as List?) ?? const []) Map<String, dynamic>.from(x as Map)];
 });
 final _duesProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, grade) async {
@@ -186,11 +191,24 @@ final _duesProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic
   final r = await db.rpc('fee_report_dues', params: {'p_grade': grade.isEmpty ? null : grade});
   return [for (final x in (r as List?) ?? const []) Map<String, dynamic>.from(x as Map)];
 });
+final _failedProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.cacheFor();
+  try { return [for (final x in (await db.rpc('fee_report_failed')) as List? ?? const []) Map<String, dynamic>.from(x as Map)]; } catch (_) { return const []; }
+});
 final _cancelledProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, _RepKey>((ref, k) async {
   ref.cacheFor();
   final r = await db.rpc('fee_report_cancelled', params: {'p_from': k.$1, 'p_to': k.$2, 'p_grade': k.$3.isEmpty ? null : k.$3});
   return [for (final x in (r as List?) ?? const []) Map<String, dynamic>.from(x as Map)];
 });
+final _concessionsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, grade) async {
+  ref.cacheFor();
+  final r = await db.rpc('fee_report_concessions', params: {'p_grade': grade.isEmpty ? null : grade});
+  return [for (final x in (r as List?) ?? const []) Map<String, dynamic>.from(x as Map)];
+});
+
+const _feeKinds = {'': 'All fees', 'tuition': 'Tuition', 'transport': 'Transport', 'misc': 'Activity / misc', 'late_fee': 'Late fee', 'other': 'Other'};
+const _modeNames = {'upi': 'UPI', 'card': 'Card', 'netbanking': 'Net banking', 'wallet': 'Wallet', 'cash': 'Cash', 'cheque': 'Cheque', 'neft': 'NEFT', 'other': 'Other'};
+String _mode(Object? m) => _modeNames['$m'] ?? '$m';
 
 class StaffFeeReportsScreen extends ConsumerStatefulWidget {
   const StaffFeeReportsScreen({super.key});
@@ -199,12 +217,12 @@ class StaffFeeReportsScreen extends ConsumerStatefulWidget {
 }
 
 class _StaffFeeReportsScreenState extends ConsumerState<StaffFeeReportsScreen> {
-  int tab = 0;
-  String grade = '';
+  int tab = 0;               // 0 payments · 1 month wise · 2 dues · 3 cancelled · 4 concessions
+  String grade = '', kind = '';
   late DateTimeRange range = () { final n = DateTime.now(); final d = DateTime(n.year, n.month, n.day); return DateTimeRange(start: DateTime(d.year, d.month, 1), end: d); }();
   bool busy = false;
 
-  _RepKey get _key => (_iso(range.start), _iso(range.end), grade);
+  _RepKey get _key => (_iso(range.start), _iso(range.end), grade, kind);
 
   String get _rangeText {
     final f = DateFormat('d MMM yyyy');
@@ -217,28 +235,46 @@ class _StaffFeeReportsScreenState extends ConsumerState<StaffFeeReportsScreen> {
     if (r != null) setState(() => range = r);
   }
 
+  String _month(String ym) => DateFormat('MMMM yyyy').format(DateTime.parse('$ym-01'));
+
   Future<void> _download(List<Map<String, dynamic>> rows) async {
     final className = grade.isEmpty ? 'All' : ((ref.read(gradesProvider).value ?? const []).where((g) => g['id'] == grade).firstOrNull?['code'] ?? '');
     final String name; final List<String> head; final List<List<Object?>> data; final List<double> widths;
-    if (tab == 0) {
-      name = 'Collection'; head = ['Receipt no', 'Date', 'Student', 'Admission no', 'Class', 'Amount (₹)', 'Mode', 'Paid', 'Fee type'];
-      widths = [20, 12, 26, 14, 9, 13, 11, 9, 12];
-      data = [for (final r in rows) [r['receipt_no'], r['date'], r['student'], r['admission_no'], r['class'], r['amount'], r['mode'], r['by'], feeCategories[r['fee_category']] ?? '']];
-      data.add(['', '', 'Total', '', '', rows.fold<num>(0, (a, r) => a + (r['amount'] as num)), '', '', '']);
-    } else if (tab == 1) {
-      name = 'Dues'; head = ['Student', 'Admission no', 'Class', 'Phones', 'Overdue (₹)', 'Due since', 'Fees due', 'Fee type'];
-      widths = [26, 14, 9, 34, 13, 12, 50, 12];
-      data = [for (final r in rows) [r['student'], r['admission_no'], r['class'], r['phones'], r['overdue'], r['first_due'], r['items'], feeCategories[r['fee_category']] ?? '']];
-      data.add(['Total', '', '', '', rows.fold<num>(0, (a, r) => a + (r['overdue'] as num)), '', '', '']);
-    } else {
-      name = 'Cancelled receipts'; head = ['Receipt no', 'Paid on', 'Cancelled on', 'Student', 'Class', 'Amount (₹)', 'Mode', 'Reason', 'Asked by', 'Approved by'];
-      widths = [20, 12, 12, 26, 9, 13, 11, 40, 18, 18];
-      data = [for (final r in rows) [r['receipt_no'], r['paid_on'], r['cancelled_on'], r['student'], r['class'], r['amount'], r['mode'], r['reason'], r['asked_by'], r['approved_by']]];
+    const top = 'Royale Concorde International School, Kalyan Nagar';
+    switch (tab) {
+      case 0:
+        name = 'Payments${kind.isEmpty ? '' : ' - ${_feeKinds[kind]}'}'; head = ['Receipt no', 'Date', 'Student', 'Admission no', 'Class', 'Amount (₹)', 'Mode', 'Paid', 'Advance', 'Fee type'];
+        widths = [20, 12, 26, 14, 9, 13, 12, 9, 9, 12];
+        data = [[top, null, null, null, null, null, null, null, null, null],
+          for (final r in rows) [r['receipt_no'], r['date'], r['student'], r['admission_no'], r['class'], r['amount'], _mode(r['mode']), r['by'], r['advance'] == true ? 'Yes' : '', feeCategories[r['fee_category']] ?? '']];
+        data.add(['', '', 'Total', '', '', rows.fold<num>(0, (a, r) => a + (r['amount'] as num)), '', '', '', '']);
+      case 1:
+        name = 'Month wise'; head = ['Month', 'UPI (₹)', 'Card / net banking (₹)', 'Other (₹)', 'Cancelled (₹)', 'Net (₹)', 'Receipts'];
+        widths = [18, 14, 20, 12, 14, 14, 10];
+        data = [[top, null, null, null, null, null, null],
+          for (final r in rows) [_month(r['month']), r['upi'], r['card'], r['other'], r['cancelled'], (r['upi'] as num) + (r['card'] as num) + (r['other'] as num), r['receipts']]];
+      case 2:
+        name = 'Dues'; head = ['Student', 'Admission no', 'Class', 'Phones', 'This year (₹)', 'Late fee (₹)', 'Last year (₹)', 'Total due (₹)', 'Due since', 'Fees due', 'Fee type'];
+        widths = [26, 14, 9, 34, 13, 12, 12, 13, 12, 50, 12];
+        data = [[top, null, null, null, null, null, null, null, null, null, null],
+          for (final r in rows) [r['student'], r['admission_no'], r['class'], r['phones'], (r['overdue'] as num) - ((r['last_year'] ?? 0) as num), r['late_fee'], r['last_year'], r['overdue'], r['first_due'], r['items'], feeCategories[r['fee_category']] ?? '']];
+        data.add(['Grand total', '', '', '', null, rows.fold<num>(0, (a, r) => a + ((r['late_fee'] ?? 0) as num)), rows.fold<num>(0, (a, r) => a + ((r['last_year'] ?? 0) as num)),
+          rows.fold<num>(0, (a, r) => a + (r['overdue'] as num)), '', '', '']);
+      case 3:
+        name = 'Cancelled receipts'; head = ['Receipt no', 'Paid on', 'Cancelled on', 'Student', 'Class', 'Amount (₹)', 'Mode', 'Reason', 'Asked by', 'Approved by'];
+        widths = [20, 12, 12, 26, 9, 13, 11, 40, 18, 18];
+        data = [[top, null, null, null, null, null, null, null, null, null],
+          for (final r in rows) [r['receipt_no'], r['paid_on'], r['cancelled_on'], r['student'], r['class'], r['amount'], _mode(r['mode']), r['reason'], r['asked_by'], r['approved_by']]];
+      default:
+        name = 'Concessions'; head = ['Student', 'Admission no', 'Class', 'Fee type', 'Concession (₹)', 'Waived (₹)', 'Note'];
+        widths = [26, 14, 9, 14, 14, 12, 40];
+        data = [[top, null, null, null, null, null, null],
+          for (final r in rows) [r['student'], r['admission_no'], r['class'], feeCategories[r['fee_category']] ?? '', r['concession'], r['waived'], r['note']]];
     }
-    final dates = tab == 1 ? 'as-on-${_iso(DateTime.now())}' : '${_iso(range.start)}-to-${_iso(range.end)}';
+    final dates = tab == 2 || tab == 4 || tab == 1 ? 'as-on-${_iso(DateTime.now())}' : '${_iso(range.start)}-to-${_iso(range.end)}';
     setState(() => busy = true);
     try {
-      await saveBytes(buildXlsx(name, head, data, widths: widths), 'RCIS-fees-${name.toLowerCase().replaceAll(' ', '-')}-$className-$dates.xlsx');
+      await saveBytes(buildXlsx(name.length > 30 ? name.substring(0, 30) : name, head, data, widths: widths), 'RCIS-fees-${name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '-')}-$className-$dates.xlsx');
     } catch (e) { if (mounted) toast(context, 'Could not save the file: ${_msg(e)}'); }
     if (mounted) setState(() => busy = false);
   }
@@ -260,75 +296,142 @@ class _StaffFeeReportsScreenState extends ConsumerState<StaffFeeReportsScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final grades = ref.watch(gradesProvider).value ?? const <Map<String, dynamic>>[];
-    final AsyncValue<List<Map<String, dynamic>>> data = switch (tab) { 0 => ref.watch(_collectionProvider(_key)), 1 => ref.watch(_duesProvider(grade)), _ => ref.watch(_cancelledProvider(_key)) };
+    final AsyncValue<List<Map<String, dynamic>>> data = switch (tab) {
+      0 => ref.watch(_paymentsProvider(_key)), 1 => ref.watch(_monthsProvider(grade)), 2 => ref.watch(_duesProvider(grade)),
+      3 => ref.watch(_cancelledProvider(_key)), _ => ref.watch(_concessionsProvider(grade)) };
     final rows = data.value ?? const <Map<String, dynamic>>[];
     final narrow = isNarrow(context);
+    final dated = tab == 0 || tab == 3;
 
-    return StaffPage(title: 'Fee reports', subtitle: 'Collection, dues and cancelled receipts — download any of them as an Excel file.', body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      SegmentedButton<int>(showSelectedIcon: !narrow, segments: [
-        const ButtonSegment(value: 0, label: Text('Collection')),
-        const ButtonSegment(value: 1, label: Text('Dues')),
-        ButtonSegment(value: 2, label: Text(narrow ? 'Cancelled' : 'Cancelled receipts')),
-      ], selected: {tab}, onSelectionChanged: (v) => setState(() => tab = v.first)),
+    return StaffPage(title: 'Fee reports', subtitle: 'Payments, month by month, dues, cancelled receipts and concessions — download any of them as an Excel file.', body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      SingleChildScrollView(scrollDirection: Axis.horizontal, child: SegmentedButton<int>(showSelectedIcon: false, segments: [
+        const ButtonSegment(value: 0, label: Text('Payments')),
+        ButtonSegment(value: 1, label: Text(narrow ? 'Months' : 'Month wise')),
+        const ButtonSegment(value: 2, label: Text('Dues')),
+        ButtonSegment(value: 3, label: Text(narrow ? 'Cancelled' : 'Cancelled receipts')),
+        const ButtonSegment(value: 4, label: Text('Concessions')),
+      ], selected: {tab}, onSelectionChanged: (v) => setState(() => tab = v.first))),
       const SizedBox(height: 14),
       Panel(padding: const EdgeInsets.all(12), child: PickRow(children: [
-        if (tab != 1) Expanded(child: OutlinedButton.icon(onPressed: _pickRange, icon: const Icon(Icons.date_range_rounded, size: 18), label: Text(_rangeText, overflow: TextOverflow.ellipsis)))
-        else Expanded(child: Text('Overdue as on today', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurfaceVariant))),
+        if (dated) Expanded(child: OutlinedButton.icon(onPressed: _pickRange, icon: const Icon(Icons.date_range_rounded, size: 18), label: Text(_rangeText, overflow: TextOverflow.ellipsis)))
+        else Expanded(child: Text(tab == 2 ? 'Overdue as on today' : 'This school year', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurfaceVariant))),
         const SizedBox(width: 12),
         Expanded(child: PickField<String>(label: 'Class', value: grade, items: [
           const DropdownMenuItem(value: '', child: Text('All classes')),
           for (final g in grades) DropdownMenuItem(value: g['id'] as String, child: Text(g['name'] ?? g['code'] ?? '')),
         ], onChanged: (v) => setState(() => grade = v ?? ''))),
+        if (tab == 0) ...[const SizedBox(width: 12), Expanded(child: PickField<String>(label: 'Fee', value: kind,
+            items: [for (final e in _feeKinds.entries) DropdownMenuItem(value: e.key, child: Text(e.value))], onChanged: (v) => setState(() => kind = v ?? '')))],
         const SizedBox(width: 12),
-        FilledButton.icon(onPressed: busy || data.isLoading || rows.isEmpty ? null : () => _download(rows), icon: const Icon(Icons.download_rounded, size: 18), label: Text(busy ? 'Please wait…' : 'Download Excel')),
+        FilledButton.icon(onPressed: busy || data.isLoading || rows.isEmpty ? null : () => _download(rows), icon: const Icon(Icons.download_rounded, size: 18), label: Text(busy ? 'Please wait…' : 'Excel')),
       ])),
       data.when(
         loading: () => const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator())),
         error: (e, _) => Padding(padding: const EdgeInsets.all(24), child: Text(_msg(e), style: const TextStyle(color: Brand.crimsonDeep))),
-        data: (rows) => switch (tab) { 0 => _collection(rows), 1 => _dues(rows), _ => _cancelled(rows) },
+        data: (rows) => switch (tab) { 0 => _payments(rows), 1 => _months(rows), 2 => _dues(rows), 3 => _cancelled(rows), _ => _concessions(rows) },
       ),
     ]));
   }
 
   Widget _empty(String t) => Panel(child: Text(t, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)));
   Widget _sub(String t) => Text(t, style: TextStyle(fontSize: 12.5, color: Theme.of(context).colorScheme.onSurfaceVariant));
+  Widget _total(String label, num v, {Color? c, bool big = false}) => Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Row(children: [
+    Expanded(child: Text(label, style: TextStyle(fontWeight: big ? FontWeight.w900 : FontWeight.w600))),
+    Text(inr(v), style: TextStyle(fontWeight: FontWeight.w900, fontSize: big ? 17 : 14, color: c == null ? null : context.tone(c))),
+  ]));
 
-  Widget _collection(List<Map<String, dynamic>> rows) {
-    if (rows.isEmpty) return _empty('No receipts on these dates.');
+  Widget _payments(List<Map<String, dynamic>> rows) {
+    if (rows.isEmpty) return _empty('No receipts on these dates${kind.isEmpty ? '' : ' for ${_feeKinds[kind]}'}.');
     final total = rows.fold<num>(0, (a, r) => a + (r['amount'] as num));
     final byMode = <String, num>{};
-    for (final r in rows) { byMode[r['mode']] = (byMode[r['mode']] ?? 0) + (r['amount'] as num); }
-    return Panel(title: '${rows.length} receipts · ${inr(total)}', trailing: Text(byMode.entries.map((e) => '${e.key} ${inr(e.value)}').join(' · '), style: TextStyle(fontSize: 12.5, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-      padding: const EdgeInsets.all(12), child: Column(children: [
+    for (final r in rows) { byMode[_mode(r['mode'])] = (byMode[_mode(r['mode'])] ?? 0) + (r['amount'] as num); }
+    final adv = rows.where((r) => r['advance'] == true).length;
+    final cancelled = ref.watch(_cancelledProvider(_key)).value ?? const <Map<String, dynamic>>[];
+    final cAmt = cancelled.fold<num>(0, (a, r) => a + (r['amount'] as num));
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Panel(padding: const EdgeInsets.all(16), child: Column(children: [
+        _total('Collected · ${rows.length} receipts${kind.isEmpty ? '' : ' · ${_feeKinds[kind]} part only'}', total),
+        for (final e in byMode.entries) Padding(padding: const EdgeInsets.only(left: 12), child: _total('   ${e.key}', e.value)),
+        if (kind.isEmpty) _total('Cancelled (approved by the Principal)', -cAmt, c: Brand.crimsonDeep),
+        const Divider(),
+        _total('Net', total - (kind.isEmpty ? cAmt : 0), big: true, c: Brand.green),
+        if (adv > 0) Padding(padding: const EdgeInsets.only(top: 6), child: Align(alignment: Alignment.centerLeft, child: _sub('$adv paid ahead of the due date — marked “Advance”.'))),
+      ])),
+      Panel(padding: const EdgeInsets.all(12), child: Column(children: [
         for (final r in rows) ListTile(dense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 4),
           title: Wrap(spacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-            Text('${r['student']} · ${r['class'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)), FeeCategoryPill(r['fee_category'])]),
-          subtitle: _sub('${r['receipt_no']} · ${_dmy(r['date'])} · ${r['mode']} · ${r['by']}'),
-          trailing: Text(inr(r['amount'] as num), style: const TextStyle(fontWeight: FontWeight.w800))),
-      ]));
+            Text('${r['student']} · ${r['class'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)), FeeCategoryPill(r['fee_category']),
+            if (r['advance'] == true) const Pill('Advance', fg: Brand.blue, bg: Brand.blueTint)]),
+          subtitle: _sub('${r['receipt_no']} · ${_dmy(r['date'])} · ${_mode(r['mode'])} · ${r['by']}${kind.isNotEmpty && r['total'] != r['amount'] ? ' · receipt ${inr(r['total'] as num)}' : ''}'),
+          trailing: Text(inr(r['amount'] as num), style: const TextStyle(fontWeight: FontWeight.w800)),
+          onTap: () => openReceiptPdf(context, r['id'], receiptNo: r['receipt_no'])),
+      ])),
+    ]);
+  }
+
+  Widget _months(List<Map<String, dynamic>> rows) {
+    if (rows.isEmpty) return _empty('Nothing yet this school year.');
+    final cs = Theme.of(context).colorScheme;
+    num s(String k) => rows.fold<num>(0, (a, r) => a + ((r[k] ?? 0) as num));
+    Widget cell(String t, {bool b = false, bool right = true, Color? c}) => Expanded(child: Text(t, textAlign: right ? TextAlign.right : TextAlign.left,
+        style: TextStyle(fontWeight: b ? FontWeight.w900 : FontWeight.w600, color: c == null ? null : context.tone(c), fontSize: 13.5)));
+    Widget line(List<Widget> cells, {bool head = false}) => Container(padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+        decoration: BoxDecoration(color: head ? Brand.gold.withValues(alpha: .08) : null, border: head ? null : Border(top: BorderSide(color: cs.outlineVariant.withValues(alpha: .6)))),
+        child: Row(children: cells));
+    final table = Column(children: [
+      line([cell('MONTH', b: true, right: false), cell('UPI', b: true), cell('CARD / NET BANKING', b: true), cell('CANCELLED', b: true), cell('NET', b: true)], head: true),
+      for (final r in rows.reversed) line([
+        cell(_month(r['month']), right: false), cell(inr(r['upi'] as num)), cell(inr((r['card'] as num) + (r['other'] as num))),
+        cell(((r['cancelled'] ?? 0) as num) > 0 ? '− ${inr(r['cancelled'] as num)}' : '—', c: Brand.crimsonDeep),
+        cell(inr((r['upi'] as num) + (r['card'] as num) + (r['other'] as num)), b: true)]),
+      line([cell('Total', b: true, right: false), cell(inr(s('upi')), b: true), cell(inr(s('card') + s('other')), b: true), cell(s('cancelled') > 0 ? '− ${inr(s('cancelled'))}' : '—', b: true, c: Brand.crimsonDeep),
+        cell(inr(s('upi') + s('card') + s('other')), b: true, c: Brand.green)]),
+    ]);
+    return Panel(padding: const EdgeInsets.all(12), child: isNarrow(context) ? SingleChildScrollView(scrollDirection: Axis.horizontal, child: SizedBox(width: 640, child: table)) : table);
   }
 
   Widget _dues(List<Map<String, dynamic>> rows) {
     final s = ref.watch(sessionProvider).value;
+    final failed = ref.watch(_failedProvider).value ?? const <Map<String, dynamic>>[];
     final total = rows.fold<num>(0, (a, r) => a + (r['overdue'] as num));
+    final late = rows.fold<num>(0, (a, r) => a + ((r['late_fee'] ?? 0) as num));
+    final last = rows.fold<num>(0, (a, r) => a + ((r['last_year'] ?? 0) as num));
+    final lastRows = rows.where((r) => ((r['last_year'] ?? 0) as num) > 0).toList();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (_feeStaff(s) && !(s?.viewOnly ?? false)) Panel(padding: const EdgeInsets.all(12), child: CardRow(children: [
         const Icon(Icons.notifications_active_rounded, color: Brand.amber), const SizedBox(width: 10),
         Expanded(child: _sub('Families are reminded by themselves 3 days before each due date. Use this for everyone who is already late.')),
         const SizedBox(width: 10),
-        FilledButton.icon(onPressed: _remindAll, icon: const Icon(Icons.send_rounded, size: 18), label: const Text('Remind everyone who hasn’t paid')),
+        FilledButton.icon(onPressed: _remindAll, icon: const Icon(Icons.send_rounded, size: 18), label: const Text('Remind all who haven’t paid')),
       ])),
       if (rows.isEmpty) _empty('No overdue fees ✓')
-      else Panel(title: '${rows.length} students · ${inr(total)} overdue', padding: const EdgeInsets.all(12), child: Column(children: [
-        for (final r in rows) ListTile(dense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-          title: Wrap(spacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-            Text('${r['student']} · ${r['class'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)), FeeCategoryPill(r['fee_category'])]),
-          subtitle: _sub('${r['items'] ?? ''}${(r['phones'] ?? '').toString().isNotEmpty ? '\n${r['phones']}' : ''}'),
-          isThreeLine: (r['phones'] ?? '').toString().isNotEmpty,
-          trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text(inr(r['overdue'] as num), style: TextStyle(fontWeight: FontWeight.w800, color: context.tone(Brand.crimsonDeep))),
-            _sub('since ${_dmy(r['first_due'])}'),
-          ])),
+      else ...[
+        Panel(padding: const EdgeInsets.all(16), child: Column(children: [
+          _total('This year · ${rows.length} students', total - last),
+          _total('   of which late fee', late, c: Brand.amber),
+          if (last > 0) _total('Pending from last year · ${lastRows.length} students', last),
+          const Divider(),
+          _total('Grand total', total, big: true, c: Brand.crimsonDeep),
+        ])),
+        Panel(title: '${rows.length} students · ${inr(total)} overdue', padding: const EdgeInsets.all(12), child: Column(children: [
+          for (final r in rows) ListTile(dense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+            title: Wrap(spacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              Text('${r['student']} · ${r['class'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)), FeeCategoryPill(r['fee_category']),
+              if (((r['last_year'] ?? 0) as num) > 0) Pill('Last year ${inr(r['last_year'] as num)}', fg: Brand.violet, bg: Brand.violetTint)]),
+            subtitle: _sub('${r['items'] ?? ''}${(r['phones'] ?? '').toString().isNotEmpty ? '\n${r['phones']}' : ''}'),
+            isThreeLine: (r['phones'] ?? '').toString().isNotEmpty,
+            trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Text(inr(r['overdue'] as num), style: TextStyle(fontWeight: FontWeight.w800, color: context.tone(Brand.crimsonDeep))),
+              if (((r['late_fee'] ?? 0) as num) > 0) _sub('late fee ${inr(r['late_fee'] as num)}') else _sub('since ${_dmy(r['first_due'])}'),
+            ])),
+        ])),
+      ],
+      if (failed.isNotEmpty) Panel(title: 'Online payment did not go through · last 30 days', padding: const EdgeInsets.all(12), child: Column(children: [
+        for (final f in failed) ListTile(dense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+          leading: const Icon(Icons.error_outline_rounded, color: Brand.amber),
+          title: Text('${f['student']} · ${f['class'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)),
+          subtitle: _sub('${_dmt(f['at'])}${f['phone'] != null ? ' · ${f['phone']}' : ''} · not paid since'),
+          trailing: Text(inr(f['amount'] as num), style: const TextStyle(fontWeight: FontWeight.w800))),
       ])),
     ]);
   }
@@ -342,5 +445,31 @@ class _StaffFeeReportsScreenState extends ConsumerState<StaffFeeReportsScreen> {
         isThreeLine: true,
         trailing: Text(inr(r['amount'] as num), style: const TextStyle(fontWeight: FontWeight.w800, decoration: TextDecoration.lineThrough))),
     ]));
+  }
+
+  Widget _concessions(List<Map<String, dynamic>> rows) {
+    if (rows.isEmpty) return _empty('No concessions this year.');
+    final groups = <String, List<Map<String, dynamic>>>{};
+    for (final r in rows) { groups.putIfAbsent('${r['fee_category'] ?? 'regular'}', () => []).add(r); }
+    final conc = rows.fold<num>(0, (a, r) => a + ((r['concession'] ?? 0) as num));
+    final waived = rows.fold<num>(0, (a, r) => a + ((r['waived'] ?? 0) as num));
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Panel(padding: const EdgeInsets.all(16), child: Column(children: [
+        for (final e in groups.entries) _total('${e.key == 'regular' ? 'Other concessions (early-bird, sibling…)' : feeCategories[e.key] ?? e.key} · ${e.value.length} students',
+            e.value.fold<num>(0, (a, r) => a + ((r['concession'] ?? 0) as num) + ((r['waived'] ?? 0) as num))),
+        const Divider(),
+        _total('Total given up this year', conc + waived, big: true, c: Brand.violet),
+      ])),
+      Panel(padding: const EdgeInsets.all(12), child: Column(children: [
+        for (final r in rows) ListTile(dense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+          title: Wrap(spacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            Text('${r['student']} · ${r['class'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700)), FeeCategoryPill(r['fee_category'])]),
+          subtitle: (r['note'] ?? '').toString().isEmpty ? null : _sub('${r['note']}'),
+          trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text(inr(((r['concession'] ?? 0) as num) + ((r['waived'] ?? 0) as num)), style: const TextStyle(fontWeight: FontWeight.w800)),
+            if (((r['waived'] ?? 0) as num) > 0) _sub('waived ${inr(r['waived'] as num)}'),
+          ])),
+      ])),
+    ]);
   }
 }
