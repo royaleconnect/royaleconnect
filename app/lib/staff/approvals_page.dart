@@ -23,8 +23,16 @@ final approvalsCountProvider = Provider.autoDispose<int>((ref) {
   final m = ref.watch(approvalsInboxProvider).value;
   if (m == null) return 0;
   final decide = m['can_decide'] == true;
-  return [...['passwords', 'certificates'], if (decide) ...['cancels', 'tcs', 'corrections']]
+  final leavings = decide ? (ref.watch(leavingsInboxProvider).value?.length ?? 0) : 0;
+  return leavings + [...['passwords', 'certificates'], if (decide) ...['cancels', 'tcs', 'corrections']]
       .fold<int>(0, (a, k) => a + ((m[k] as List?)?.length ?? 0));
+});
+
+/// Students leaving (Inactive): waiting for the Principal. The office sees its own requests, waiting.
+final leavingsInboxProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.watch(approvalsInboxProvider);
+  try { return [for (final x in (await db.rpc('approvals_inbox_leavings')) as List? ?? const []) Map<String, dynamic>.from(x as Map)]; }
+  catch (_) { return const []; }
 });
 
 String _dmy(String? iso) => iso == null ? '' : DateFormat('d MMM yyyy').format(DateTime.parse(iso).toLocal());
@@ -33,7 +41,25 @@ String _dm(String? iso) => iso == null ? '' : DateFormat('d MMM').format(DateTim
 class StaffApprovalsScreen extends ConsumerWidget {
   const StaffApprovalsScreen({super.key});
 
-  void _refresh(WidgetRef ref) => ref.invalidate(approvalsInboxProvider);
+  void _refresh(WidgetRef ref) { ref.invalidate(approvalsInboxProvider); ref.invalidate(leavingsInboxProvider); }
+
+  Future<void> _leaving(BuildContext context, WidgetRef ref, Map<String, dynamic> r, bool approve) async {
+    final note = TextEditingController();
+    final due = ((r['dues'] ?? 0) as num);
+    final sure = await _confirm(context, approve: approve, note: note,
+      title: '${approve ? 'Approve' : 'Decline'} · ${r['student']} is leaving',
+      body: approve
+          ? '${r['reason']} · last day ${_dmy(r['last_day'])}${due > 0 ? '\nFees still due: ${inr(due)} — approving lets the student leave with these unpaid.' : ''}\n\n'
+            'The student moves to Past students, future fees are cancelled${r['has_tc'] == true ? ' and the TC gets its number' : ''}. Nothing is deleted.'
+          : 'The student stays as they are. The office is told.');
+    if (sure != true) return;
+    try {
+      final res = await db.rpc('leaving_decide', params: {'p_id': r['id'], 'p_approve': approve, 'p_note': note.text.trim().isEmpty ? null : note.text.trim()});
+      _refresh(ref);
+      final n = res is Map ? res['number'] : null;
+      if (context.mounted) toast(context, '${approve ? 'Approved' : 'Declined'} ✓ · ${r['student']}${n != null ? ' · TC $n' : ''} — office told');
+    } catch (e) { if (context.mounted) toast(context, friendlyError(e)); }
+  }
 
   /// Approve / Decline with a short check first. [note] = a line for the person who asked (decline only).
   Future<bool?> _confirm(BuildContext context, {required String title, required String body, required bool approve, TextEditingController? note}) => showDialog<bool>(context: context, builder: (c) => AlertDialog(
@@ -85,7 +111,8 @@ class StaffApprovalsScreen extends ConsumerWidget {
         final decide = m['can_decide'] == true;
         final rc = inboxList(m, 'cancels'), tc = inboxList(m, 'tcs'), dc = inboxList(m, 'corrections');
         final pw = inboxList(m, 'passwords'), ce = inboxList(m, 'certificates'), mine = inboxList(m, 'my_cancels');
-        final waiting = rc.length + tc.length + dc.length + pw.length + ce.length;
+        final lv = ref.watch(leavingsInboxProvider).value ?? const <Map<String, dynamic>>[];
+        final waiting = rc.length + tc.length + dc.length + pw.length + ce.length + (decide ? lv.length : 0);
         Widget sub(String t) => Text(t, style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant));
         // one card per request: what it is (pill), the details, then Approve / Decline
         Widget card({required String head, required String kind, required Color fg, required Color bg, required List<Widget> lines, VoidCallback? onApprove, VoidCallback? onDecline}) =>
@@ -117,6 +144,15 @@ class StaffApprovalsScreen extends ConsumerWidget {
               Text('Reason: ${k['reason']}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
             ],
             onApprove: decide ? () => _receipt(context, ref, k, true) : null, onDecline: decide ? () => _receipt(context, ref, k, false) : null),
+          for (final r in lv) card(
+            head: '${r['student']}${(r['class'] ?? '').toString().isNotEmpty ? ' · ${r['class']}' : ''} is leaving', kind: 'Inactive · leaving', fg: Brand.violet, bg: Brand.violetTint,
+            lines: [
+              sub([if (r['reason'] != null) '${r['reason']}', 'last day ${_dmy(r['last_day'])}', ((r['dues'] ?? 0) as num) > 0 ? 'Fees due: ${inr(r['dues'] as num)}' : 'No dues ✓',
+                if (r['has_tc'] == true) 'TC prepared'].join(' · ')),
+              sub('Asked by ${r['asked_by'] ?? 'the office'} on ${_dm(r['asked_at'])}'),
+              Align(alignment: Alignment.centerLeft, child: TextButton(onPressed: () => openStudentRecord(context, r['student_id']).then((_) => _refresh(ref)), child: const Text('Open the student'))),
+            ],
+            onApprove: decide ? () => _leaving(context, ref, r, true) : null, onDecline: decide ? () => _leaving(context, ref, r, false) : null),
           for (final r in tc) card(
             head: '${r['student']}${(r['class'] ?? '').toString().isNotEmpty ? ' · ${r['class']}' : ''}', kind: 'TC request', fg: Brand.blue, bg: Brand.blueTint,
             lines: [
