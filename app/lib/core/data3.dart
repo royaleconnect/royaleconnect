@@ -29,7 +29,7 @@ const featureList = [
   ('toppers', 'Board Toppers', 'Class X and XII toppers with photos, and subject centums.'),
   ('fame', 'Hall of Fame', 'Former students and where they are today.'),
   ('council', 'Student Council', 'This year’s council with photos, past councils, and voting in the elections.'),
-  ('bus', 'School bus tracking', 'Live bus on the map and “bus is near” alerts.'),
+  ('bus', 'Transport tracking', 'Live bus on the map and “bus is near” alerts.'),
   ('messages', 'Messages to teachers', 'Private chat between families and teachers.'),
   ('gallery', 'Gallery & class moments', 'School albums and class photos.'),
   ('star', 'Star of the month', 'One student per class each month.'),
