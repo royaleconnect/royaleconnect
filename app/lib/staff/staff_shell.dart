@@ -46,11 +46,13 @@ const staffMenu = [
   StaffItem('/staff/moments', 'Class photos', Icons.photo_library_rounded, 'MY CLASS'),
   StaffItem('/staff/students', 'Students', Icons.people_alt_rounded, 'STUDENTS'),
   StaffItem('/staff/class-logins', 'Class logins', Icons.key_rounded, 'MY CLASS', roles: ['class_teacher', 'office', 'it_admin']),
+  StaffItem('/staff/strength', 'Student strength', Icons.groups_rounded, 'STUDENTS', roles: ['accounts', ...officeRoles]),
+  StaffItem('/staff/leaving', 'Leaving check', Icons.assignment_return_rounded, 'STUDENTS', roles: ['accounts', ...officeRoles]),
   StaffItem('/staff/fees', 'Fees & receipts', Icons.account_balance_wallet_rounded, 'STUDENTS', roles: ['accounts', ...officeRoles]),
   StaffItem('/staff/certificates', 'Certificates', Icons.workspace_premium_rounded, 'STUDENTS', roles: ['accounts', ...officeRoles]),
   StaffItem('/staff/id-cards', 'ID cards', Icons.badge_rounded, 'STUDENTS', roles: officeRoles),
   StaffItem('/staff/transport', 'Transport', Icons.directions_bus_rounded, 'STUDENTS', roles: ['transport_incharge', ...officeRoles]),
-  StaffItem('/staff/bus-pins', 'Check pins', Icons.pin_drop_rounded, 'BUSES', roles: ['transport_incharge', ...officeRoles]),
+  StaffItem('/staff/bus-pins', 'Check pins', Icons.pin_drop_rounded, 'TRANSPORT', roles: ['transport_incharge', ...officeRoles]),
   StaffItem('/staff/toppers', 'Honours', Icons.emoji_events_rounded, 'SCHOOL'),
   StaffItem('/staff/calendar', 'School calendar', Icons.calendar_month_rounded, 'SCHOOL', roles: officeRoles),
   StaffItem('/staff/feedback', 'Parent feedback', Icons.rate_review_rounded, 'SCHOOL', roles: officeRoles),
@@ -71,15 +73,15 @@ const staffLayouts = <String, List<(String, List<String>)>>{
   'coordinator': [('TODAY', ['/staff', '/staff/messages', '/staff/announcements']), ('MY GRADES', ['/staff/attendance', '/staff/diary', '/staff/exams', '/staff/students']), _honours, _me],
   'accounts': [('TODAY', ['/staff']), ('FEES', ['/staff/fees', '/staff/students', '/staff/certificates']), _honours, _me],
   'office': [('TODAY', ['/staff', '/staff/approvals', '/staff/messages', '/staff/announcements']),
-    ('STUDENTS', ['/staff/students', '/staff/fees', '/staff/certificates', '/staff/id-cards', '/staff/transport']), ('SCHOOL', ['/staff/calendar', '/staff/feedback', '/staff/toppers']), _me],
-  'transport_incharge': [('TODAY', ['/staff', '/staff/announcements']), ('BUSES', ['/staff/transport', '/staff/bus-pins', '/staff/students']), _honours, _me],
+    ('STUDENTS', ['/staff/students', '/staff/strength', '/staff/leaving', '/staff/fees', '/staff/certificates', '/staff/id-cards', '/staff/transport']), ('SCHOOL', ['/staff/calendar', '/staff/feedback', '/staff/toppers']), _me],
+  'transport_incharge': [('TODAY', ['/staff', '/staff/announcements']), ('TRANSPORT', ['/staff/transport', '/staff/bus-pins', '/staff/students']), _honours, _me],
   'principal': [('TODAY', ['/staff', '/staff/approvals', '/staff/announcements', '/staff/desk']),
-    ('SCHOOL', ['/staff/students', '/staff/attendance', '/staff/exams', '/staff/toppers', '/staff/feedback', '/staff/week']), _me],
+    ('SCHOOL', ['/staff/students', '/staff/strength', '/staff/leaving', '/staff/attendance', '/staff/exams', '/staff/toppers', '/staff/feedback', '/staff/week']), _me],
   'vice_principal': [('TODAY', ['/staff', '/staff/approvals', '/staff/announcements']),
-    ('SCHOOL', ['/staff/students', '/staff/attendance', '/staff/exams', '/staff/toppers', '/staff/feedback', '/staff/week']), _me],
+    ('SCHOOL', ['/staff/students', '/staff/strength', '/staff/leaving', '/staff/attendance', '/staff/exams', '/staff/toppers', '/staff/feedback', '/staff/week']), _me],
   // IT: everything
   'it_admin': [('TODAY', ['/staff', '/staff/approvals', '/staff/messages', '/staff/announcements']),
-    ('STUDENTS', ['/staff/students', '/staff/fees', '/staff/certificates', '/staff/id-cards', '/staff/transport', '/staff/toppers']),
+    ('STUDENTS', ['/staff/students', '/staff/strength', '/staff/leaving', '/staff/fees', '/staff/certificates', '/staff/id-cards', '/staff/transport', '/staff/toppers']),
     ('SCHOOL', ['/staff/desk', '/staff/calendar', '/staff/feedback', '/staff/setup', '/staff/week']),
     ('CLASSES', ['/staff/attendance', '/staff/diary', '/staff/leave', '/staff/exams', '/staff/star', '/staff/moments', '/staff/class-logins', '/staff/bus-pins']), _me],
 };
@@ -107,12 +109,13 @@ const staffSubPages = [
   StaffItem('/staff/bin', 'Bin', Icons.delete_outline_rounded, 'SCHOOL', roles: ['it_admin', 'principal']),
   StaffItem('/staff/settings', 'School settings', Icons.admin_panel_settings_rounded, 'SCHOOL', roles: ['it_admin'], locked: true),
   StaffItem('/staff/houses', 'Houses', Icons.flag_rounded, 'STUDENTS'),
+  StaffItem('/staff/announcements/report', 'Notices · who read them', Icons.insights_rounded, 'TODAY', roles: officeRoles),
   StaffItem('/staff/year-end', 'Year-end checklist', Icons.event_available_rounded, 'SCHOOL', roles: ['it_admin', 'principal'], locked: true),
 ];
 
 /// Which menu item a tab-page belongs to (so the right item stays highlighted).
 const staffHubOf = {'/staff/marks': '/staff/exams', '/staff/reports': '/staff/exams', '/staff/council': '/staff/toppers', '/staff/houses': '/staff/toppers',
-  '/staff/users': '/staff/setup', '/staff/sections': '/staff/setup', '/staff/bin': '/staff/setup', '/staff/settings': '/staff/setup', '/staff/fees/reports': '/staff/fees', '/staff/year-end': '/staff', '/staff/thanks': '/staff'};
+  '/staff/users': '/staff/setup', '/staff/sections': '/staff/setup', '/staff/bin': '/staff/setup', '/staff/settings': '/staff/setup', '/staff/fees/reports': '/staff/fees', '/staff/announcements/report': '/staff/announcements', '/staff/year-end': '/staff', '/staff/thanks': '/staff'};
 
 /// Roles that have this page in their own menu (the normal setting when IT has not changed it).
 List<String> defaultRolesOf(StaffItem m) {
