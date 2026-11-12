@@ -51,7 +51,7 @@ const tourSteps = <String, List<TourStep>>{
     TourStep('Notices', 'Every school notice comes here, with a notification on your phone. New ones also show in the Your day card on Home.', Icons.campaign_rounded, at: ['f-notices', 'nav:/announcements']),
     TourStep('Diary', 'Today’s homework and notes from the teachers, plus My list to tick off what is done.', Icons.menu_book_rounded, at: ['f-diary', 'nav:/diary']),
     TourStep('Fees', 'See what is due, pay online and download receipts.', Icons.account_balance_wallet_rounded, at: ['f-fees', 'nav:/fees']),
-    TourStep('Bus', 'Watch the bus live and get an alert 10 and 5 minutes before it reaches your stop.', Icons.directions_bus_rounded, at: ['f-bus', 'nav:/bus'], optional: true),
+    TourStep('Transport', 'Watch the bus live and get an alert 10 and 5 minutes before it reaches your stop.', Icons.directions_bus_rounded, at: ['f-bus', 'nav:/bus'], optional: true),
     TourStep('Help', 'Any question? Tap here, or call the school office from Profile. You can see this tour again from Help.', Icons.help_outline_rounded, at: ['f-help', 'nav:/profile']),
   ],
   'teacher': [
