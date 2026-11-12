@@ -207,7 +207,10 @@ class StaffAnnouncementsScreen extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     final who = _NoticeRule.of(s);
     return StaffPage(title: 'Notices', subtitle: who.subtitle,
-      actions: [FilledButton.icon(onPressed: () => _compose(context, ref, s), icon: const Icon(Icons.add_rounded), label: const Text('New notice'))],
+      actions: [
+        if (s.isOffice) OutlinedButton.icon(onPressed: () => context.go('/staff/announcements/report'), icon: const Icon(Icons.insights_rounded, size: 18), label: const Text('Who read them')),
+        FilledButton.icon(onPressed: () => _compose(context, ref, s), icon: const Icon(Icons.add_rounded), label: const Text('New notice')),
+      ],
       body: list.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty ? const Panel(child: EmptyState(kind: EmptyKind.notices, title: 'No notices sent yet', line: 'Notices you send appear here with who has read them.', compact: true)) : Column(children: [for (final a in rows) Panel(padding: const EdgeInsets.all(14), child: CardRow(children: [
         Pill(cats[a['category']] ?? a['category'], fg: a['category'] == 'urgent' ? Colors.white : Brand.crimsonDeep, bg: a['category'] == 'urgent' ? Brand.crimson : Brand.crimsonTint), const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -240,7 +243,7 @@ class StaffAnnouncementsScreen extends ConsumerWidget {
       const SizedBox(height: 12),
       const Text('Who gets it', style: TextStyle(fontWeight: FontWeight.w800)),
       if (who.whole) CheckboxListTile(value: all, onChanged: (v) => set(() => all = v ?? false), title: const Text('Whole school'), contentPadding: EdgeInsets.zero, controlAffinity: ListTileControlAffinity.leading),
-      if (who.busOnly) const Padding(padding: EdgeInsets.only(top: 4), child: Text('Families whose children use the school bus.', style: TextStyle(fontSize: 13))),
+      if (who.busOnly) const Padding(padding: EdgeInsets.only(top: 4), child: Text('Families whose children use school transport.', style: TextStyle(fontSize: 13))),
       if (!all) ...[
         // grades: the whole school's (office) or only the coordinator's own grades
         if (who.grades) Consumer(builder: (_, r, __) {
@@ -258,10 +261,10 @@ class StaffAnnouncementsScreen extends ConsumerWidget {
         final routes = [for (final x in r.watch(routesProvider).value ?? const <Map<String, dynamic>>[]) if (x['active'] != false) x];
         if (routes.isEmpty) return const SizedBox.shrink();
         return Padding(padding: const EdgeInsets.only(top: 10), child: DropdownButtonFormField<String>(
-          value: bus, isExpanded: true, decoration: const InputDecoration(labelText: 'Bus', isDense: true),
+          value: bus, isExpanded: true, decoration: const InputDecoration(labelText: 'Transport', isDense: true),
           items: [
             if (!who.busOnly) const DropdownMenuItem(value: '', child: Text('Everyone chosen above')),
-            DropdownMenuItem(value: 'bus', child: Text(who.busOnly ? 'All bus families' : 'Only students who use the school bus')),
+            DropdownMenuItem(value: 'bus', child: Text(who.busOnly ? 'All transport families' : 'Only students who use school transport')),
             for (final ro in routes) DropdownMenuItem(value: ro['id'] as String, child: Text('Only bus route: ${ro['name']}', overflow: TextOverflow.ellipsis)),
           ],
           onChanged: (v) => set(() => bus = v ?? '')));
@@ -307,7 +310,7 @@ class _NoticeRule {
   }
   String get subtitle => whole ? 'Whole school, grades or sections. Urgent rings every phone at once — use only when necessary.'
       : grades ? 'To the families of your grades. School-wide notices go through the office.'
-      : busOnly ? 'To bus families — all routes or one route.'
+      : busOnly ? 'To transport families — all routes or one route.'
       : 'To the families of your class. School-wide notices go through the office.';
 }
 
