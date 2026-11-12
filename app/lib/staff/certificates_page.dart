@@ -103,7 +103,9 @@ Map<String, String> _defaults(String kind, Map<String, dynamic> p) {
       final firstWhen = firstOn != null ? _ddmmyyyy(firstOn) : (s('first_year').isEmpty ? '' : 'Academic year ${s('first_year')}');
       return {
         'date': _ddmmyyyy(today), 'adm': s('admission_no'), 'school_code': s('school_code'),
-        'pupil': s('full_name'), 'mother': _noTitle(s('mother_name')), 'father': _noTitle(s('father_name')), 'nationality': 'Indian', 'category': '',
+        'pupil': s('full_name'), 'mother': _noTitle(s('mother_name')), 'father': _noTitle(s('father_name')),
+        'nationality': s('x_nationality').isEmpty ? 'Indian' : s('x_nationality'),
+        'category': switch (s('x_category')) { 'SC' || 'ST' || 'OBC' => 'Yes, ${s('x_category')}', 'General' => 'No', _ => '' },
         'first_admission': [firstWhen, if (firstClass.isNotEmpty) 'Class $firstClass'].where((x) => x.isNotEmpty).join(', '),
         'dob_figures': dob == null ? '' : _ddmmyyyy(dob), 'dob_words': dob == null ? '' : dobInWords(dob),
         'class_figures': fig, 'class_words': words, 'last_exam': '', 'failed': 'No', 'subjects': s('subjects'), 'promotion': '',
@@ -166,10 +168,29 @@ final _certFindProvider = FutureProvider.autoDispose.family<List<Map<String, dyn
   return [for (final r in res) for (final x in r as List) Map<String, dynamic>.from(x)];
 });
 
-final _prefillProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, (String, String)>((ref, k) async {
-  final r = await db.rpc('certificate_prefill', params: {'p_student': k.$1, 'p_kind': k.$2});
-  return Map<String, dynamic>.from(r as Map);
-});
+final _prefillProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, (String, String)>((ref, k) async => certificatePrefill(k.$1, k.$2));
+
+/// What the app knows for a certificate: the record, plus category and nationality from the student's details.
+Future<Map<String, dynamic>> certificatePrefill(String studentId, String kind) async {
+  final r = Map<String, dynamic>.from(await db.rpc('certificate_prefill', params: {'p_student': studentId, 'p_kind': kind}) as Map);
+  try {
+    final x = await db.rpc('student_extra_for_cert', params: {'p_student': studentId});
+    if (x is Map) {
+      for (final e in x.entries) { if (e.value != null && '${e.value}'.trim().isNotEmpty) r.putIfAbsent('x_${e.key}', () => e.value); }
+    }
+  } catch (_) {}
+  return r;
+}
+
+/// The TC of one student, filled in from the record (the class teacher's lines start as No / Good / empty).
+Future<Map<String, String>> tcDraftFor(String studentId) async => _defaults('tc', await certificatePrefill(studentId, 'tc'));
+
+/// Lines of the TC that the app fills by itself (out of all of them).
+(int, int) tcFilledCount(Map<String, String> d) {
+  var filled = 0;
+  for (final (_, _, keys) in _tcRows) { if (keys.every((k) => (d[k] ?? '').trim().isNotEmpty)) filled++; }
+  return (filled, _tcRows.length);
+}
 
 // ================================================================== the page
 class StaffCertificatesScreen extends ConsumerStatefulWidget {
@@ -597,8 +618,21 @@ const _pLine = PdfColor.fromInt(0xFF8A8590);
 /// Makes the A4 PDF of a certificate from the exact values printed (also used for reprints).
 Future<Uint8List> buildCertificatePdf(String kind, String number, Map<String, dynamic> data) async {
   final k = await _certKit();
-  String v(String key) => (data[key] ?? '').toString().trim();
   final doc = pw.Document(title: '${certKindOf(kind).title} $number', author: _schoolName);
+  _addCertificate(doc, k, kind, number, data);
+  return doc.save();
+}
+
+/// Many certificates in one PDF (for example every Grade X TC), one after the other.
+Future<Uint8List> buildManyCertificatesPdf(String title, List<(String kind, String number, Map<String, dynamic> data)> items) async {
+  final k = await _certKit();
+  final doc = pw.Document(title: title, author: _schoolName);
+  for (final (kind, number, data) in items) { _addCertificate(doc, k, kind, number, data); }
+  return doc.save();
+}
+
+void _addCertificate(pw.Document doc, _CertKit k, String kind, String number, Map<String, dynamic> data) {
+  String v(String key) => (data[key] ?? '').toString().trim();
   final theme = pw.ThemeData.withFont(base: k.base, bold: k.bold);
   const fs = 11.5;
   final tsN = pw.TextStyle(font: k.base, fontSize: fs, color: _pInk);
@@ -780,7 +814,6 @@ Future<Uint8List> buildCertificatePdf(String kind, String number, Map<String, dy
         ],
       ));
   }
-  return doc.save();
 }
 
 class _V { final String text; const _V(this.text); }
