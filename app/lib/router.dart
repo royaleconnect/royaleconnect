@@ -46,6 +46,7 @@ import 'staff/houses_admin.dart';
 import 'staff/thanks_wall.dart';
 import 'staff/approvals_page.dart';
 import 'staff/fees_office.dart' show StaffFeeReportsScreen;
+import 'staff/office_reports.dart' show StrengthPage, LeavingCheckPage, NoticeReportPage;
 import 'staff/year_end.dart';
 import 'staff/week_summary.dart';
 import 'staff/id_cards_page.dart';
@@ -125,6 +126,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         GoRoute(path: '/staff/feedback', builder: (_, __) => const StaffFeedbackScreen()),
         GoRoute(path: '/staff/fees', builder: (_, __) => const StaffFeesScreen()),
         GoRoute(path: '/staff/fees/reports', builder: (_, __) => const StaffFeeReportsScreen()),
+        GoRoute(path: '/staff/strength', builder: (_, __) => const StrengthPage()),
+        GoRoute(path: '/staff/leaving', builder: (_, __) => const LeavingCheckPage()),
+        GoRoute(path: '/staff/announcements/report', builder: (_, __) => const NoticeReportPage()),
         GoRoute(path: '/staff/calendar', builder: (_, __) => const StaffCalendarScreen()),
         GoRoute(path: '/staff/reports', builder: (_, __) => const StaffReportsScreen()),
         GoRoute(path: '/staff/transport', builder: (_, __) => const TransportPage()),
