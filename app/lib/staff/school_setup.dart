@@ -26,7 +26,7 @@ const _tabRoles = {
   'fees': ['accounts', 'it_admin', 'principal'],
   'import': ['office', 'accounts', 'transport_incharge', 'it_admin', 'principal', 'vice_principal'],
 };
-const _tabNames = {'students': 'Students', 'staff': 'Staff', 'classes': 'Classes', 'fees': 'Fees', 'transport': 'Bus routes', 'import': 'Import from Excel'};
+const _tabNames = {'students': 'Students', 'staff': 'Staff', 'classes': 'Classes', 'fees': 'Fees', 'transport': 'Transport routes', 'import': 'Import from Excel'};
 const _tabIcons = {'students': Icons.school_rounded, 'staff': Icons.badge_rounded, 'classes': Icons.class_rounded, 'fees': Icons.currency_rupee_rounded, 'transport': Icons.directions_bus_rounded, 'import': Icons.upload_file_rounded};
 const setupRoles = ['office', 'accounts', 'transport_incharge', 'it_admin', 'principal', 'vice_principal'];
 
@@ -162,6 +162,15 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
       guardian = TextEditingController(), address = TextEditingController(), blood = TextEditingController(), house = TextEditingController(),
       tongue = TextEditingController(), birthPlace = TextEditingController();
   final phones = [TextEditingController(), TextEditingController(), TextEditingController()];
+  // more details (office only, saved with student_extra_save)
+  final appNo = TextEditingController(), nationality = TextEditingController(text: 'Indian'), religion = TextEditingController(),
+      fEmail = TextEditingController(), fEdu = TextEditingController(), fJob = TextEditingController(), fIncome = TextEditingController(),
+      mEmail = TextEditingController(), mEdu = TextEditingController(), mJob = TextEditingController(), mIncome = TextEditingController(),
+      gRelation = TextEditingController(), gPhone = TextEditingController(), gEmail = TextEditingController();
+  DateTime? admissionDate;
+  String? category, lang2, lang3;
+  bool? staffChild;
+  Map<String, dynamic> origExtra = const {};
   final labels = ['Father', 'Mother', 'Other'];
   DateTime? dob, tc;
   String? gender, sectionId, routeId, stopId, origRoute, origStop;
@@ -200,6 +209,19 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
       if (en != null && en.isNotEmpty) sectionId = en.first['section_id'];
       origName = name.text.trim(); origFather = father.text.trim(); origMother = mother.text.trim(); origDob = dob;
       try { final pc = await db.rpc('student_pending_correction', params: {'p_student': widget.studentId}); if (pc is Map) pendingCorrection = Map<String, dynamic>.from(pc); } catch (_) {}
+      try {
+        final x = await db.from('student_extra').select().eq('student_id', widget.studentId!).maybeSingle();
+        if (x != null) {
+          origExtra = Map<String, dynamic>.from(x);
+          String t(String k) => (x[k] ?? '').toString();
+          appNo.text = t('application_no'); if (t('nationality').isNotEmpty) nationality.text = t('nationality'); religion.text = t('religion');
+          fEmail.text = t('father_email'); fEdu.text = t('father_education'); fJob.text = t('father_occupation'); fIncome.text = t('father_income');
+          mEmail.text = t('mother_email'); mEdu.text = t('mother_education'); mJob.text = t('mother_occupation'); mIncome.text = t('mother_income');
+          gRelation.text = t('guardian_relation'); gPhone.text = t('guardian_phone'); gEmail.text = t('guardian_email');
+          admissionDate = x['admission_date'] == null ? null : DateTime.parse(x['admission_date']);
+          category = x['category']; lang2 = x['second_language']; lang3 = x['third_language']; staffChild = x['staff_child'] as bool?;
+        }
+      } catch (_) {}
       final te = r['transport_enrolment'];
       final t = te is List ? (te.isEmpty ? null : te.first) : te;
       if (t != null) { routeId = origRoute = t['route_id']; stopId = origStop = t['stop_id']; }
@@ -219,7 +241,7 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
       list.add({'phone': d.substring(d.length - 10), 'label': labels[i]});
     }
     if (list.isEmpty) { toast(context, 'Add at least one parent phone number — notifications and sign-in depend on it.'); return; }
-    if (routeId != null && stopId == null) { toast(context, 'Pick the bus stop too.'); return; }
+    if (routeId != null && stopId == null) { toast(context, 'Pick the stop too.'); return; }
     // name, date of birth, father's or mother's name changed by the office → the Principal approves first
     final s = ref.read(sessionProvider).value;
     final direct = s != null && (s.hasRole('principal') || s.hasRole('it_admin'));
@@ -245,6 +267,8 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
         'mother_tongue': n(tongue), 'place_of_birth': n(birthPlace),   // used on the TC and other certificates
         if (reason != null) 'correction_reason': reason,
       }}) as String;
+      final extra = _extraPayload();
+      if (extra.isNotEmpty) await db.rpc('student_extra_save', params: {'p_student': id, 'p': extra});
       if (routeId != origRoute || stopId != origStop) {
         await db.rpc('admin_set_transport', params: {'p_student': id, 'p_route': routeId, 'p_stop': routeId == null ? null : stopId});
       }
@@ -267,6 +291,27 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
     } catch (e) {
       if (mounted) { toast(context, _msg(e)); setState(() => busy = false); }
     }
+  }
+
+  /// Only the extra details that changed (the database writes each change in the student's history).
+  Map<String, dynamic> _extraPayload() {
+    String? n(TextEditingController c) => c.text.trim().isEmpty ? null : c.text.trim();
+    final now = <String, dynamic>{
+      'application_no': n(appNo), 'admission_date': admissionDate == null ? null : _iso(admissionDate!), 'nationality': n(nationality),
+      'religion': n(religion), 'category': category, 'second_language': lang2, 'third_language': lang3, 'staff_child': staffChild,
+      'father_email': n(fEmail), 'father_education': n(fEdu), 'father_occupation': n(fJob), 'father_income': n(fIncome),
+      'mother_email': n(mEmail), 'mother_education': n(mEdu), 'mother_occupation': n(mJob), 'mother_income': n(mIncome),
+      'guardian_relation': n(gRelation), 'guardian_phone': n(gPhone), 'guardian_email': n(gEmail),
+    };
+    final out = <String, dynamic>{};
+    for (final e in now.entries) {
+      final was = origExtra[e.key];
+      final a = e.value?.toString() ?? '', b = was?.toString() ?? '';
+      if (a != b && !(isNew && e.value == null)) out[e.key] = e.value;
+    }
+    // a new admission keeps "Indian" only if something else is saved too
+    if (isNew && out.length == 1 && out.containsKey('nationality') && out['nationality'] == 'Indian') return {};
+    return out;
   }
 
   /// "Why is this being corrected?" — the Principal sees the reason next to the change.
@@ -296,7 +341,11 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
     final narrow = isNarrow(context);
     Widget two(Widget a, Widget b) => narrow ? Column(children: [a, const SizedBox(height: 10), b]) : Row(children: [Expanded(child: a), const SizedBox(width: 10), Expanded(child: b)]);
 
-    return _form(context, title: isNew ? 'New admission' : 'Student details', maxWidth: 620, children: [
+    Widget chips(List<String> options, String? value, void Function(String?) set) => Wrap(spacing: 6, runSpacing: 6, children: [
+      for (final o in options) ChoiceChip(label: Text(o), selected: value == o, onSelected: (v) => setState(() => set(v ? o : null)))]);
+    Widget field(String label, Widget child) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.onSurfaceVariant)), const SizedBox(height: 4), child]);
+    return _form(context, title: isNew ? 'New admission' : 'Student details', maxWidth: 760, children: [
       if (pendingCorrection != null) Padding(padding: const EdgeInsets.only(top: 12), child: NoteBox(
           'Waiting for the Principal: ${((pendingCorrection!['changes'] as Map?) ?? const {}).entries.map((e) => '${const {'full_name': 'name', 'dob': 'date of birth', 'father_name': 'father’s name', 'mother_name': 'mother’s name'}[e.key] ?? e.key} → ${(e.value as Map?)?['to'] ?? '—'}').join(' · ')}',
           icon: Icons.hourglass_top_rounded, iconColor: Brand.amber)),
@@ -308,7 +357,7 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
             final d = await showDatePicker(context: context, initialDate: dob ?? DateTime(DateTime.now().year - 8), firstDate: DateTime(1995), lastDate: DateTime.now());
             if (d != null) setState(() => dob = d);
           }, icon: const Icon(Icons.cake_rounded, size: 18), label: Text(dob == null ? 'Date of birth *' : 'Born ${df.format(dob!)}')),
-          Wrap(spacing: 8, children: [for (final g in const ['Male', 'Female']) ChoiceChip(label: Text(g), selected: gender == g, onSelected: (v) => setState(() => gender = v ? g : null))])),
+          GenderPick(value: gender, onChanged: (g) => setState(() => gender = g))),
       const SizedBox(height: 10),
       two(PickField<String?>(label: 'Class', value: sectionId, onChanged: (v) => setState(() => sectionId = v),
               items: [
@@ -318,6 +367,12 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
               ]),
           PickField<String>(label: 'Admission type', value: admissionType, onChanged: (v) => setState(() => admissionType = v ?? 'Day Scholar'),
               items: [for (final a in {'Day Scholar', 'Day Boarder', 'Boarder', admissionType}) DropdownMenuItem(value: a, child: Text(a))])),
+      const SizedBox(height: 10),
+      two(TextField(controller: appNo, textCapitalization: TextCapitalization.characters, decoration: const InputDecoration(labelText: 'Application number')),
+          OutlinedButton.icon(onPressed: () async {
+            final d = await showDatePicker(context: context, initialDate: admissionDate ?? DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime.now());
+            if (d != null) setState(() => admissionDate = d);
+          }, icon: const Icon(Icons.event_rounded, size: 18), label: Text(admissionDate == null ? 'Admission date' : 'Admitted ${df.format(admissionDate!)}'))),
       if (isNew) CheckboxListTile(contentPadding: EdgeInsets.zero, value: addFees, onChanged: (v) => setState(() => addFees = v ?? true),
           title: const Text('Add this year’s fees for the class'), subtitle: const Text('From the fee plan in School setup → Fees. Concessions can be set in Fees & receipts.')),
 
@@ -334,7 +389,7 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
       two(TextField(controller: father, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Father’s name')),
           TextField(controller: mother, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Mother’s name'))),
       const SizedBox(height: 10),
-      TextField(controller: guardian, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Guardian (if different)')),
+      TextField(controller: guardian, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Guardian’s name (only if needed)')),
       const SizedBox(height: 10),
       TextField(controller: address, minLines: 2, maxLines: 3, textCapitalization: TextCapitalization.sentences, decoration: const InputDecoration(labelText: 'Address')),
       const SizedBox(height: 10),
@@ -344,9 +399,39 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
       two(TextField(controller: tongue, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Mother tongue', hintText: 'e.g. Kannada')),
           TextField(controller: birthPlace, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Place of birth', hintText: 'e.g. Bengaluru'))),
 
-      _label(context, 'SCHOOL BUS'),
-      two(PickField<String?>(label: 'Bus route', value: route == null ? null : routeId, onChanged: (v) => setState(() { routeId = v; stopId = null; }),
-              items: [const DropdownMenuItem<String?>(value: null, child: Text('No school bus')), for (final r in routes) DropdownMenuItem<String?>(value: r['id'] as String, child: Text('${r['name']} · ${r['bus_reg_no'] ?? ''}'))]),
+      _label(context, 'MORE ABOUT THE STUDENT'),
+      two(TextField(controller: nationality, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Nationality')),
+          TextField(controller: religion, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Religion (office only)'))),
+      const SizedBox(height: 10),
+      field('Category (office only)', chips(const ['General', 'OBC', 'SC', 'ST'], category, (v) => category = v)),
+      const SizedBox(height: 10),
+      two(field('2nd language (Grade I – X)', chips(const ['Kannada', 'Hindi'], lang2, (v) => lang2 = v)),
+          field('3rd language (Grade VI and up)', chips(const ['Kannada', 'Hindi'], lang3, (v) => lang3 = v))),
+      const SizedBox(height: 6),
+      SwitchListTile(contentPadding: EdgeInsets.zero, value: staffChild == true, onChanged: (v) => setState(() => staffChild = v),
+          title: const Text('Staff child'), subtitle: const Text('A parent works at the school. The app also suggests this by itself.')),
+
+      _label(context, 'FATHER'),
+      two(TextField(controller: fEmail, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email')),
+          TextField(controller: fEdu, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Education'))),
+      const SizedBox(height: 10),
+      two(TextField(controller: fJob, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Occupation')),
+          TextField(controller: fIncome, decoration: const InputDecoration(labelText: 'Annual income (office only, optional)'))),
+      _label(context, 'MOTHER'),
+      two(TextField(controller: mEmail, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email')),
+          TextField(controller: mEdu, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Education'))),
+      const SizedBox(height: 10),
+      two(TextField(controller: mJob, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Occupation')),
+          TextField(controller: mIncome, decoration: const InputDecoration(labelText: 'Annual income (office only, optional)'))),
+      _label(context, 'GUARDIAN (ONLY IF NEEDED)'),
+      two(TextField(controller: gRelation, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Relation', hintText: 'e.g. Uncle')),
+          TextField(controller: gPhone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone'))),
+      const SizedBox(height: 10),
+      TextField(controller: gEmail, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email')),
+
+      _label(context, 'TRANSPORT'),
+      two(PickField<String?>(label: 'Transport route', value: route == null ? null : routeId, onChanged: (v) => setState(() { routeId = v; stopId = null; }),
+              items: [const DropdownMenuItem<String?>(value: null, child: Text('No school transport')), for (final r in routes) DropdownMenuItem<String?>(value: r['id'] as String, child: Text('${r['name']} · ${r['bus_reg_no'] ?? ''}'))]),
           PickField<String>(label: 'Stop', value: stops.any((s) => s['id'] == stopId) ? stopId : null, onChanged: routeId == null ? (_) {} : (v) => setState(() => stopId = v),
               items: [for (final s in stops) DropdownMenuItem(value: s['id'] as String, child: Text('${s['seq']}. ${s['name']}'))])),
 
@@ -792,7 +877,7 @@ class TransportTab extends ConsumerWidget {
       ref.invalidate(routesProvider);
     }
     return ref.watch(routesProvider).when(loading: _loading, error: (e, _) => _err(e), data: (rows) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Panel(title: 'Bus routes · ${rows.length}', trailing: FilledButton.icon(onPressed: () => editRoute(), icon: const Icon(Icons.add_rounded, size: 18), label: const Text('Add route')),
+      Panel(title: 'Transport routes · ${rows.length}', trailing: FilledButton.icon(onPressed: () => editRoute(), icon: const Icon(Icons.add_rounded, size: 18), label: const Text('Add route')),
         child: rows.isEmpty ? Text('No routes yet.', style: TextStyle(color: cs.onSurfaceVariant)) : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           for (final r in rows) Container(
             margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(14),
@@ -1179,5 +1264,35 @@ class _HandoverDialogState extends ConsumerState<HandoverDialog> {
         FilledButton(style: FilledButton.styleFrom(backgroundColor: Brand.crimson), onPressed: busy || hold == null ? null : _go, child: Text(busy ? 'Saving…' : 'Make inactive')),
       ],
     );
+  }
+}
+
+
+/// Boy / Girl as two round buttons: Boy turns blue, Girl turns pink. Saved as 'Male' / 'Female'.
+class GenderPick extends StatelessWidget {
+  final String? value; final ValueChanged<String?>? onChanged;
+  const GenderPick({super.key, this.value, this.onChanged});
+  @override
+  Widget build(BuildContext context) {
+    final v = (value ?? '').toLowerCase();
+    final boy = v == 'male' || v == 'boy' || v == 'm', girl = v == 'female' || v == 'girl' || v == 'f';
+    Widget pill(String label, bool on, Color c, Color tint, String save) => Padding(padding: const EdgeInsets.only(right: 8), child: InkWell(
+      borderRadius: BorderRadius.circular(99),
+      onTap: onChanged == null ? null : () => onChanged!(on ? null : save),
+      child: AnimatedContainer(duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.fromLTRB(8, 6, 14, 6),
+        decoration: BoxDecoration(color: on ? c.withValues(alpha: .13) : Colors.transparent, borderRadius: BorderRadius.circular(99), border: Border.all(color: on ? c : Theme.of(context).colorScheme.outlineVariant, width: 1.5)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          AnimatedContainer(duration: const Duration(milliseconds: 180), width: 18, height: 18,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: on ? c : Colors.transparent, border: Border.all(color: on ? c : Brand.muted, width: 2)),
+            child: on ? Center(child: Container(width: 6, height: 6, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle))) : null),
+          const SizedBox(width: 8),
+          Text(label, style: TextStyle(fontWeight: FontWeight.w800, color: on ? context.tone(c) : null)),
+        ])),
+    ));
+    return Wrap(runSpacing: 6, children: [
+      pill('Boy', boy, Brand.blue, Brand.blueTint, 'Male'),
+      pill('Girl', girl, const Color(0xFFD6407F), const Color(0xFFFCE4EF), 'Female'),
+    ]);
   }
 }
