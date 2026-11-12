@@ -130,6 +130,23 @@ String _photoExt(Uint8List b, String? path) {
   return (m?.group(1) ?? 'jpg').toLowerCase();
 }
 
+/// One student's ID card as a print-ready PDF (the same design as the class sheets). Tells what is missing instead.
+Future<void> openStudentIdCard(BuildContext context, String studentId, {String? sectionId}) async {
+  try {
+    final d = Map<String, dynamic>.from((await db.rpc('id_card_rows', params: {'p_section': sectionId})) as Map);
+    final set = IdCardSet((d['year'] ?? '').toString(), (d['principal'] ?? 'Principal').toString(),
+        [for (final x in (d['rows'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)]);
+    final row = set.rows.where((r) => r['id'] == studentId).firstOrNull;
+    if (!context.mounted) return;
+    if (row == null) { toast(context, 'An ID card needs a class first.'); return; }
+    if (!idCardReady(row)) { toast(context, 'Fill in first: ${List<String>.from(row['missing'] ?? const []).join(', ')}.'); return; }
+    Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (_) => PdfDocScreen(
+      title: 'ID card · ${row['name']}', fileName: 'ID-card-${_safe('${row['name']}')}.pdf', make: () => _makePdf([row], set))));
+  } catch (e) {
+    if (context.mounted) toast(context, 'Could not make the card. Please try again.');
+  }
+}
+
 // ---------------------------------------------------------------- the page
 class StaffIdCardsScreen extends ConsumerStatefulWidget {
   const StaffIdCardsScreen({super.key});
