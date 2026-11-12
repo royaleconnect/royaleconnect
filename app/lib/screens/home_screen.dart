@@ -236,7 +236,7 @@ class _Tiles extends ConsumerWidget {
       TourTarget('f-diary', child: _Tile('Diary', Icons.menu_book_outlined, Brand.blue, Brand.blueTint, () { ref.read(diaryTabProvider.notifier).state = 0; context.go('/diary'); })),
       TourTarget('f-notices', child: _Tile('Notices', Icons.campaign_outlined, Brand.crimsonDeep, Brand.crimsonTint, () => context.go('/announcements'), badge: unreadNotices)),
       TourTarget('f-fees', child: _Tile('Fees', Icons.account_balance_wallet_outlined, Brand.green, Brand.greenTint, () => context.go('/fees'))),
-      if (onBus) _Tile('Bus', Icons.directions_bus_outlined, Brand.blue, Brand.blueTint, () => context.go('/bus')),
+      if (onBus) _Tile('Transport', Icons.directions_bus_outlined, Brand.blue, Brand.blueTint, () => context.go('/bus')),
       _Tile('Calendar', Icons.calendar_month_outlined, Brand.green, Brand.greenTint, () => context.push('/calendar')),
       _Tile('Attendance', Icons.event_available_outlined, Brand.violet, Brand.violetTint, () => context.push('/attendance')),
       _Tile('Reports', Icons.school_outlined, Brand.crimsonDeep, Brand.crimsonTint, () => context.go('/reports')),
