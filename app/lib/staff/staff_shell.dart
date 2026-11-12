@@ -48,7 +48,9 @@ const staffMenu = [
   StaffItem('/staff/class-logins', 'Class logins', Icons.key_rounded, 'MY CLASS', roles: ['class_teacher', 'office', 'it_admin']),
   StaffItem('/staff/strength', 'Student strength', Icons.groups_rounded, 'STUDENTS', roles: ['accounts', ...officeRoles]),
   StaffItem('/staff/leaving', 'Leaving check', Icons.assignment_return_rounded, 'STUDENTS', roles: ['accounts', ...officeRoles]),
-  StaffItem('/staff/fees', 'Fees & receipts', Icons.account_balance_wallet_rounded, 'STUDENTS', roles: ['accounts', ...officeRoles]),
+  StaffItem('/staff/fees', 'Fees & receipts', Icons.account_balance_wallet_rounded, 'FEES', roles: ['accounts', ...officeRoles]),
+  StaffItem('/staff/fees/reports', 'Fee reports', Icons.table_view_rounded, 'FEES', roles: ['accounts', ...officeRoles]),
+  StaffItem('/staff/fees/dues', 'Fee dues', Icons.pending_actions_rounded, 'FEES', roles: ['accounts', ...officeRoles]),
   StaffItem('/staff/certificates', 'Certificates', Icons.workspace_premium_rounded, 'STUDENTS', roles: ['accounts', ...officeRoles]),
   StaffItem('/staff/id-cards', 'ID cards', Icons.badge_rounded, 'STUDENTS', roles: officeRoles),
   StaffItem('/staff/transport', 'Transport', Icons.directions_bus_rounded, 'STUDENTS', roles: ['transport_incharge', ...officeRoles]),
@@ -71,9 +73,9 @@ const staffLayouts = <String, List<(String, List<String>)>>{
   'class_teacher': [('TODAY', ['/staff', '/staff/messages', '/staff/announcements']),
     ('MY CLASS', ['/staff/attendance', '/staff/diary', '/staff/leave', '/staff/exams', '/staff/star', '/staff/moments', '/staff/students', '/staff/class-logins']), _honours, _me],
   'coordinator': [('TODAY', ['/staff', '/staff/messages', '/staff/announcements']), ('MY GRADES', ['/staff/attendance', '/staff/diary', '/staff/exams', '/staff/students']), _honours, _me],
-  'accounts': [('TODAY', ['/staff']), ('FEES', ['/staff/fees', '/staff/students', '/staff/certificates']), _honours, _me],
+  'accounts': [('TODAY', ['/staff']), ('FEES', ['/staff/fees', '/staff/fees/reports', '/staff/fees/dues']), ('STUDENTS', ['/staff/students', '/staff/certificates']), _honours, _me],
   'office': [('TODAY', ['/staff', '/staff/approvals', '/staff/messages', '/staff/announcements']),
-    ('STUDENTS', ['/staff/students', '/staff/strength', '/staff/leaving', '/staff/fees', '/staff/certificates', '/staff/id-cards', '/staff/transport']), ('SCHOOL', ['/staff/calendar', '/staff/feedback', '/staff/toppers']), _me],
+    ('STUDENTS', ['/staff/students', '/staff/strength', '/staff/leaving', '/staff/certificates', '/staff/id-cards', '/staff/transport']), ('FEES', ['/staff/fees', '/staff/fees/reports', '/staff/fees/dues']), ('SCHOOL', ['/staff/calendar', '/staff/feedback', '/staff/toppers']), _me],
   'transport_incharge': [('TODAY', ['/staff', '/staff/announcements']), ('TRANSPORT', ['/staff/transport', '/staff/bus-pins', '/staff/students']), _honours, _me],
   'principal': [('TODAY', ['/staff', '/staff/approvals', '/staff/announcements', '/staff/desk']),
     ('SCHOOL', ['/staff/students', '/staff/strength', '/staff/leaving', '/staff/attendance', '/staff/exams', '/staff/toppers', '/staff/feedback', '/staff/week']), _me],
@@ -81,7 +83,8 @@ const staffLayouts = <String, List<(String, List<String>)>>{
     ('SCHOOL', ['/staff/students', '/staff/strength', '/staff/leaving', '/staff/attendance', '/staff/exams', '/staff/toppers', '/staff/feedback', '/staff/week']), _me],
   // IT: everything
   'it_admin': [('TODAY', ['/staff', '/staff/approvals', '/staff/messages', '/staff/announcements']),
-    ('STUDENTS', ['/staff/students', '/staff/strength', '/staff/leaving', '/staff/fees', '/staff/certificates', '/staff/id-cards', '/staff/transport', '/staff/toppers']),
+    ('STUDENTS', ['/staff/students', '/staff/strength', '/staff/leaving', '/staff/certificates', '/staff/id-cards', '/staff/transport', '/staff/toppers']),
+    ('FEES', ['/staff/fees', '/staff/fees/reports', '/staff/fees/dues']),
     ('SCHOOL', ['/staff/desk', '/staff/calendar', '/staff/feedback', '/staff/setup', '/staff/week']),
     ('CLASSES', ['/staff/attendance', '/staff/diary', '/staff/leave', '/staff/exams', '/staff/star', '/staff/moments', '/staff/class-logins', '/staff/bus-pins']), _me],
 };
@@ -115,7 +118,7 @@ const staffSubPages = [
 
 /// Which menu item a tab-page belongs to (so the right item stays highlighted).
 const staffHubOf = {'/staff/marks': '/staff/exams', '/staff/reports': '/staff/exams', '/staff/council': '/staff/toppers', '/staff/houses': '/staff/toppers',
-  '/staff/users': '/staff/setup', '/staff/sections': '/staff/setup', '/staff/bin': '/staff/setup', '/staff/settings': '/staff/setup', '/staff/fees/reports': '/staff/fees', '/staff/announcements/report': '/staff/announcements', '/staff/year-end': '/staff', '/staff/thanks': '/staff'};
+  '/staff/users': '/staff/setup', '/staff/sections': '/staff/setup', '/staff/bin': '/staff/setup', '/staff/settings': '/staff/setup', '/staff/announcements/report': '/staff/announcements', '/staff/year-end': '/staff', '/staff/thanks': '/staff'};
 
 /// Roles that have this page in their own menu (the normal setting when IT has not changed it).
 List<String> defaultRolesOf(StaffItem m) {
@@ -215,6 +218,10 @@ class StaffShell extends ConsumerWidget {
     final menu = visibleMenu(s, settings);
     final loc0 = GoRouterState.of(context).matchedLocation;
     final loc = staffHubOf.entries.where((e) => loc0 == e.key || loc0.startsWith('${e.key}/')).firstOrNull?.value ?? loc0;
+    // the most specific menu page wins: on /staff/fees/dues only "Fee dues" lights up, not "Fees & receipts"
+    final best = menu.where((m) => m.path != '/staff' && (loc == m.path || loc.startsWith('${m.path}/') || loc0 == m.path || loc0.startsWith('${m.path}/'))).toList()
+      ..sort((a, b) => b.path.length.compareTo(a.path.length));
+    final bestPath = best.isEmpty ? loc : best.first.path;
     final ov = ref.watch(staffOverviewProvider).value ?? const {};
     final approvals = ref.watch(approvalsCountProvider);
     final idReady = officeRoles.any(s.hasRole) && ref.watch(idCardsAllReadyProvider).value == true;
@@ -240,7 +247,7 @@ class StaffShell extends ConsumerWidget {
             Expanded(child: ListView(padding: const EdgeInsets.symmetric(horizontal: 10), children: [
               for (final (i, m) in menu.indexed) ...[
                 if (i == 0 || menu[i - 1].group != m.group) Padding(padding: const EdgeInsets.fromLTRB(12, 14, 12, 4), child: Text(m.group, style: TextStyle(color: Colors.white.withValues(alpha: .6), fontSize: 10.5, letterSpacing: 1.6, fontWeight: FontWeight.w800))),
-                TourTarget('nav:${m.path}', child: _NavTile(m, selected: loc == m.path || (m.path != '/staff' && loc.startsWith('${m.path}/')), badge: badge(m.path), glow: m.path == '/staff/id-cards' && idReady, onTap: () => m.path == '/staff/me' ? context.push(m.path) : context.go(m.path))),
+                TourTarget('nav:${m.path}', child: _NavTile(m, selected: m.path == bestPath, badge: badge(m.path), glow: m.path == '/staff/id-cards' && idReady, onTap: () => m.path == '/staff/me' ? context.push(m.path) : context.go(m.path))),
               ],
             ])),
             _MeTile(s, onSignOut: () async { await ref.read(sessionProvider.notifier).signOut(); if (context.mounted) context.go('/login'); }),
@@ -250,10 +257,10 @@ class StaffShell extends ConsumerWidget {
       }
       // phone / tablet
       final quick = staffQuickBar(s, settings, menu);
-      bool on(StaffItem m) => loc0 == m.path || loc == m.path || (m.path != '/staff' && (loc.startsWith('${m.path}/') || loc0.startsWith('${m.path}/')));
+      bool on(StaffItem m) => m.path == bestPath;
       return Scaffold(
         appBar: AppBar(backgroundColor: Brand.crimsonDeep, foregroundColor: Colors.white, elevation: 0,
-          title: Text(menu.firstWhere((m) => loc == m.path || (m.path != '/staff' && loc.startsWith('${m.path}/')), orElse: () => menu.first).label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+          title: Text(menu.firstWhere((m) => m.path == bestPath, orElse: () => menu.first).label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
           actions: [TourTarget('staff-search', child: IconButton(onPressed: () => showStaffSearch(context), icon: const Icon(Icons.search_rounded), tooltip: 'Search a student')), TourTarget('staff-menu', child: IconButton(onPressed: () => _more(context, ref, s, menu, loc, badge), icon: const Icon(Icons.menu_rounded), tooltip: 'Menu'))]),
         body: content,
         floatingActionButton: help,
