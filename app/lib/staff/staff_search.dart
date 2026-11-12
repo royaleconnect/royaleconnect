@@ -255,7 +255,7 @@ class _Profile extends StatelessWidget {
         ]))),
       ])),
       if (r['house'] != null || r['blood_group'] != null) card('House · Blood group', bold([r['house'] ?? '—', r['blood_group'] ?? '—'].join(' · '))),
-      if (r['bus'] != null) card('Bus', bold('${r['bus']}')),
+      if (r['bus'] != null) card('Transport', bold('${r['bus']}')),
     ])))));
   }
 }
