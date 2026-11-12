@@ -279,7 +279,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
         Expanded(child: Text('${e['title']}${(e['grades'] as List?)?.isNotEmpty == true ? ' · ${(e['grades'] as List).join(', ')}' : ''}', style: TextStyle(fontWeight: e['kind'] == 'holiday' ? FontWeight.w800 : FontWeight.w600))),
       ])),
       const Divider(height: 20),
-      Text('Buses', style: TextStyle(fontWeight: FontWeight.w800, color: cs.onSurfaceVariant, fontSize: 12)),
+      Text('Transport', style: TextStyle(fontWeight: FontWeight.w800, color: cs.onSurfaceVariant, fontSize: 12)),
       if (running.isEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text('No trip running right now.', style: TextStyle(color: cs.onSurfaceVariant))),
       for (final r in running) Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Row(children: [
         Icon(Icons.circle, size: 10, color: r['last_fix_at'] != null && DateTime.now().difference(DateTime.parse(r['last_fix_at']).toLocal()).inSeconds < 60 ? Brand.green : Brand.amber),
