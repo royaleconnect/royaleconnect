@@ -23,16 +23,17 @@ jobs:
   health:
     if: github.event.schedule != '30 21 * * *'
     runs-on: ubuntu-latest
+    timeout-minutes: 12           # a hung connection must not keep the check running for hours
     steps:
       - name: Website answers
-        run: curl -fsS -o /dev/null --retry 3 --retry-delay 20 https://royaleconnect.github.io/royaleconnect/
+        run: curl -fsS -o /dev/null --max-time 30 --retry 3 --retry-delay 20 https://royaleconnect.github.io/royaleconnect/
       - name: Database answers
         run: |
-          curl -fsS --retry 3 --retry-delay 20 "https://upgvxhsxmdihmfmzknlq.supabase.co/rest/v1/academic_year?select=label&limit=1" \
+          curl -fsS --max-time 30 --retry 3 --retry-delay 20 "https://upgvxhsxmdihmfmzknlq.supabase.co/rest/v1/academic_year?select=label&limit=1" \
             -H "apikey: sb_publishable_8mtHFfZ9Fk3p1YdG6gwydw_IXlULRxR" > /dev/null
       - name: Sign-in service answers
         run: |
-          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST "https://upgvxhsxmdihmfmzknlq.supabase.co/functions/v1/login-student" \
+          code=$(curl -s -o /dev/null --max-time 30 --retry 2 --retry-delay 20 -w "%{http_code}" -X POST "https://upgvxhsxmdihmfmzknlq.supabase.co/functions/v1/login-student" \
             -H "apikey: sb_publishable_8mtHFfZ9Fk3p1YdG6gwydw_IXlULRxR" -H "content-type: application/json" -d '{"admission_no":"","password":""}')
           echo "login-student answered $code"
           [ "$code" -lt 500 ]
