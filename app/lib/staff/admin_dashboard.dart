@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'office_reports.dart' show OfficeGlance;
 import '../auth/session.dart';
 import '../core/data.dart';
 import '../core/errors.dart';
@@ -11,7 +12,7 @@ import '../core/theme.dart';
 import '../widgets/common.dart';
 import 'staff_data.dart';
 import 'staff_shell.dart';
-import '../widgets/royal_extras.dart' show CountUpText, GoldLoading, FestiveBanner, FestiveSky;
+import '../widgets/royal_extras.dart' show GoldLoading, FestiveBanner, FestiveSky;
 import 'health_dot.dart';
 import 'year_end.dart';
 import 'password_requests.dart' show PasswordRequestsCard;
@@ -38,11 +39,6 @@ final adminOverviewProvider = FutureProvider.autoDispose<Map<String, dynamic>?>(
   }
 });
 
-String _inrShort(num v) {
-  if (v >= 10000000) return '₹${(v / 10000000).toStringAsFixed(2)} Cr';
-  if (v >= 100000) return '₹${(v / 100000).toStringAsFixed(1)} L';
-  return inr(v);
-}
 int _i(dynamic v) => v is num ? v.toInt() : int.tryParse('$v') ?? 0;
 String _ago(String? iso) {
   if (iso == null) return '—';
@@ -119,47 +115,19 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
   }
 
   Widget _body(BuildContext context, Map<String, dynamic> d, Map<String, dynamic>? o, ColorScheme cs) {
-    final fam = Map<String, dynamic>.from(d['families'] ?? {});
-    final fees = Map<String, dynamic>.from(d['fees'] ?? {});
     final bus = Map<String, dynamic>.from(d['buses'] ?? {});
     final tch = Map<String, dynamic>.from(d['teaching'] ?? {});
     final running = List<Map<String, dynamic>>.from(bus['running'] ?? const []);
     final idle = List<String>.from(bus['idle'] ?? const []);
-    final att = Map<String, dynamic>.from(o?['attendance'] ?? {});
-    final nts = Map<String, dynamic>.from(o?['notices'] ?? {});
-    final grades = List<Map<String, dynamic>>.from(o?['grades'] ?? const []);
-    final students = o == null ? _i(fam['students']) : _i(o['students']);
-    final seats = grades.fold<int>(0, (a, g) => a + _i(g['seats']));
-    final marked = _i(att['marked']), present = _i(att['present']);
-    final aud = _i(nts['audience']), seen = _i(nts['seen']);
 
-    final tiles = <Widget>[
-      _Tile('Students', '$students', sub: o == null ? 'in the current classes' : '${seats > 0 ? 'of $seats seats · ' : ''}${_i(o['new_this_year'])} new this year · ${_i(o['left_this_year'])} left',
-          icon: Icons.school_rounded, color: Brand.blue, onTap: () => context.go('/staff/students')),
-      _Tile('Present today', marked == 0 ? '—' : '${(present * 100 / marked).round()}%',
-          sub: marked == 0 ? 'attendance not taken yet today' : '${_i(att['absent'])} absent · ${_i(att['sections_marked'])} of ${_i(att['sections'])} classes marked',
-          icon: Icons.fact_check_rounded, color: Brand.green, onTap: () => context.go('/staff/attendance')),
-      _Tile('Fees collected today', _inrShort(fees['today_amount'] ?? 0), sub: '${_i(fees['today_count'])} payments · this month ${_inrShort(fees['month_amount'] ?? 0)}',
-          icon: Icons.account_balance_wallet_rounded, color: Brand.green, onTap: () => context.go('/staff/fees')),
-      _Tile('Dues', _inrShort(fees['overdue_amount'] ?? 0), sub: '${_i(fees['overdue_students'])} students · reminders go by themselves',
-          icon: Icons.warning_amber_rounded, color: Brand.crimson, onTap: () => context.go('/staff/fees')),
-      _Tile('Opened the app today', '${_i(fam['opened_today'])}', sub: 'families · ${_i(fam['staff_today'])} of ${_i(fam['staff_total'])} staff',
-          icon: Icons.phone_android_rounded, color: Brand.violet),
-      _Tile('Notices read', aud == 0 ? '—' : '${(seen * 100 / aud).clamp(0, 100).round()}%',
-          sub: _i(nts['sent']) == 0 ? 'no notices in the last 7 days' : '${_i(nts['sent'])} notice${_i(nts['sent']) == 1 ? '' : 's'} in the last 7 days',
-          icon: Icons.campaign_rounded, color: Brand.amber, onTap: () => context.go('/staff/announcements')),
-    ];
 
     return LayoutBuilder(builder: (_, c) {
       final w = c.maxWidth;
-      final cols = w >= 1000 ? 3 : w >= 640 ? 2 : 1;
-      final tileW = (w - 12 * (cols - 1)) / cols;
       final panelCols = w >= 900 ? 2 : 1;
       final panelW = (w - 14 * (panelCols - 1)) / panelCols;
       Widget panel(Widget p) => SizedBox(width: panelW, child: p);
       return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Wrap(spacing: 12, runSpacing: 12, children: [for (final t in tiles) SizedBox(width: tileW, child: t)]),
-        const SizedBox(height: 14),
+        const OfficeGlance(),
         Wrap(spacing: 14, children: [
           if (o != null) panel(_enrollment(context, o, cs)),
           if (o != null) panel(Column(children: [_dataChecker(context, o, cs), _leaving(context, o, cs)])),
@@ -302,29 +270,6 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
   }
 }
 
-class _Tile extends StatelessWidget {
-  final String label, value, sub; final IconData icon; final Color color; final VoidCallback? onTap;
-  const _Tile(this.label, this.value, {required this.sub, required this.icon, required this.color, this.onTap});
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Material(color: cs.surface, borderRadius: BorderRadius.circular(18), child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(18), child: Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), border: Border.all(color: cs.outline.withValues(alpha: .6))),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: context.tone(color).withValues(alpha: .14), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: context.tone(color))),
-        const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label.toUpperCase(), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .4, color: cs.onSurfaceVariant)),
-          const SizedBox(height: 2),
-          CountUpText(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: context.tone(color))),
-          Text(sub, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-        ])),
-        if (onTap != null) Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
-      ]),
-    )));
-  }
-}
 
 /// Search any student and open exactly what their family sees — read-only; the database refuses every change.
 class _ViewAsFamily extends ConsumerStatefulWidget {
