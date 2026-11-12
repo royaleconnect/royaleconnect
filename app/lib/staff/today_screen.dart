@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'office_reports.dart' show OfficeGlance;
 import '../auth/session.dart';
 import '../core/data.dart';
 import '../core/errors.dart';
@@ -131,6 +132,7 @@ class TodayScreen extends ConsumerWidget {
         const FestiveBanner(),
         const MorningBrief(),
         if (t.hasError) Panel(child: Text(friendlyError(t.error!), style: const TextStyle(color: Brand.crimsonDeep))) else FadeRise(child: needs),
+        if (s.isOffice || s.hasRole('accounts')) const FadeRise(delayMs: 80, child: OfficeGlance()),
         const TodayPeriods(),
         // password help: the class teacher handles it here; the office sees it in Approvals (the line above)
         if (!s.isOffice || !can('/staff/approvals')) const PasswordRequestsCard(),
