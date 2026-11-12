@@ -23,7 +23,7 @@ class ParentFrame extends ConsumerWidget {
   static const _groups = <(String, List<(String, String, IconData)>)>[
     ('DAILY', [('/', 'Home', Icons.home_rounded), ('/diary', 'Diary', Icons.menu_book_rounded), ('/announcements', 'Notices', Icons.campaign_rounded), ('/messages', 'Messages', Icons.chat_bubble_rounded)]),
     ('SCHOOL', [('/calendar', 'Calendar', Icons.calendar_month_rounded), ('/attendance', 'Attendance & leave', Icons.event_available_rounded), ('/reports', 'Reports', Icons.school_rounded),
-                ('/fees', 'Fees & receipts', Icons.account_balance_wallet_rounded), ('/bus', 'Bus', Icons.directions_bus_rounded), ('/gallery', 'Gallery', Icons.photo_library_rounded), ('honours', 'Honours', Icons.emoji_events_rounded)]),
+                ('/fees', 'Fees & receipts', Icons.account_balance_wallet_rounded), ('/bus', 'Transport', Icons.directions_bus_rounded), ('/gallery', 'Gallery', Icons.photo_library_rounded), ('honours', 'Honours', Icons.emoji_events_rounded)]),
     ('ME', [('/profile', 'Profile', Icons.person_rounded)]),
   ];
   static const _hubOf = {'/timetable': '/calendar', '/exams': '/calendar', '/leave': '/attendance', '/star': 'honours', '/toppers': 'honours', '/fame': 'honours', '/council': 'honours', '/houses': 'honours',
