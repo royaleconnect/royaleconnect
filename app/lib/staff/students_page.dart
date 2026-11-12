@@ -98,12 +98,6 @@ class _StudentsPageState extends ConsumerState<StudentsPage> {
       ],
     ]);
 
-    Widget genderText(String? g) {
-      final v = (g ?? '').toLowerCase();
-      if (v == 'male' || v == 'boy') return Text('Boy', style: TextStyle(fontWeight: FontWeight.w800, color: context.tone(Brand.blue)));
-      if (v == 'female' || v == 'girl') return Text('Girl', style: TextStyle(fontWeight: FontWeight.w800, color: context.tone(_pink)));
-      return Text('—', style: TextStyle(color: cs.onSurfaceVariant));
-    }
     Widget tags(Map<String, dynamic> r) => Wrap(spacing: 6, runSpacing: 4, children: [
       if (r['is_new'] == true) const Pill('NEW', fg: Brand.amber, bg: Brand.amberTint),
       if (r['suspended_till'] != null) Pill('SUSPENDED till ${DateFormat('d MMM').format(DateTime.parse(r['suspended_till']))}', fg: Brand.crimsonDeep, bg: Brand.crimsonTint),
@@ -117,8 +111,8 @@ class _StudentsPageState extends ConsumerState<StudentsPage> {
             : past ? 'No past students yet.' : 'No students in this class yet.', style: TextStyle(color: cs.onSurfaceVariant)));
       }
       if (narrow) {
-        return Column(children: [for (final r in rows) ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 6),
+        return Column(children: [for (final (i, r) in rows.indexed) ...[if (i > 0) Divider(height: 1, color: cs.outlineVariant.withValues(alpha: .5)), ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           leading: Avatar(_initials(r['full_name'] ?? ''), size: 40, bg: past ? Brand.surface2 : Brand.crimsonTint, fg: past ? Brand.muted : Brand.crimsonDeep),
           title: Text(r['full_name'] ?? '', style: const TextStyle(fontWeight: FontWeight.w800)),
           subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -129,33 +123,57 @@ class _StudentsPageState extends ConsumerState<StudentsPage> {
             if (past && ((r['fees_due'] ?? 0) as num) > 0) Text('Fees pending ${inr(r['fees_due'] as num)}', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: context.tone(Brand.crimsonDeep))),
           ]),
           trailing: const Icon(Icons.chevron_right_rounded),
-          onTap: () => _open(r['id'])),
+          onTap: () => _open(r['id']))],
         ]);
       }
-      Widget cell(Widget w, int flex) => Expanded(flex: flex, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 6), child: w));
-      Widget t(String? x, {bool bold = false, Color? c}) => Text(x ?? '—', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: bold ? FontWeight.w800 : FontWeight.w500, color: c, fontSize: 13.5));
+      Widget cell(Widget w, int flex) => Expanded(flex: flex, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: w));
+      Widget t(String? x, {bool bold = false, Color? c}) => Text(x ?? '—', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: bold ? FontWeight.w800 : FontWeight.w600, color: c, fontSize: 14));
+      // MCB style: a main line and a quiet second line under it
+      Widget two(String? a, String? b, {bool bold = false, Color? c}) => Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+        Text(a == null || a.isEmpty ? '—' : a, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: bold ? FontWeight.w800 : FontWeight.w600, fontSize: 14, color: c)),
+        if (b != null && b.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text(b, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant))),
+      ]);
+      String gender(String? g) { final v = (g ?? '').toLowerCase(); return v == 'male' || v == 'boy' ? 'Boy' : v == 'female' || v == 'girl' ? 'Girl' : ''; }
+      Widget avatar(Map<String, dynamic> r) {
+        final g = gender(r['gender']);
+        final fg = past ? Brand.muted : g == 'Girl' ? _pink : g == 'Boy' ? Brand.blue : Brand.crimsonDeep;
+        return Avatar(_initials(r['full_name'] ?? ''), size: 42, bg: fg.withValues(alpha: .12), fg: fg);
+      }
+      String? year(String? adm) => RegExp(r'(20\d\d)').firstMatch(adm ?? '')?.group(1);
       final header = past
-          ? [('STUDENT', 5), ('ADMISSION NO.', 3), ('LAST CLASS', 3), ('LEFT ON', 3), ('REASON', 3), ('TC NO.', 4), ('FATHER · PHONE', 4), ('FEES PENDING', 3)]
-          : [('#', 1), ('STUDENT', 6), ('ADMISSION NO.', 3), ('CLASS', 3), ('GENDER', 2), ('FATHER', 4), ('PHONE', 3)];
+          ? [('STUDENT', 6), ('ADMISSION NO.', 3), ('LAST CLASS', 3), ('LEFT ON', 3), ('TC NO.', 4), ('FATHER', 4), ('FEES PENDING', 3)]
+          : [('STUDENT', 7), ('ADMISSION NO.', 3), ('CLASS', 2), ('FATHER', 5), ('PHONE', 3)];
       return Column(children: [
-        Container(padding: const EdgeInsets.symmetric(vertical: 10), color: Brand.gold.withValues(alpha: .07),
-            child: Row(children: [for (final (h, f) in header) cell(Text(h, style: head), f), const SizedBox(width: 60)])),
-        for (final (i, r) in rows.indexed) InkWell(onTap: () => _open(r['id']), child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 11),
-          decoration: BoxDecoration(border: Border(top: BorderSide(color: cs.outlineVariant.withValues(alpha: .6)))),
-          child: Row(children: past ? [
-            cell(t(r['full_name'], bold: true), 5), cell(t(r['admission_no']), 3), cell(t(r['last_class']), 3),
-            cell(t(r['left_on'] == null ? null : _dmy(r['left_on'])), 3), cell(t(r['reason']), 3),
-            cell(r['tc_no'] != null ? t(r['tc_no']) : r['tc_doc'] == true ? t('Uploaded') : (r['reason'] ?? '').toString().toLowerCase().startsWith('not joined')
-                ? const Align(alignment: Alignment.centerLeft, child: Pill('Not needed', fg: Brand.muted, bg: Brand.surface2)) : t('Not given', c: context.tone(Brand.amber)), 4),
-            cell(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [t(r['father']), Text(r['phone'] ?? '', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant))]), 4),
-            cell(((r['fees_due'] ?? 0) as num) > 0 ? t(inr(r['fees_due'] as num), bold: true, c: context.tone(Brand.crimsonDeep)) : t('—'), 3),
-            SizedBox(width: 60, child: Text('Open ›', style: TextStyle(fontWeight: FontWeight.w800, color: context.tone(Brand.crimson)))),
-          ] : [
-            cell(Text('${i + 1}', style: TextStyle(color: cs.onSurfaceVariant)), 1),
-            cell(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [t(r['full_name'], bold: true), tags(r)]), 6),
-            cell(t(r['admission_no']), 3), cell(t(r['class']), 3), cell(genderText(r['gender']), 2), cell(t(r['father']), 4), cell(t(r['phone']), 3),
-            SizedBox(width: 60, child: Text('Open ›', style: TextStyle(fontWeight: FontWeight.w800, color: context.tone(Brand.crimson)))),
+        Container(padding: const EdgeInsets.fromLTRB(18, 14, 18, 14), color: Brand.gold.withValues(alpha: .07),
+            child: Row(children: [const SizedBox(width: 56), for (final (h, f) in header) cell(Text(h, style: head), f), const SizedBox(width: 28)])),
+        for (final r in rows) InkWell(onTap: () => _open(r['id']), hoverColor: Brand.gold.withValues(alpha: .05), child: Container(
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+          decoration: BoxDecoration(border: Border(top: BorderSide(color: cs.outlineVariant.withValues(alpha: .5)))),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+            avatar(r), const SizedBox(width: 14),
+            ...past ? [
+              cell(two(r['full_name'], [gender(r['gender']), r['reason']].whereType<String>().where((x) => x.isNotEmpty).join(' · '), bold: true), 6),
+              cell(t(r['admission_no']), 3), cell(t(r['last_class']), 3),
+              cell(t(r['left_on'] == null ? null : _dmy(r['left_on'])), 3),
+              cell(r['tc_no'] != null ? t(r['tc_no']) : r['tc_doc'] == true ? t('Uploaded') : (r['reason'] ?? '').toString().toLowerCase().startsWith('not joined')
+                  ? const Align(alignment: Alignment.centerLeft, child: Pill('Not needed', fg: Brand.muted, bg: Brand.surface2)) : t('Not given', c: context.tone(Brand.amber)), 4),
+              cell(two(r['father'], r['phone']), 4),
+              cell(((r['fees_due'] ?? 0) as num) > 0 ? t(inr(r['fees_due'] as num), bold: true, c: context.tone(Brand.crimsonDeep)) : t('—'), 3),
+            ] : [
+              cell(Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                Text(r['full_name'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
+                const SizedBox(height: 4),
+                Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                  Text([if (r['roll_no'] != null) 'Roll ${r['roll_no']}', gender(r['gender'])].where((x) => x.isNotEmpty).join(' · '),
+                      style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+                  tags(r),
+                ]),
+              ]), 7),
+              cell(two(r['admission_no'], year(r['admission_no']) == null ? null : 'joined ${year(r['admission_no'])}'), 3),
+              cell(t(r['class'], bold: true), 2),
+              cell(t(r['father']), 5), cell(t(r['phone']), 3),
+            ],
+            Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant.withValues(alpha: .6)),
           ]),
         )),
       ]);
@@ -204,6 +222,8 @@ class _StudentsPageState extends ConsumerState<StudentsPage> {
           if (!past && filter.startsWith('s:') && sections.any((x) => 's:${x['id']}' == filter)) TextButton.icon(
             onPressed: () => printClassSlips(context, ref, filter.substring(2), sectionLabel(sections.firstWhere((x) => 's:${x['id']}' == filter))),
             icon: const Icon(Icons.print_rounded, size: 18), label: const Text('Password slips')),
+          if (!past && filter.startsWith('s:')) TextButton.icon(onPressed: () => context.go('/staff/id-cards'),
+            icon: const Icon(Icons.badge_rounded, size: 18), label: const Text('ID cards')),
         ])),
         Panel(padding: EdgeInsets.zero, child: data.when(
           loading: () => const Padding(padding: EdgeInsets.all(30), child: Center(child: CircularProgressIndicator())),
