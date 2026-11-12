@@ -27,7 +27,7 @@ class HelpTopic {
 
 // ------------------------------------------------------------------ parents & students
 const familyTopics = [
-  HelpTopic('Fees', '💳'), HelpTopic('Bus', '🚌'), HelpTopic('Diary', '📒'), HelpTopic('Notices', '📢'), HelpTopic('Report cards', '📄'),
+  HelpTopic('Fees', '💳'), HelpTopic('Transport', '🚌'), HelpTopic('Diary', '📒'), HelpTopic('Notices', '📢'), HelpTopic('Report cards', '📄'),
   HelpTopic('Sign-in', '🔑'), HelpTopic('Notifications', '🔔'), HelpTopic('Children', '👨‍👩‍👧'), HelpTopic('School', '🏫'),
 ];
 
@@ -59,25 +59,25 @@ const familyHelp = <HelpItem>[
     'The office enters it, and the payment and receipt appear in the app.',
   ], keywords: 'cash cheque office counter offline'),
   // Bus
-  HelpItem('b-map', 'Bus', 'Where can I see the school bus?', [
-    'Tap Bus at the bottom of the screen.',
+  HelpItem('b-map', 'Transport', 'Where can I see the school bus?', [
+    'Tap Transport at the bottom of the screen.',
     'When a trip is running, the green 🚌 moves on the map. Your stop is the red house.',
     'The card at the bottom shows how many stops and minutes away the bus is.',
   ], keywords: 'live location track tracking map gps where is the bus van', route: '/bus', button: 'Open the live bus map', popular: true),
-  HelpItem('b-alerts', 'Bus', 'Why didn’t I get the “bus is 2 stops away” alert?', [
+  HelpItem('b-alerts', 'Transport', 'Why didn’t I get the “bus is 2 stops away” alert?', [
     'Open Bus → Alerts and check that the alerts are switched on.',
     'Check that notifications for Royale Connect are allowed in your phone settings.',
     'If the bus was in a low-network area, the alert may come a little late.',
   ], keywords: 'notification alert two stops 10 minutes not coming late', route: '/bus', button: 'Open Bus'),
-  HelpItem('b-call', 'Bus', 'How do I call the driver or the bus assistant?', [
-    'Tap Bus at the bottom of the screen.',
+  HelpItem('b-call', 'Transport', 'How do I call the driver or the bus assistant?', [
+    'Tap Transport at the bottom of the screen.',
     'On the map card, tap Driver or Bus assistant to call.',
   ], keywords: 'phone number driver conductor attendant contact', route: '/bus', button: 'Open Bus'),
-  HelpItem('b-stop', 'Bus', 'How do I change my child’s bus stop?', [
+  HelpItem('b-stop', 'Transport', 'How do I change my child’s bus stop?', [
     'Please tell the school transport office or the school office.',
     'Once they change it, the new stop shows in the app.',
   ], keywords: 'change stop pickup point address moved shifted'),
-  HelpItem('b-none', 'Bus', 'I can’t see the Bus button', [
+  HelpItem('b-none', 'Transport', 'I can’t see the Bus button', [
     'The Bus button appears only for children who use the school bus.',
     'If your child uses the school bus, please tell the school office so they can add it.',
   ], keywords: 'missing no bus tab not showing'),
@@ -126,7 +126,7 @@ const familyHelp = <HelpItem>[
   HelpItem('s-privacy', 'Sign-in', 'Who can see my child’s information?', ['On Home, tap ⚙ (Settings) at the top.', 'Tap Privacy policy.'], keywords: 'privacy data information who sees policy', route: '/privacy', button: 'Open privacy policy'),
   HelpItem('s-delete', 'Sign-in', 'How do I delete our account?', ['On Home, tap ⚙ (Settings) at the top.', 'Tap Request account deletion and send.', 'The school office will contact you.'], keywords: 'delete account remove close data', route: '/settings', button: 'Open settings'),
   HelpItem('f-today', 'Home', 'What is the “Your day” card?', ['The top line says if today is a school day or a holiday, with the bus pickup time and any event.', 'Needs you shows only what needs you: a fee to pay (with a Pay button), homework for the next school day, and new notices. When it says “All done for today ✨”, there is nothing to do.', 'My list is beside it: tick an item right there, or tap See all.'], keywords: 'your day today needs you card home pay homework notice holiday school day my list', route: '/'),
-  HelpItem('bus_pin', 'Bus', 'How do I change my bus pickup point?', ['Open Bus.', 'Tap Change on “Pickup point”.', 'Choose “Use my location now” or “Move the pin on the map”.'], keywords: 'pin pickup location bus point', route: '/bus', button: 'Open Bus'),
+  HelpItem('bus_pin', 'Transport', 'How do I change my bus pickup point?', ['Open Bus.', 'Tap Change on “Pickup point”.', 'Choose “Use my location now” or “Move the pin on the map”.'], keywords: 'pin pickup location bus point', route: '/bus', button: 'Open Bus'),
   HelpItem('bus_pins_staff', 'Transport', 'How do I check the children’s home pins?', ['Open Check pins.', 'Choose the bus.', 'Press “Place pins from addresses” once.', 'Amber = please check: tap the child, then tap the right spot on the map.'], keywords: 'pins geocode map address home', route: '/staff/bus-pins', button: 'Open Check pins'),
   HelpItem('bus_end_trip', 'Transport', 'A driver forgot to end the trip', ['Open Transport.', 'Under “Buses running now” press End trip.', 'Trips also end by themselves 15 minutes after reaching school, or after 3 hours.'], keywords: 'end trip running forgot bus', route: '/staff/transport', button: 'Open Transport'),
   HelpItem('class-logins', 'Students', 'A parent forgot the password — what do I do?', ['Open Class logins.', 'Tap Reset next to the child.', 'Read the new password to the parent. They choose their own at the first sign-in.'], keywords: 'password login forgot slip reset class', route: '/staff/class-logins', button: 'Open Class logins'),
