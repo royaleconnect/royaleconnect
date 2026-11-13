@@ -19,7 +19,7 @@ class ParentFrame extends ConsumerWidget {
   const ParentFrame({super.key, required this.child});
 
   // 12 items (11 without the bus). Pages that belong together open with tabs at the top:
-  // Calendar · Timetable · Exams — Attendance · Leave — Star · Toppers · Hall of Fame · Council · Houses.
+  // Calendar · Timetable · Exams — Attendance · Leave — Star · Toppers · Council · Houses · Hall of Fame.
   static const _groups = <(String, List<(String, String, IconData)>)>[
     ('DAILY', [('/', 'Home', Icons.home_rounded), ('/diary', 'Diary', Icons.menu_book_rounded), ('/announcements', 'Notices', Icons.campaign_rounded), ('/messages', 'Messages', Icons.chat_bubble_rounded)]),
     ('SCHOOL', [('/calendar', 'Calendar', Icons.calendar_month_rounded), ('/attendance', 'Attendance & leave', Icons.event_available_rounded), ('/reports', 'Reports', Icons.school_rounded),
