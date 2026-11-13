@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/royal_extras.dart' show ShimmerPage;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../core/data.dart';
@@ -73,7 +74,7 @@ class _StaffCalendarScreenState extends ConsumerState<StaffCalendarScreen> {
       subtitle: 'Holidays, events, exams and parents’ meetings. Changes reach families’ calendars straight away.',
       actions: [FilledButton.icon(onPressed: () => _edit(), icon: const Icon(Icons.add_rounded), label: const Text('Add holiday / event'))],
       body: events.when(
-        loading: () => const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator())),
+        loading: () => const ShimmerPage(),
         error: (e, _) => Text('$e', style: const TextStyle(color: Brand.crimsonDeep)),
         data: (_) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           monthBar,
