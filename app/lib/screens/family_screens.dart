@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,6 +27,8 @@ class StorageImage extends ConsumerWidget {
   const StorageImage(this.path, {super.key, this.fit = BoxFit.cover, this.width, this.height, this.radius});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // sample albums / moments of the test school: a painted picture, no outside website needed (and no real children)
+    if (path.startsWith('sample:')) return ClipRRect(borderRadius: radius ?? BorderRadius.zero, child: SizedBox(width: width, height: height, child: SamplePhoto(path)));
     final url = ref.watch(signedUrlProvider(path));
     final ph = Container(width: width, height: height, color: Theme.of(context).colorScheme.surfaceContainerHighest);
     return ClipRRect(borderRadius: radius ?? BorderRadius.zero, child: url.when(loading: () => ph, error: (_, __) => ph,
@@ -39,6 +42,57 @@ class StorageImage extends ConsumerWidget {
               fadeInDuration: const Duration(milliseconds: 220), placeholder: (_, __) => ph, errorWidget: (_, __, ___) => ph);
         })));
   }
+}
+
+/// A soft "event light" picture for the sample school: deep colour, a warm glow and floating lights (the same picture
+/// for the same name, so albums look stable). Marked "Sample" so nobody takes it for a real photo.
+class SamplePhoto extends StatelessWidget {
+  final String name;
+  const SamplePhoto(this.name, {super.key});
+  static const _palettes = [
+    [Color(0xFF7A0E14), Color(0xFFC8102E), Color(0xFFF3C969)],   // crimson & gold
+    [Color(0xFF0E3B2E), Color(0xFF1F7A5A), Color(0xFFF1D58A)],   // emerald
+    [Color(0xFF1B1F4B), Color(0xFF3A4FA0), Color(0xFFF6C1A8)],   // royal blue & rose
+    [Color(0xFF6B2D0B), Color(0xFFE07A1F), Color(0xFFFFE3A3)],   // saffron (festivals)
+    [Color(0xFF123B4A), Color(0xFF2F8FA3), Color(0xFFE9F2C9)],   // teal (sports day)
+    [Color(0xFF3D1340), Color(0xFF9B3D8F), Color(0xFFF7D6E8)],   // plum (annual day)
+  ];
+  @override
+  Widget build(BuildContext context) {
+    final seed = name.codeUnits.fold<int>(7, (a, c) => (a * 31 + c) & 0x7fffffff);
+    return Stack(fit: StackFit.expand, children: [
+      CustomPaint(painter: _SamplePainter(seed, _palettes[seed % _palettes.length])),
+      Positioned(right: 6, bottom: 5, child: Text('Sample', style: TextStyle(color: Colors.white.withValues(alpha: .55), fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: .6))),
+    ]);
+  }
+}
+
+class _SamplePainter extends CustomPainter {
+  final int seed; final List<Color> p;
+  _SamplePainter(this.seed, this.p);
+  @override
+  void paint(Canvas canvas, Size size) {
+    final r = math.Random(seed);
+    final rect = Offset.zero & size;
+    final a = Alignment(r.nextDouble() * 2 - 1, -1), b = Alignment(r.nextDouble() * 2 - 1, 1);
+    canvas.drawRect(rect, Paint()..shader = LinearGradient(begin: a, end: b, colors: [p[0], p[1]]).createShader(rect));
+    final glow = Offset(size.width * (.25 + r.nextDouble() * .5), size.height * (.3 + r.nextDouble() * .4));
+    canvas.drawCircle(glow, size.longestSide * .55, Paint()..shader = RadialGradient(colors: [p[2].withValues(alpha: .55), p[2].withValues(alpha: 0)])
+        .createShader(Rect.fromCircle(center: glow, radius: size.longestSide * .55)));
+    final dot = Paint();
+    for (var i = 0; i < 22; i++) {
+      final c = Offset(r.nextDouble() * size.width, r.nextDouble() * size.height);
+      final rad = size.shortestSide * (.02 + r.nextDouble() * .09);
+      dot
+        ..color = (i.isEven ? p[2] : Colors.white).withValues(alpha: .10 + r.nextDouble() * .30)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, rad * .35);
+      canvas.drawCircle(c, rad, dot);
+    }
+    // a soft vignette, like a real photo
+    canvas.drawRect(rect, Paint()..shader = RadialGradient(radius: .9, colors: [Colors.transparent, Colors.black.withValues(alpha: .28)]).createShader(rect));
+  }
+  @override
+  bool shouldRepaint(covariant _SamplePainter o) => o.seed != seed;
 }
 
 // ---------------------------------------------------------------- gallery
