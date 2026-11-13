@@ -47,7 +47,8 @@ bool isNetworkError(Object e) {
 }
 
 Future<(DateTime, Object?, String)?> _read(SharedPreferences p, String key) async {
-  final raw = p.getString('$_prefix$key');
+  final Object? got; try { got = p.get('$_prefix$key'); } catch (_) { return null; }
+  final raw = got is String ? got : null;
   if (raw == null) return null;
   final i = raw.indexOf('|');
   if (i < 0) return null;
@@ -67,7 +68,7 @@ void _prune(SharedPreferences p) {
   _pruned = true;
   final old = DateTime.now().subtract(const Duration(days: 21)).millisecondsSinceEpoch;
   for (final k in p.getKeys().where((k) => k.startsWith(_prefix)).toList()) {
-    final v = p.getString(k) ?? '';
+    final got = p.get(k); final v = got is String ? got : '';
     final t = int.tryParse(v.split('|').first) ?? 0;
     if (t < old) p.remove(k);
   }
@@ -83,17 +84,20 @@ Future<Object?> offlineGuard(Ref<Object?> ref, String key, Future<Object?> Funct
   final m = _mem[key];
   if (m != null && DateTime.now().difference(m.$1).inSeconds < 4) return m.$2;   // just fetched by the quiet refresh below
 
-  final p = await SharedPreferences.getInstance();
-  _prune(p);
-  final saved = await _read(p, key);
+  SharedPreferences? p;
+  try { p = await SharedPreferences.getInstance().timeout(const Duration(seconds: 3)); } catch (_) {}
+  if (p != null) { try { _prune(p); } catch (_) {} }
+  final saved = p == null ? null : await _read(p, key);
 
-  Future<Object?> net() => _inflight[key] ??= fetch().timeout(const Duration(seconds: 25)).then((v) {
+  // NB: the clean-up below must not return anything. `() => _inflight.remove(key)` would hand back this very future,
+  // and whenComplete would then wait for itself for ever (the "loads for ever" fault of Nov 2026).
+  Future<Object?> net() => _inflight[key] ??= fetch().timeout(const Duration(seconds: 20)).then((v) {
         final json = jsonEncode(v);
         _mem[key] = (DateTime.now(), jsonDecode(json));
         _save(key, json);
         _backOnline();
         return _mem[key]!.$2;
-      }).whenComplete(() => _inflight.remove(key));
+      }).whenComplete(() { _inflight.remove(key); });
 
   // first open in this run with a saved copy: show it at once, refresh quietly behind it
   if (saved != null && _openedThisRun.add(key)) {
