@@ -25,4 +25,5 @@ void refreshFamilyData(WidgetRef ref, {bool force = false}) {
   ]) {
     ref.invalidate(p);
   }
+  if (force) { for (final p in <ProviderOrFamily>[enrolmentProvider, profileProvider, starProvider, momentsProvider, albumsProvider]) { ref.invalidate(p); } }
 }
