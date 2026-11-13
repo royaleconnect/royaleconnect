@@ -67,14 +67,15 @@ class ReportTable extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     Widget line(List<Widget> cells, {bool head = false, bool total = false, VoidCallback? tap}) {
       final row = Container(
-        padding: EdgeInsets.symmetric(horizontal: 14, vertical: head ? 12 : 16),
+        padding: EdgeInsets.symmetric(horizontal: 8, vertical: head ? 12 : 16),
         decoration: BoxDecoration(
           color: head ? Brand.gold.withValues(alpha: .08) : total ? Brand.gold.withValues(alpha: .06) : null,
           border: head ? null : Border(top: BorderSide(color: cs.outlineVariant.withValues(alpha: .6)))),
         child: Row(children: [
-          for (final (i, c) in cells.indexed) Expanded(flex: cols[i].$2, child: Align(alignment: cols[i].$3 ? Alignment.centerRight : Alignment.centerLeft,
+          // a little air on both sides of every cell, so neighbouring headings and numbers never touch
+          for (final (i, c) in cells.indexed) Expanded(flex: cols[i].$2, child: Padding(padding: const EdgeInsets.symmetric(horizontal: 6), child: Align(alignment: cols[i].$3 ? Alignment.centerRight : Alignment.centerLeft,
               child: DefaultTextStyle.merge(style: TextStyle(fontWeight: head || total ? FontWeight.w800 : null, fontSize: head ? 11 : 13.5,
-                  letterSpacing: head ? .8 : null, color: head ? cs.onSurfaceVariant : null), child: c))),
+                  letterSpacing: head ? .8 : null, color: head ? cs.onSurfaceVariant : null), softWrap: head, child: c)))),
         ]));
       return tap == null ? row : InkWell(onTap: tap, child: row);
     }
