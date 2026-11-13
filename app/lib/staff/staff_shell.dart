@@ -4,8 +4,11 @@ import 'package:go_router/go_router.dart';
 import '../screens/desk_screen.dart' show DeskGate;
 import '../auth/session.dart';
 import '../core/config.dart';
+import '../core/cache.dart';
+import '../core/data.dart' show db;
 import '../core/theme.dart';
 import '../widgets/common.dart';
+import '../widgets/royal_motion.dart' show FadeRise;
 import '../screens/help_screen.dart' show HelpFab;
 import 'staff_data.dart';
 import '../core/data3.dart' show appSettingsProvider, staffAccessOf, yearLabelProvider;
@@ -242,6 +245,7 @@ class StaffShell extends ConsumerWidget {
               const SizedBox(width: 10),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Royale Connect', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15)), Text('Staff panel · ${ref.watch(yearLabelProvider).value ?? AppConfig.academicYearLabel}', style: TextStyle(color: Colors.white.withValues(alpha: .8), fontSize: 11))])),
             ])),
+            if (s.isOffice) const Padding(padding: EdgeInsets.fromLTRB(14, 0, 14, 10), child: BranchSwitcher()),
             Container(height: 2, margin: const EdgeInsets.symmetric(horizontal: 18), decoration: const BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, Brand.gold, Colors.transparent]))),
             const SizedBox(height: 8),
             Expanded(child: ListView(padding: const EdgeInsets.symmetric(horizontal: 10), children: [
@@ -358,8 +362,17 @@ class StaffPage extends StatelessWidget {
       final w = full < 1100 ? full : 1100.0;
       final narrow = full < 700;
       final pad = narrow ? 16.0 : 24.0;
+      // a small "?" next to every page title: the help answers for this page
+      String? here;
+      try { here = GoRouterState.of(context).uri.path; } catch (_) {}
       final titles = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(title, style: t.headlineSmall?.copyWith(fontSize: narrow ? 21 : 24)),
+        Row(children: [
+          Flexible(child: Text(title, style: t.headlineSmall?.copyWith(fontSize: narrow ? 21 : 24))),
+          if (here != null && here != '/staff/help') Padding(padding: const EdgeInsets.only(left: 6), child: IconButton(
+            tooltip: 'Help for this page', visualDensity: VisualDensity.compact, iconSize: 20,
+            onPressed: () => context.push('/staff/help?page=${Uri.encodeComponent(here!)}'),
+            icon: Icon(Icons.help_outline_rounded, color: cs.onSurfaceVariant.withValues(alpha: .8)))),
+        ]),
         if (subtitle != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(subtitle!, style: TextStyle(color: cs.onSurfaceVariant, fontSize: narrow ? 13 : 14))),
         if (hub != null) Padding(padding: const EdgeInsets.only(top: 12), child: HubTabs(hub!, onDark: false)),
       ]);
@@ -367,11 +380,12 @@ class StaffPage extends StatelessWidget {
           ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [titles, for (final a in actions) Padding(padding: const EdgeInsets.only(top: 12), child: a)])
           : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: titles), for (final a in actions) Padding(padding: const EdgeInsets.only(left: 8), child: a)]));
       final column = Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [header, Padding(padding: EdgeInsets.fromLTRB(pad, 0, pad, 32), child: body)]);
+      // each page eases in when it opens (once; not on every refresh)
       if (scroll) {
-        return SingleChildScrollView(child: Align(alignment: Alignment.topLeft, child: SizedBox(width: w, child: column)));
+        return SingleChildScrollView(child: Align(alignment: Alignment.topLeft, child: SizedBox(width: w, child: FadeRise(key: ValueKey('page:$title'), dy: 10, ms: 420, child: column))));
       }
       return Align(alignment: Alignment.topLeft, child: SizedBox(width: w, height: c.maxHeight.isFinite ? c.maxHeight : MediaQuery.sizeOf(context).height,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [header, Expanded(child: body)])));
+          child: FadeRise(key: ValueKey('page:$title'), dy: 10, ms: 420, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [header, Expanded(child: body)]))));
     });
   }
 }
@@ -444,3 +458,44 @@ class PickRow extends StatelessWidget {
 String sectionLabel(Map<String, dynamic> sec) => '${sec['grade']?['code'] ?? ''}-${sec['name'] ?? ''}';
 
 void toast(BuildContext context, String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating, width: isNarrow(context) ? null : 420));
+
+
+/// The branch box in the side panel: Kalyan Nagar opens; the other branches of the group are shown but locked
+/// ("Coming soon") until they join Royale Connect.
+final _branchListProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
+  ref.cacheFor();
+  try { return List<Map<String, dynamic>>.from(await db.from('branch').select('code,name,status,sort').order('sort')); } catch (_) { return const []; }
+});
+
+class BranchSwitcher extends ConsumerWidget {
+  const BranchSwitcher({super.key});
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final list = ref.watch(_branchListProvider).value ?? const <Map<String, dynamic>>[];
+    if (list.isEmpty) return const SizedBox.shrink();
+    final cur = list.firstWhere((b) => b['code'] == 'KN', orElse: () => list.first);
+    return Material(color: Colors.white.withValues(alpha: .10), borderRadius: BorderRadius.circular(12), child: InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => showDialog(context: context, builder: (c) => AlertDialog(
+        title: const Text('Branches'),
+        content: SizedBox(width: 440, child: Column(mainAxisSize: MainAxisSize.min, children: [
+          for (final b in list) ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+            leading: CircleAvatar(backgroundColor: b['code'] == cur['code'] ? Brand.greenTint : Brand.surface2,
+                child: Icon(b['code'] == cur['code'] ? Icons.check_rounded : Icons.lock_rounded, size: 18, color: b['code'] == cur['code'] ? Brand.green : Brand.muted)),
+            title: Text('${b['name']}', style: TextStyle(fontWeight: FontWeight.w800, color: b['code'] == cur['code'] ? null : Theme.of(c).colorScheme.onSurfaceVariant)),
+            subtitle: Text(b['code'] == cur['code'] ? 'You are here · School and Senior Secondary together' : 'Coming soon'),
+            onTap: b['code'] == cur['code'] ? () => Navigator.pop(c) : null,
+          ),
+        ])),
+        actions: [FilledButton(onPressed: () => Navigator.pop(c), child: const Text('Done'))],
+      )),
+      child: Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9), child: Row(children: [
+        const Icon(Icons.apartment_rounded, size: 17, color: Brand.gold2),
+        const SizedBox(width: 8),
+        Expanded(child: Text('${cur['name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13))),
+        Icon(Icons.unfold_more_rounded, size: 18, color: Colors.white.withValues(alpha: .75)),
+      ])),
+    ));
+  }
+}
