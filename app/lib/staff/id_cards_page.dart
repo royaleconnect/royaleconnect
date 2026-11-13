@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:flutter/material.dart';
+import '../widgets/royal_extras.dart' show ShimmerPage;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
@@ -273,7 +274,7 @@ class _StaffIdCardsScreenState extends ConsumerState<StaffIdCardsScreen> {
           if (set != null) Text('${set.ready.length} of ${set.rows.length} cards ready', style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
         ]),
         const SizedBox(height: 14),
-        if (async.isLoading && set == null) const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator()))
+        if (async.isLoading && set == null) const ShimmerPage()
         else if (async.hasError && set == null) Panel(child: Text('Could not load the ID cards. Please check the internet and try again.', style: TextStyle(color: cs.onSurfaceVariant)))
         else if (set != null && set.rows.isEmpty) Panel(child: Text('No students in $scope yet.', style: TextStyle(color: cs.onSurfaceVariant)))
         else if (set != null) ...[
