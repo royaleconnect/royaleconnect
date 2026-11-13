@@ -34,15 +34,19 @@ class _StaffToppersScreenState extends ConsumerState<StaffToppersScreen> {
       title: 'Honours', scroll: false, hub: Hub.staffHonours,
       subtitle: 'The same page families see in the app.',
       actions: [if (canEdit) FilledButton.icon(onPressed: () => context.go('/staff/toppers/edit'), icon: const Icon(Icons.edit_rounded, size: 18), label: const Text('Add or change'))],
-      body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Wrap(spacing: 8, runSpacing: 8, children: [
-          for (final (i, l) in const [(0, 'Class X'), (1, 'Class XII'), (2, 'Hall of Fame')])
-            ChoiceChip(label: Text(l), selected: tab == i, showCheckmark: false, selectedColor: Brand.crimson,
-                labelStyle: TextStyle(fontWeight: FontWeight.w800, color: tab == i ? Colors.white : null), onSelected: (_) => setState(() => tab = i)),
-        ]),
-        const SizedBox(height: 8),
-        Expanded(child: tab == 2 ? const FameWall() : ToppersView(key: ValueKey(tab), boardClass: tab == 0 ? 'X' : 'XII')),
-      ]),
+      // this page does not scroll as a whole, so it keeps the same side gap as the heading itself
+      body: Builder(builder: (context) {
+        final pad = isNarrow(context) ? 16.0 : 24.0;
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(padding: EdgeInsets.symmetric(horizontal: pad), child: Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final (i, l) in const [(0, 'Class X'), (1, 'Class XII'), (2, 'Hall of Fame')])
+              ChoiceChip(label: Text(l), selected: tab == i, showCheckmark: false, selectedColor: Brand.crimson,
+                  labelStyle: TextStyle(fontWeight: FontWeight.w800, color: tab == i ? Colors.white : null), onSelected: (_) => setState(() => tab = i)),
+          ])),
+          const SizedBox(height: 8),
+          Expanded(child: Padding(padding: EdgeInsets.symmetric(horizontal: pad - 16), child: tab == 2 ? const FameWall() : ToppersView(key: ValueKey(tab), boardClass: tab == 0 ? 'X' : 'XII'))),
+        ]);
+      }),
     );
   }
 }
