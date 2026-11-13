@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'office_reports.dart' show OfficeGlance;
+import 'school_home.dart' show SchoolHome;
 import '../auth/session.dart';
 import '../core/data.dart';
 import '../core/errors.dart';
@@ -129,10 +129,10 @@ class TodayScreen extends ConsumerWidget {
       title: 'Today',
       subtitle: myClass == null ? null : '$cls · ${myClass['students'] ?? 0} students',   // the date is on the greeting card
       body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const FestiveBanner(),
+        const FestiveBanner(slim: true),
         const MorningBrief(),
         if (t.hasError) Panel(child: Text(friendlyError(t.error!), style: const TextStyle(color: Brand.crimsonDeep))) else FadeRise(child: needs),
-        if (s.isOffice || s.hasRole('accounts')) const FadeRise(delayMs: 80, child: OfficeGlance()),
+        if (s.isOffice || s.hasRole('accounts')) const FadeRise(delayMs: 80, child: SchoolHome()),
         const TodayPeriods(),
         // password help: the class teacher handles it here; the office sees it in Approvals (the line above)
         if (!s.isOffice || !can('/staff/approvals')) const PasswordRequestsCard(),
