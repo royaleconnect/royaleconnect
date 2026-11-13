@@ -27,7 +27,7 @@ class StaffCouncilScreen extends ConsumerWidget {
     final s = ref.watch(sessionProvider).value!;
     return StaffPage(title: 'Student Council', scroll: false, hub: Hub.staffHonours, subtitle: 'The same page students and families see.',
       actions: [if (_canManage(s)) FilledButton.icon(onPressed: () => context.go('/staff/council/manage'), icon: const Icon(Icons.how_to_vote_rounded, size: 18), label: const Text('Members & elections'))],
-      body: const CouncilView(staff: true));
+      body: Padding(padding: EdgeInsets.symmetric(horizontal: isNarrow(context) ? 0 : 8), child: const CouncilView(staff: true)));
   }
 }
 
