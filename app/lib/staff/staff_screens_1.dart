@@ -9,6 +9,7 @@ import '../core/data2.dart';
 import '../core/theme.dart';
 import '../widgets/auth_layout.dart';
 import '../widgets/common.dart';
+import '../widgets/royal_extras.dart' show ShimmerPage;
 import '../widgets/empty_state.dart';
 import 'staff_data.dart';
 import 'staff_shell.dart';
@@ -21,7 +22,7 @@ String _d(DateTime d) => DateFormat('yyyy-MM-dd').format(d);
 String _dm(String? iso) => iso == null ? '' : DateFormat('d MMM').format(DateTime.parse(iso).toLocal());
 String _dmy(String? iso) => iso == null ? '' : DateFormat('d MMM yyyy').format(DateTime.parse(iso).toLocal());
 String _dmt(String? iso) => iso == null ? '' : DateFormat('d MMM, h:mm a').format(DateTime.parse(iso).toLocal());
-Widget _loading() => const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()));
+Widget _loading() => const ShimmerPage();
 Widget _err(Object e) => Padding(padding: const EdgeInsets.all(24), child: Text(friendlyError(e), style: const TextStyle(color: Brand.crimsonDeep)));
 String _cls(Map<String, dynamic>? student) { final en = (student?['enrolment'] as List?) ?? []; if (en.isEmpty) return ''; final s = en.first['section']; return '${s?['grade']?['code'] ?? ''}-${s?['name'] ?? ''}'; }
 
