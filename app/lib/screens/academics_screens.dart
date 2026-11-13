@@ -238,6 +238,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
 
   void _openPdf(Map<String, dynamic> r) => openReportCardPdf(context, r['id'], name: r['term']);
 
+  /// a card not opened on this phone yet: a soft gold glow until it is opened
+  Widget _newGlow(bool on, Widget child) => !on ? child : Container(
+      margin: const EdgeInsets.only(bottom: 2),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(22),
+          boxShadow: [BoxShadow(color: const Color(0xFFE8C97A).withValues(alpha: .55), blurRadius: 22, spreadRadius: 1)]),
+      child: child);
+
   @override
   Widget build(BuildContext context) {
     final rc = ref.watch(reportCardsProvider);
@@ -256,8 +263,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         return ListView(padding: const EdgeInsets.all(20), children: [
           if (env != null) Padding(padding: const EdgeInsets.only(bottom: 22), child: ResultsEnvelope(
               reportCardId: env['id'], term: '${env['term']}', year: '${env['academic_year']?['label'] ?? ''}', onOpenPdf: () => _openPdf(env))),
-          for (final r in list) if (r['id'] != env?['id']) _card(context, Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [Pill(r['academic_year']?['label'] ?? '', fg: Brand.crimsonDeep, bg: Brand.crimsonTint), const Spacer(), Flexible(child: Text('Published ${DateFormat('d MMM yyyy').format(DateTime.parse(r['published_at']).toLocal())}', textAlign: TextAlign.right, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)))]),
+          for (final r in list) if (r['id'] != env?['id']) _newGlow(!_seen!.contains(r['id']), _card(context, Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [Pill(r['academic_year']?['label'] ?? '', fg: Brand.crimsonDeep, bg: Brand.crimsonTint), if (!_seen!.contains(r['id'])) const Padding(padding: EdgeInsets.only(left: 8), child: Pill('New', fg: Color(0xFF7A5A12), bg: Color(0xFFFBEFCB))), const Spacer(), Flexible(child: Text('Published ${DateFormat('d MMM yyyy').format(DateTime.parse(r['published_at']).toLocal())}', textAlign: TextAlign.right, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)))]),
             const SizedBox(height: 8),
             Text(r['term'], style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
             if (r['working_days'] != null) Text('Attendance ${r['days_present']}/${r['working_days']} days', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
@@ -266,9 +273,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             PrimaryButton('Open report card', icon: Icons.picture_as_pdf_rounded, onPressed: () {
               if (_seen!.contains(r['id'])) { _openPdf(r); return; }
               _seen!.add(r['id']);
+              setState(() {});
               showResultsEnvelope(context, reportCardId: r['id'], term: '${r['term']}', year: '${r['academic_year']?['label'] ?? ''}', openPdf: () => _openPdf(r));
             }),
-          ])),
+          ]))),
         ]);
       })),
     ]));
