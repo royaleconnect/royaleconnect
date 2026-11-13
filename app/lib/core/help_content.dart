@@ -247,10 +247,33 @@ const staffHelp = <HelpItem>[
     'Open Star of the month → choose the class and the student → write why.',
   ], keywords: 'star month award', route: '/staff/star', button: 'Open Star of the month'),
   HelpItem('t-marks', 'Marks', 'How do I enter marks?', [
-    'Open Exams & marks → Marks entry.',
-    'Choose the exam, class and subject.',
-    'Type each student’s marks and tap “Save marks”. You can change them later until the report card is published.',
-  ], keywords: 'marks enter exam score result', route: '/staff/marks', button: 'Open Marks entry', popular: true),
+    'Open Exams & marks → Marks entry. Choose the exam, the class and the subject (class teachers can choose “All subjects”).',
+    'Type the marks and press Tab for the next box. They save by themselves — “✓ Saved” shows at the top. Type AB for absent.',
+    'A box turns red when the number is above the maximum; it is not saved until you correct it.',
+    'Subject teachers enter their own subjects. The class teacher can enter every subject of her class. IT and the office can enter any class.',
+  ], keywords: 'marks enter exam score result internals written theory practical absent', route: '/staff/marks', button: 'Open Marks entry', popular: true),
+  HelpItem('t-marks-out-of', 'Marks', 'What are the marks out of?', [
+    'Periodic Test 1 and 2: out of 30 in every subject and every class.',
+    'Half Yearly and Annual: Grade I – V out of 50 (written). Grade VI – X: Internals 20 + Written 80.',
+    'Grade XI – XII: each subject’s own Theory + Practical — Physics, Chemistry, Biology, IP, Computer Science, PE, Psychology and Home Science 70 + 30; English and Maths 80 + 20; AI 50 + 50.',
+    'Grade IX’s 3rd language is shown separately and not added to the total (CBSE). In VI – VIII it is part of the total (out of 600). Computers / AI in I – X are shown separately.',
+  ], keywords: 'maximum out of 30 50 80 20 70 theory practical total 500 600 third language', route: '/staff/exams', button: 'Open Exams & marks'),
+  HelpItem('t-marks-one', 'Marks', 'How do I change one student’s marks, grades or remarks?', [
+    'Open Students → the student → Marks.',
+    'Pick the exam at the top and tap “Enter / change marks”.',
+    'Change the marks, the co-scholastic grades, height, weight, remark or participation — then tap Save.',
+    'No reason is asked. The app keeps who changed what, in case of a question later.',
+  ], keywords: 'change marks student correct remark height weight grade discipline', route: '/staff/students', button: 'Open Students'),
+  HelpItem('t-exam-add', 'Marks', 'How do I add an exam (Pre-board, re-test …)?', [
+    'Every class already gets PT 1, Half Yearly, PT 2 and Annual by itself (X and XII: Pre-board 1 and 2).',
+    'For anything else: Exams & marks → Add exam → name it, choose “Term exam”, “Test” or your own maximum, pick the classes.',
+    'Each class’s subjects come in by themselves. Tap a subject to set its date, portions and (office) its maximum.',
+  ], keywords: 'add exam preboard pre-board test new exam dates portions', route: '/staff/exams', button: 'Open Exams & marks'),
+  HelpItem('t-fee-remind', 'Office', 'How do I remind one family about overdue fees?', [
+    'Open Students → the student → Fees.',
+    'Tap “Send reminder”. You see the exact message the family gets before it goes.',
+    'One reminder every 3 days per family. The date of the last one shows on the same page.',
+  ], keywords: 'fee reminder overdue remind family late fee', route: '/staff/students', button: 'Open Students'),
   HelpItem('t-report', 'Marks', 'How do I make report cards?', [
     'Open Exams & marks → Report cards (class teachers).',
     'Choose your class and term. Fill attendance, height, weight, co-scholastic grades and remarks.',
