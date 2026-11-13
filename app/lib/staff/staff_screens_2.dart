@@ -12,18 +12,18 @@ import '../core/errors.dart';
 import '../core/theme.dart';
 import '../screens/family_screens.dart' show StorageImage, callNumber;
 import '../widgets/common.dart';
+import '../widgets/royal_extras.dart' show ShimmerPage;
 import 'staff_data.dart';
 import 'staff_shell.dart';
 import 'class_logins.dart' show resetFirstPassword, printClassSlips;
 import 'fees_office.dart' show FeeCategoryBar, RecentPaymentsPanel;
 import 'transport_live.dart';
-import '../widgets/hub_tabs.dart';
+export 'exams_marks.dart' show StaffExamsScreen, StaffMarksScreen, marksCanLeave;
 
 String _d(DateTime d) => DateFormat('yyyy-MM-dd').format(d);
-String _dm(String? iso) => iso == null ? '' : DateFormat('d MMM').format(DateTime.parse(iso).toLocal());
 String _dmy(String? iso) => iso == null ? '' : DateFormat('d MMM yyyy').format(DateTime.parse(iso).toLocal());
 String _dmt(String? iso) => iso == null ? '' : DateFormat('d MMM, h:mm a').format(DateTime.parse(iso).toLocal());
-Widget _loading() => const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()));
+Widget _loading() => const ShimmerPage();
 Widget _err(Object e) => Padding(padding: const EdgeInsets.all(24), child: Text(friendlyError(e), style: const TextStyle(color: Brand.crimsonDeep)));
 String _cls(Map<String, dynamic>? student) { final en = (student?['enrolment'] as List?) ?? []; if (en.isEmpty) return ''; final s = en.first['section']; return '${s?['grade']?['code'] ?? ''}-${s?['name'] ?? ''}'; }
 
@@ -57,183 +57,6 @@ Future<String?> pickAndUpload(BuildContext context, String folder, {List<String>
 }
 
 // ---------------------------------------------------------------- exams & portions
-class StaffExamsScreen extends ConsumerWidget {
-  const StaffExamsScreen({super.key});
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final s = ref.watch(sessionProvider).value!;
-    final exams = ref.watch(staffExamsProvider);
-    final canCreate = s.isOffice || s.hasRole('coordinator');
-    final cs = Theme.of(context).colorScheme;
-    return StaffPage(title: 'Exams & marks', hub: Hub.staffExams, subtitle: canCreate ? 'Create the schedule; subject teachers fill in portions; publish when ready.' : 'Fill in portions for the subjects you teach. The coordinator publishes.',
-      actions: [if (canCreate) FilledButton.icon(onPressed: () => _create(context, ref), icon: const Icon(Icons.add_rounded), label: const Text('New exam'))],
-      body: exams.when(loading: _loading, error: (e, _) => _err(e), data: (rows) => rows.isEmpty ? Panel(child: Text('No exams yet.', style: TextStyle(color: cs.onSurfaceVariant))) : Column(children: [for (final e in rows) Panel(
-        title: '${e['grade']?['name'] ?? ''} · ${e['name']} (${e['term']})',
-        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-          Pill(e['published_at'] != null ? 'Published' : 'Draft', fg: e['published_at'] != null ? Brand.green : Brand.amber, bg: e['published_at'] != null ? Brand.greenTint : Brand.amberTint),
-          if (canCreate) TextButton(onPressed: () async { await publishExam(e['id'], e['published_at'] == null); ref.invalidate(staffExamsProvider); }, child: Text(e['published_at'] != null ? 'Unpublish' : 'Publish')),
-        ]),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${_dm(e['starts_on'])} – ${_dmy(e['ends_on'])} · max ${e['max_marks']}${e['note'] != null ? ' · ${e['note']}' : ''}', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-          const SizedBox(height: 8),
-          for (final p in (List<Map<String, dynamic>>.from(e['exam_paper'] ?? [])..sort((a, b) => (a['on_date'] ?? '9').compareTo(b['on_date'] ?? '9')))) ListTile(
-            dense: true, contentPadding: EdgeInsets.zero,
-            leading: SizedBox(width: 64, child: Text(p['on_date'] == null ? 'TBA' : DateFormat('EEE d').format(DateTime.parse(p['on_date'])), style: const TextStyle(fontWeight: FontWeight.w800))),
-            title: Text(p['subject']?['name'] ?? ''), subtitle: Text(p['portions'] ?? 'Portions not entered', maxLines: 2, overflow: TextOverflow.ellipsis),
-            trailing: TextButton(onPressed: () => _portions(context, ref, p), child: const Text('Edit')),
-          ),
-        ]))])));
-  }
-
-  void _portions(BuildContext context, WidgetRef ref, Map<String, dynamic> p) {
-    DateTime? on = p['on_date'] == null ? null : DateTime.parse(p['on_date']); String portions = p['portions'] ?? '';
-    showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, set) => AlertDialog(title: Text(p['subject']?['name'] ?? ''), content: SizedBox(width: 480, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      OutlinedButton.icon(onPressed: () async { final d = await showDatePicker(context: ctx, initialDate: on ?? DateTime.now(), firstDate: DateTime.now().subtract(const Duration(days: 30)), lastDate: DateTime.now().add(const Duration(days: 365))); if (d != null) set(() => on = d); }, icon: const Icon(Icons.event_rounded, size: 18), label: Text(on == null ? 'Exam date' : DateFormat('EEEE, d MMM').format(on!))),
-      const SizedBox(height: 10),
-      TextFormField(initialValue: portions, onChanged: (v) => portions = v, minLines: 4, maxLines: 10, decoration: const InputDecoration(labelText: 'Portions', hintText: 'Chapters / topics')),
-    ])), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')), FilledButton(onPressed: () async {
-      try { await savePortions(ref, p['id'], onDate: on, portions: portions.trim().isEmpty ? null : portions.trim()); ref.invalidate(staffExamsProvider); if (ctx.mounted) Navigator.pop(ctx); } catch (e) { if (ctx.mounted) toast(ctx, friendlyError(e)); }
-    }, child: const Text('Save'))])));
-  }
-
-  void _create(BuildContext context, WidgetRef ref) {
-    String? gradeId; String name = '', term = 'Term 1', note = ''; int max = 100; DateTime? a, b; final subs = <String>{}; bool busy = false;
-    showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, set) => AlertDialog(title: const Text('New exam'), content: SizedBox(width: 520, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Consumer(builder: (_, r, __) => r.watch(gradesProvider).when(loading: () => const SizedBox(), error: (e, _) => _err(e), data: (gs) => PickField<String>(label: 'Grade', value: gradeId, items: [for (final g in gs) DropdownMenuItem(value: g['id'] as String, child: Text(g['name']))], onChanged: (v) => set(() => gradeId = v)))),
-      const SizedBox(height: 10),
-      TextField(onChanged: (v) => name = v, decoration: const InputDecoration(labelText: 'Name', hintText: 'e.g. Mid-term examination')), const SizedBox(height: 10),
-      Row(children: [Expanded(child: TextFormField(initialValue: term, onChanged: (v) => term = v, decoration: const InputDecoration(labelText: 'Term'))), const SizedBox(width: 10), SizedBox(width: 120, child: TextFormField(initialValue: '100', keyboardType: TextInputType.number, onChanged: (v) => max = int.tryParse(v) ?? 100, decoration: const InputDecoration(labelText: 'Max marks')))]),
-      const SizedBox(height: 10),
-      Row(children: [Expanded(child: OutlinedButton(onPressed: () async { final d = await showDatePicker(context: ctx, initialDate: DateTime.now(), firstDate: DateTime.now().subtract(const Duration(days: 30)), lastDate: DateTime.now().add(const Duration(days: 365))); if (d != null) set(() => a = d); }, child: Text(a == null ? 'Starts' : DateFormat('d MMM').format(a!)))), const SizedBox(width: 10), Expanded(child: OutlinedButton(onPressed: () async { final d = await showDatePicker(context: ctx, initialDate: a ?? DateTime.now(), firstDate: a ?? DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 365))); if (d != null) set(() => b = d); }, child: Text(b == null ? 'Ends' : DateFormat('d MMM').format(b!))))]),
-      const SizedBox(height: 10),
-      TextField(onChanged: (v) => note = v, decoration: const InputDecoration(labelText: 'Note for parents (optional)')), const SizedBox(height: 12),
-      const Text('Subjects', style: TextStyle(fontWeight: FontWeight.w800)),
-      Consumer(builder: (_, r, __) => r.watch(subjectsProvider).when(loading: () => const SizedBox(), error: (e, _) => _err(e), data: (ss) => Wrap(spacing: 6, children: [for (final s in ss) FilterChip(label: Text(s['name']), selected: subs.contains(s['id']), onSelected: (v) => set(() => v ? subs.add(s['id']) : subs.remove(s['id'])))]))),
-    ]))), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')), FilledButton(onPressed: busy ? null : () async {
-      if (gradeId == null || name.trim().isEmpty) { toast(ctx, 'Grade and name are needed.'); return; }
-      set(() => busy = true);
-      try { await createExam(ref, gradeId: gradeId!, name: name.trim(), term: term.trim(), starts: a, ends: b, maxMarks: max, note: note.trim().isEmpty ? null : note.trim(), subjectIds: subs.toList()); ref.invalidate(staffExamsProvider); if (ctx.mounted) Navigator.pop(ctx); } catch (e) { set(() => busy = false); if (ctx.mounted) toast(ctx, friendlyError(e)); }
-    }, child: const Text('Create'))])));
-  }
-}
-
-// ---------------------------------------------------------------- marks entry
-/// Set while the marks page has unsaved marks. The router asks it before leaving the page (GoRoute onExit).
-Future<bool> Function()? _marksLeaveGuard;
-Future<bool> marksCanLeave() async => _marksLeaveGuard == null ? true : await _marksLeaveGuard!();
-
-class StaffMarksScreen extends ConsumerStatefulWidget {
-  const StaffMarksScreen({super.key});
-  @override
-  ConsumerState<StaffMarksScreen> createState() => _StaffMarksScreenState();
-}
-class _StaffMarksScreenState extends ConsumerState<StaffMarksScreen> {
-  String? examId, subjectId, sectionId; final edits = <String, Map<String, dynamic>>{}; bool busy = false;
-
-  @override
-  void initState() { super.initState(); _marksLeaveGuard = _askSave; }
-  @override
-  void dispose() { if (_marksLeaveGuard == _askSave) _marksLeaveGuard = null; super.dispose(); }
-
-  num? _max() => (ref.read(staffExamsProvider).value ?? []).where((e) => e['id'] == examId).firstOrNull?['max_marks'] as num?;
-  static num _total(Map<String, dynamic> m) => m['absent'] == true ? 0 : ((m['internal'] as num?) ?? 0) + ((m['external'] as num?) ?? 0);
-  static bool _negative(Map<String, dynamic> m) => ((m['internal'] as num?) ?? 0) < 0 || ((m['external'] as num?) ?? 0) < 0;
-
-  /// true = saved; false = something is wrong (a message was shown)
-  Future<bool> _save() async {
-    final max = _max();
-    if (edits.values.any((m) => _negative(m) || (max != null && _total(m) > max))) {
-      toast(context, 'Some marks are more than ${max ?? 'the maximum'}. Please check the rows in red.');
-      return false;
-    }
-    setState(() => busy = true);
-    try {
-      await saveMarks(ref, examId!, subjectId!, [for (final e in edits.entries) {'student_id': e.key, ...e.value}]);
-      edits.clear();
-      ref.invalidate(marksProvider((examId!, subjectId!, sectionId!)));
-      if (mounted) toast(context, 'Saved.');
-      return true;
-    } catch (e) {
-      if (mounted) toast(context, friendlyError(e));
-      return false;
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
-  }
-
-  /// Unsaved marks? Ask: Save / Discard / Cancel. Returns true when it is fine to move on.
-  Future<bool> _askSave() async {
-    if (edits.isEmpty || !mounted) return true;
-    final r = await showDialog<String>(context: context, builder: (c) => AlertDialog(
-      title: const Text('Save your marks first?'),
-      content: Text('You have changed ${edits.length} ${edits.length == 1 ? 'mark' : 'marks'} that are not saved yet.'),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(c, 'cancel'), child: const Text('Cancel')),
-        TextButton(onPressed: () => Navigator.pop(c, 'discard'), child: const Text('Discard')),
-        FilledButton(onPressed: () => Navigator.pop(c, 'save'), child: const Text('Save')),
-      ],
-    ));
-    if (r == 'discard') { setState(edits.clear); return true; }
-    if (r == 'save') return _save();
-    return false;
-  }
-
-  Future<void> _pick(VoidCallback change) async { if (await _askSave()) setState(() { change(); edits.clear(); }); }
-
-  @override
-  Widget build(BuildContext context) {
-    final exams = ref.watch(staffExamsProvider); final secs = ref.watch(mySectionsProvider); final assigns = ref.watch(myAssignmentsProvider);
-    final s = ref.watch(sessionProvider).value!;
-    final cs = Theme.of(context).colorScheme;
-    final exam = (exams.value ?? []).where((e) => e['id'] == examId).firstOrNull;
-    final max = exam?['max_marks'] as num?;
-    final sectionsForGrade = (secs.value ?? []).where((x) => exam == null || x['grade']['id'] == exam['grade']['id']).toList();
-    final subjectsFor = s.isOffice ? (List<Map<String, dynamic>>.from(exam?['exam_paper'] ?? []).map((p) => p['subject']).toList()) : (assigns.value ?? []).where((a) => a['section_id'] == sectionId).map((a) => a['subject']).toList();
-    final rows = (examId != null && subjectId != null && sectionId != null) ? ref.watch(marksProvider((examId!, subjectId!, sectionId!))) : null;
-    Widget overMax(Map<String, dynamic> m) => (_negative(m) || (max != null && _total(m) > max))
-        ? Padding(padding: const EdgeInsets.only(top: 4), child: Text(_negative(m) ? 'Marks cannot be below 0 — please check' : '${max is int ? max : max!.toInt()} max — please check', style: const TextStyle(color: Brand.crimson, fontWeight: FontWeight.w800, fontSize: 12.5)))
-        : const SizedBox.shrink();
-    final anyOver = edits.values.any((m) => _negative(m) || (max != null && _total(m) > max));
-    return StaffPage(title: 'Marks entry', hub: Hub.staffExams, subtitle: 'Marks are private to staff. Parents see them only on the published report card.', body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Panel(padding: const EdgeInsets.all(12), child: Wrap(spacing: 10, runSpacing: 10, children: [
-        SizedBox(width: isNarrow(context) ? double.infinity : 300, child: PickField<String>(label: 'Exam', value: examId, items: [for (final e in exams.value ?? []) DropdownMenuItem(value: e['id'] as String, child: Text('${e['grade']?['code']} · ${e['name']} (max ${e['max_marks']})'))], onChanged: (v) => _pick(() { examId = v; sectionId = null; subjectId = null; }))),
-        SizedBox(width: isNarrow(context) ? double.infinity : 180, child: PickField<String>(label: 'Section', value: sectionId, items: [for (final x in sectionsForGrade) DropdownMenuItem(value: x['id'] as String, child: Text(sectionLabel(x)))], onChanged: (v) => _pick(() { sectionId = v; subjectId = null; }))),
-        SizedBox(width: isNarrow(context) ? double.infinity : 220, child: PickField<String>(label: 'Subject', value: subjectId, items: [for (final x in subjectsFor) DropdownMenuItem(value: x['id'] as String, child: Text(x['name']))], onChanged: (v) => _pick(() { subjectId = v; }))),
-      ])),
-      if (rows != null) rows.when(loading: _loading, error: (e, _) => _err(e), data: (list) => Panel(padding: EdgeInsets.zero, title: null, child: Column(children: [
-        if (!isNarrow(context)) Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 4), child: Row(children: [const SizedBox(width: 40, child: Text('Roll', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))), const Expanded(child: Text('Student', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))), const SizedBox(width: 90, child: Text('Internal', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))), const SizedBox(width: 90, child: Text('External', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))), const SizedBox(width: 70, child: Text('Absent', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)))])),
-        const Divider(height: 1),
-        for (final r in list) Builder(key: ValueKey('$examId|$subjectId|${r['student']['id']}'), builder: (_) {
-          final st = r['student']; final id = st['id'] as String; final m = edits[id] ?? {'internal': r['mark']?['internal'], 'external': r['mark']?['external'], 'absent': r['mark']?['absent'] ?? false};
-          if (isNarrow(context)) {
-            InputDecoration box(String l) => InputDecoration(labelText: l, isDense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12));
-            return Container(padding: const EdgeInsets.fromLTRB(14, 12, 10, 12), decoration: BoxDecoration(border: Border(bottom: BorderSide(color: cs.outline.withValues(alpha: .5)))), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Text('${r['roll_no'] ?? ''}.  ${st['full_name']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-              const SizedBox(height: 8),
-              Row(children: [
-                Expanded(child: TextFormField(initialValue: m['internal']?.toString() ?? '', keyboardType: const TextInputType.numberWithOptions(decimal: true), enabled: m['absent'] != true, onChanged: (v) => setState(() => edits[id] = {...m, 'internal': num.tryParse(v)}), decoration: box('Internal'))), const SizedBox(width: 10),
-                Expanded(child: TextFormField(initialValue: m['external']?.toString() ?? '', keyboardType: const TextInputType.numberWithOptions(decimal: true), enabled: m['absent'] != true, onChanged: (v) => setState(() => edits[id] = {...m, 'external': num.tryParse(v)}), decoration: box('External'))), const SizedBox(width: 4),
-                Column(mainAxisSize: MainAxisSize.min, children: [Checkbox(value: m['absent'] == true, onChanged: (v) => setState(() => edits[id] = {...m, 'absent': v ?? false})), Text('Absent', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant))]),
-              ]),
-              overMax(m),
-            ]));
-          }
-          return Padding(padding: const EdgeInsets.fromLTRB(16, 4, 16, 4), child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Row(children: [
-            SizedBox(width: 40, child: Text('${r['roll_no'] ?? ''}')), Expanded(child: Text(st['full_name'], style: const TextStyle(fontWeight: FontWeight.w600))),
-            SizedBox(width: 80, child: TextFormField(initialValue: m['internal']?.toString() ?? '', keyboardType: const TextInputType.numberWithOptions(decimal: true), enabled: m['absent'] != true, onChanged: (v) => setState(() => edits[id] = {...m, 'internal': num.tryParse(v)}), decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10)))), const SizedBox(width: 10),
-            SizedBox(width: 80, child: TextFormField(initialValue: m['external']?.toString() ?? '', keyboardType: const TextInputType.numberWithOptions(decimal: true), enabled: m['absent'] != true, onChanged: (v) => setState(() => edits[id] = {...m, 'external': num.tryParse(v)}), decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10)))), const SizedBox(width: 10),
-            SizedBox(width: 70, child: Checkbox(value: m['absent'] == true, onChanged: (v) => setState(() => edits[id] = {...m, 'absent': v ?? false}))),
-          ]), overMax(m)]));
-        }),
-        Padding(padding: const EdgeInsets.all(14), child: Row(children: [
-          Expanded(child: Text(anyOver ? 'Fix the marks in red, then save.' : '${edits.length} changed${max != null ? ' · max $max' : ''}', style: TextStyle(color: anyOver ? Brand.crimson : cs.onSurfaceVariant, fontWeight: anyOver ? FontWeight.w800 : null))),
-          FilledButton.icon(onPressed: edits.isEmpty || busy || anyOver ? null : _save, icon: const Icon(Icons.save_rounded), label: const Text('Save marks')),
-        ])),
-      ]))),
-    ]));
-  }
-}
-
 // ---------------------------------------------------------------- star of the month
 class StaffStarScreen extends ConsumerStatefulWidget {
   const StaffStarScreen({super.key});
