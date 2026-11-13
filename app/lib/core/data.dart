@@ -9,6 +9,7 @@ import 'offline.dart';
 
 /// Opens a file stored in the private `files` bucket through a short-lived signed URL.
 Future<void> openStorageFile(String path) async {
+  if (path.startsWith('sample:')) return;   // painted sample pictures have no file to download
   final url = path.startsWith('http') ? path : await db.storage.from('files').createSignedUrl(path, 600);
   await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
 }
