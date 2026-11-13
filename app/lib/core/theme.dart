@@ -52,6 +52,8 @@ ThemeData buildTheme(Brightness b) {
     onSurface: dark ? Brand.dFg : Brand.ink,
     surfaceContainerHighest: dark ? Brand.dSurface2 : Brand.surface2,
     outline: dark ? Brand.dLine : Brand.line,
+    // not set before → Flutter used near-black for every soft divider and table line
+    outlineVariant: dark ? Brand.dLine : const Color(0xFFEAE2D3),
     onSurfaceVariant: dark ? Brand.dMuted : Brand.muted,
   );
   final body = GoogleFonts.manropeTextTheme().apply(bodyColor: scheme.onSurface, displayColor: scheme.onSurface);
