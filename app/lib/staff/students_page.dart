@@ -12,6 +12,7 @@ import '../core/errors.dart';
 import '../core/school_docs.dart' show openReceiptPdf, openReportCardPdf, PdfDocScreen;
 import '../core/theme.dart';
 import '../widgets/common.dart';
+import '../widgets/royal_extras.dart' show ShimmerPage;
 import 'school_setup.dart' show StudentEditor, setupSectionsProvider, GenderPick;
 import 'staff_data.dart';
 import 'staff_screens_2.dart' show StaffStudentsScreen, pickAndUpload;
@@ -20,6 +21,7 @@ import '../core/cache.dart';
 import 'certificates_page.dart' show pickCertificate, openCertificate, openCertificateReprint, certificateIssuedTick, tcDraftFor, tcFilledCount, buildCertificatePdf;
 import 'class_logins.dart' show resetFirstPassword, printClassSlips;
 import 'id_cards_page.dart' show openStudentIdCard;
+import 'student_marks_tab.dart' show StudentMarksTab;
 
 /// Students — one page for the office (the approved Nov 2026 mock):
 ///   • Current students: the whole school, class by class (50 at a time), one search box (name, admission number or a parent's phone),
@@ -354,15 +356,15 @@ class _HistoryTabs extends StatelessWidget {
             labelStyle: const TextStyle(fontWeight: FontWeight.w800), tabs: [for (final t in tabs) Tab(text: t)]),
       ),
       body: rec.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const Padding(padding: EdgeInsets.all(16), child: ShimmerPage()),
         error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_msg(e)))),
         data: (r) {
           final ids = List<String>.from(r['ids']);
           Widget page(Widget child, [double w = 900]) => Align(alignment: Alignment.topCenter, child: ConstrainedBox(constraints: BoxConstraints(maxWidth: w), child: child));
           return TabBarView(children: [
             if (!historyOnly) page(_DetailsTab(r: r), 1180),
-            page(_FeesTab(ids: ids)),
-            page(_MarksTab(ids: ids)),
+            page(_FeesTab(ids: ids, studentId: studentId), 1000),
+            page(StudentMarksTab(studentId: studentId, name: title), 1000),
             page(_AttendanceTab(ids: ids)),
             page(_DocumentsTab(student: r, ids: ids)),
             page(_BusTab(r: r)),
@@ -947,38 +949,117 @@ class _InactiveDialogState extends ConsumerState<_InactiveDialog> {
 final _feesProvider = FutureProvider.autoDispose.family<(List<Map<String, dynamic>>, List<Map<String, dynamic>>), String>((ref, idsKey) async {
   ref.cacheFor();
   final ids = idsKey.split(',');
-  final l = await db.from('fee_ledger').select('id,title,amount,concession,due_on,status,paid_on,note,academic_year:academic_year_id(label,starts_on)').inFilter('student_id', ids).order('due_on', ascending: true);
+  final l = await db.from('fee_ledger').select('id,title,amount,concession,due_on,status,paid_on,note,payment_id,parent_ledger_id,academic_year:academic_year_id(label,starts_on)').inFilter('student_id', ids).order('due_on', ascending: true);
   final p = await db.from('payment').select('id,amount,receipt_no,paid_at,mode').inFilter('student_id', ids).eq('status', 'success').order('paid_at', ascending: false);
   return (List<Map<String, dynamic>>.from(l), List<Map<String, dynamic>>.from(p));
 });
+final _remindProvider = FutureProvider.autoDispose.family<Map<String, dynamic>?, String>((ref, id) async {
+  try { final r = await db.rpc('fee_remind_status', params: {'p_student': id}); return r == null ? null : Map<String, dynamic>.from(r as Map); } catch (_) { return null; }
+});
 
 class _FeesTab extends ConsumerWidget {
-  final List<String> ids;
-  const _FeesTab({required this.ids});
+  final List<String> ids; final String studentId;
+  const _FeesTab({required this.ids, required this.studentId});
+
+  Future<void> _remind(BuildContext context, WidgetRef ref, String body) async {
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: const Text('Send a fee reminder?'),
+      content: SizedBox(width: 440, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('The family gets this on their phone:', style: TextStyle(color: Theme.of(c).colorScheme.onSurfaceVariant)),
+        const SizedBox(height: 10),
+        Container(padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: Brand.gold.withValues(alpha: .08), borderRadius: BorderRadius.circular(14), border: Border.all(color: Brand.gold.withValues(alpha: .3))),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Royale Concorde · Fee reminder', style: TextStyle(fontWeight: FontWeight.w900)),
+            const SizedBox(height: 4), Text(body),
+          ])),
+        const SizedBox(height: 10),
+        Text('One reminder every 3 days. It is noted on this page.', style: TextStyle(fontSize: 12.5, color: Theme.of(c).colorScheme.onSurfaceVariant)),
+      ])),
+      actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Send'))],
+    ));
+    if (ok != true) return;
+    try {
+      await db.rpc('fee_remind_student', params: {'p_student': studentId});
+      ref.invalidate(_remindProvider(studentId));
+      if (context.mounted) toast(context, 'Reminder sent ✓');
+    } catch (e) { if (context.mounted) toast(context, _msg(e)); }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
+    final s = ref.watch(sessionProvider).value;
+    final feeStaff = s != null && !s.viewOnly && (s.hasRole('accounts') || s.isOffice);
+    final rem = feeStaff ? ref.watch(_remindProvider(studentId)).value : null;
     return ref.watch(_feesProvider(ids.join(','))).when(
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => const Padding(padding: EdgeInsets.all(16), child: ShimmerPage()),
       error: (e, _) => Center(child: Text(_msg(e))),
       data: (d) {
         final (ledger, pays) = d;
+        final today = DateTime.now(); final d0 = DateTime(today.year, today.month, today.day);
+        num net(Map x) => (x['amount'] as num) - ((x['concession'] ?? 0) as num);
+        bool overdue(Map x) => x['status'] == 'pending' && DateTime.parse(x['due_on']).isBefore(d0);
+        final pend = ledger.where((x) => x['status'] == 'pending').toList();
+        final od = pend.where(overdue).toList();
+        final up = pend.where((x) => !overdue(x)).toList();
+        final pending = pend.fold<num>(0, (a, x) => a + net(x));
+        final odSum = od.fold<num>(0, (a, x) => a + net(x)), upSum = up.fold<num>(0, (a, x) => a + net(x));
+        final firstOd = od.isEmpty ? null : od.map((x) => DateTime.parse(x['due_on'])).reduce((a, b) => a.isBefore(b) ? a : b);
+        final nextUp = up.isEmpty ? null : up.map((x) => DateTime.parse(x['due_on'])).reduce((a, b) => a.isBefore(b) ? a : b);
+        final byPay = {for (final p in pays) p['id']: p};
         final byYear = <String, List<Map<String, dynamic>>>{};
         for (final x in ledger) { byYear.putIfAbsent(x['academic_year']?['label'] ?? '', () => []).add(x); }
         final years = byYear.keys.toList()..sort((a, b) => b.compareTo(a));
-        final pending = ledger.where((x) => x['status'] == 'pending').fold<num>(0, (a, x) => a + (x['amount'] as num) - ((x['concession'] ?? 0) as num));
+        final body = 'Dear Parent, ${od.map((x) => '${x['title']} (${inr(net(x))})').join(', ')} ${od.length > 1 ? 'are' : 'is'} overdue since ${firstOd == null ? '' : DateFormat('d MMM').format(firstOd)}. Total due now ${inr(odSum)}. Tap to pay.';
+        Widget big(String label, String value, {Color? color, String? sub, double size = 22}) => Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text(label.toUpperCase(), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1, color: cs.onSurfaceVariant)),
+          const SizedBox(height: 4),
+          Text(value, style: TextStyle(fontSize: size, fontWeight: FontWeight.w900, color: color)),
+          if (sub != null) Text(sub, style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+        ]);
+        final canRemind = feeStaff && od.isNotEmpty && (rem == null || rem['can'] != false);
         return _pad([
-          Panel(child: Row(children: [
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Still to pay', style: TextStyle(color: cs.onSurfaceVariant)), Text(inr(pending), style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: context.tone(pending > 0 ? Brand.crimsonDeep : Brand.green)))])),
-            Text('${pays.length} receipts', style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w700)),
+          Panel(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Wrap(spacing: 36, runSpacing: 16, crossAxisAlignment: WrapCrossAlignment.end, children: [
+              big('Still to pay', inr(pending), color: pending > 0 ? context.tone(Brand.crimsonDeep) : context.tone(Brand.green), size: 30),
+              if (od.isNotEmpty) big('Overdue now', inr(odSum), color: context.tone(Brand.crimsonDeep), sub: '${od.length} ${od.length == 1 ? 'fee' : 'fees'} · since ${DateFormat('d MMM').format(firstOd!)} (${d0.difference(firstOd).inDays} days)'),
+              if (up.isNotEmpty) big('Coming up', inr(upSum), sub: 'next due ${DateFormat('d MMM').format(nextUp!)}'),
+              if (feeStaff) Row(mainAxisSize: MainAxisSize.min, children: [
+                if (od.isNotEmpty) FilledButton.icon(onPressed: canRemind ? () => _remind(context, ref, body) : null, icon: const Icon(Icons.notifications_active_rounded, size: 18), label: const Text('Send reminder')),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(onPressed: () => context.go('/staff/fees'), icon: const Icon(Icons.point_of_sale_rounded, size: 18), label: const Text('Collect fee')),
+              ]),
+            ]),
+            const SizedBox(height: 10),
+            Text(rem?['last'] != null
+                ? 'Last reminder: ${DateFormat('d MMM, h:mm a').format(DateTime.parse(rem!['last']).toLocal())}${rem['by'] != null ? ' by ${rem['by']}' : ''}${rem['can'] == false ? ' · the next one can go from ${DateFormat('d MMM, h:mm a').format(DateTime.parse(rem['next']).toLocal())}' : ''}.'
+                : od.isEmpty ? 'Nothing is overdue. The app reminds the family by itself before each due date.' : 'No reminder sent by the office yet. The app also reminds the family by itself before each due date.',
+                style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
           ])),
-          for (final y in years) Panel(title: 'Fees $y', child: Column(children: [
-            for (final x in byYear[y]!) ListTile(contentPadding: EdgeInsets.zero, dense: true,
-              title: Text(x['title'] ?? '', style: const TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: Text([if (x['due_on'] != null) 'due ${_dmy(x['due_on'])}', if (x['paid_on'] != null) 'paid ${_dmy(x['paid_on'])}', if (x['note'] != null) x['note']].join(' · ')),
-              trailing: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Text(inr((x['amount'] as num) - ((x['concession'] ?? 0) as num)), style: const TextStyle(fontWeight: FontWeight.w800)),
-                Text('${x['status']}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: context.tone(x['status'] == 'pending' ? Brand.amber : Brand.green))),
+          for (final y in years) Panel(title: 'Fees $y', trailing: Text('${pays.length} ${pays.length == 1 ? 'receipt' : 'receipts'}', style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w700)), child: Column(children: [
+            for (final x in byYear[y]!) Container(
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              decoration: BoxDecoration(border: Border(top: BorderSide(color: cs.outlineVariant.withValues(alpha: .5)))),
+              child: Row(children: [
+                Expanded(flex: 5, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(x['title'] ?? '', style: const TextStyle(fontWeight: FontWeight.w800)),
+                  if (x['note'] != null) Padding(padding: const EdgeInsets.only(top: 3), child: Text('${x['note']}', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant))),
+                ])),
+                Expanded(flex: 3, child: Text(x['due_on'] == null ? '' : _dmy(x['due_on']), style: TextStyle(color: cs.onSurfaceVariant))),
+                Expanded(flex: 4, child: Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                  switch ('${x['status']}') {
+                    'paid' => Pill('Paid${x['paid_on'] != null ? ' ${DateFormat('d MMM').format(DateTime.parse(x['paid_on']))}' : ''}', fg: Brand.green, bg: Brand.greenTint),
+                    'waived' => const Pill('Waived', fg: Brand.violet, bg: Color(0x1A6B4BC7)),
+                    'cancelled' => const Pill('Cancelled', fg: Brand.muted, bg: Brand.surface2),
+                    _ => overdue(x)
+                        ? Pill('Overdue · ${d0.difference(DateTime.parse(x['due_on'])).inDays} days', fg: Brand.crimsonDeep, bg: Brand.crimsonTint)
+                        : Pill('Coming up · ${DateTime.parse(x['due_on']).difference(d0).inDays} days', fg: Brand.amber, bg: Brand.amberTint),
+                  },
+                  if (x['payment_id'] != null && byPay[x['payment_id']] != null) InkWell(onTap: () => openReceiptPdf(context, x['payment_id'], receiptNo: byPay[x['payment_id']]?['receipt_no']),
+                      child: Text('Receipt', style: TextStyle(fontWeight: FontWeight.w800, color: context.tone(Brand.crimson), decoration: TextDecoration.underline))),
+                ])),
+                SizedBox(width: 100, child: Text(inr(net(x)), textAlign: TextAlign.right, style: TextStyle(fontWeight: x['status'] == 'pending' ? FontWeight.w900 : FontWeight.w600,
+                    decoration: x['status'] == 'cancelled' ? TextDecoration.lineThrough : null))),
               ])),
           ])),
           if (pays.isNotEmpty) Panel(title: 'Receipts', child: Column(children: [
@@ -988,43 +1069,6 @@ class _FeesTab extends ConsumerWidget {
               onTap: () => openReceiptPdf(context, p['id'], receiptNo: p['receipt_no'])),
           ])),
           if (ledger.isEmpty && pays.isEmpty) const NoteBox('No fees recorded for this student.'),
-        ]);
-      },
-    );
-  }
-}
-
-// ---------------------------------------------------------------- marks
-final _marksProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>((ref, idsKey) async {
-  ref.cacheFor();
-  final r = await db.from('mark').select('internal,external,absent,subject:subject_id(name),exam:exam_id(id,name,term,max_marks,starts_on,academic_year:academic_year_id(label))').inFilter('student_id', idsKey.split(','));
-  return List<Map<String, dynamic>>.from(r);
-});
-
-class _MarksTab extends ConsumerWidget {
-  final List<String> ids;
-  const _MarksTab({required this.ids});
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final cs = Theme.of(context).colorScheme;
-    return ref.watch(_marksProvider(ids.join(','))).when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text(_msg(e))),
-      data: (rows) {
-        if (rows.isEmpty) return _pad([const NoteBox('No marks entered yet.')]);
-        final byExam = <String, List<Map<String, dynamic>>>{};
-        final exams = <String, Map<String, dynamic>>{};
-        for (final m in rows) { final e = m['exam'] as Map<String, dynamic>? ?? {}; byExam.putIfAbsent(e['id'] ?? '', () => []).add(m); exams[e['id'] ?? ''] = e; }
-        final order = exams.keys.toList()..sort((a, b) => ((exams[b]?['starts_on'] ?? '') as String).compareTo((exams[a]?['starts_on'] ?? '') as String));
-        return _pad([
-          for (final id in order) Panel(title: '${exams[id]?['name'] ?? ''} · ${exams[id]?['academic_year']?['label'] ?? ''}', child: Column(children: [
-            for (final m in byExam[id]!..sort((a, b) => '${a['subject']?['name']}'.compareTo('${b['subject']?['name']}'))) Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Row(children: [
-              Expanded(child: Text('${m['subject']?['name'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w700))),
-              Text(m['absent'] == true ? 'Absent' : '${((m['internal'] ?? 0) as num) + ((m['external'] ?? 0) as num)} / ${exams[id]?['max_marks'] ?? 100}',
-                  style: TextStyle(fontWeight: FontWeight.w800, color: m['absent'] == true ? context.tone(Brand.crimsonDeep) : null)),
-            ])),
-          ])),
-          Text('Marks are private to staff. Families see them on the published report card.', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12.5)),
         ]);
       },
     );
@@ -1043,7 +1087,7 @@ class _AttendanceTab extends ConsumerWidget {
   const _AttendanceTab({required this.ids});
   @override
   Widget build(BuildContext context, WidgetRef ref) => ref.watch(_attendanceProvider(ids.join(','))).when(
-    loading: () => const Center(child: CircularProgressIndicator()),
+    loading: () => const Padding(padding: EdgeInsets.all(16), child: ShimmerPage()),
     error: (e, _) => Center(child: Text(_msg(e))),
     data: (rows) => _pad([
       if (rows.isEmpty) const NoteBox('No attendance recorded yet. Class teachers enter the days present on each report card.'),
@@ -1137,7 +1181,7 @@ class _DocumentsTabState extends ConsumerState<_DocumentsTab> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return ref.watch(_docsProvider(widget.ids.join(','))).when(
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => const Padding(padding: EdgeInsets.all(16), child: ShimmerPage()),
       error: (e, _) => Center(child: Text(_msg(e))),
       data: (docs) => _pad([
         Panel(title: 'Documents', trailing: FilledButton.icon(onPressed: busy ? null : _upload, icon: const Icon(Icons.upload_file_rounded, size: 18), label: Text(busy ? 'Uploading…' : 'Upload')),
