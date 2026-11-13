@@ -6,6 +6,7 @@ import '../core/data.dart';
 import '../core/errors.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
+import '../widgets/royal_extras.dart' show ShimmerPage;
 import 'password_requests.dart';
 import 'staff_shell.dart';
 import 'students_page.dart' show openStudentRecord;
@@ -105,7 +106,7 @@ class StaffApprovalsScreen extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     final inbox = ref.watch(approvalsInboxProvider);
     return StaffPage(title: 'Approvals', subtitle: 'Only what needs your decision.', body: inbox.when(
-      loading: () => const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator())),
+      loading: () => const ShimmerPage(),
       error: (e, _) => Padding(padding: const EdgeInsets.all(24), child: Text(friendlyError(e), style: const TextStyle(color: Brand.crimsonDeep))),
       data: (m) {
         final decide = m['can_decide'] == true;
