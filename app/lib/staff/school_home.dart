@@ -131,11 +131,11 @@ class SchoolHome extends ConsumerWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (rows.isEmpty) Text('No students in the current classes yet.', style: TextStyle(color: cs.onSurfaceVariant))
         else ReportTable(
-          cols: const [('Class', 3, false), ('Sections', 3, false), ('Boys', 2, true), ('Girls', 2, true), ('Students', 2, true), ('Using the app', 4, false)],
+          cols: const [('Class', 3, false), ('Sections', 3, false), ('Boys', 2, true), ('Girls', 2, true), ('Total', 2, true), ('Using the app', 4, false)],
           rows: [
             for (final r in rows) [Text('${r['code']}', style: const TextStyle(fontWeight: FontWeight.w900)), Text('${r['sections'] ?? '—'}', style: TextStyle(color: cs.onSurfaceVariant)),
               Text(_num(r['boys'])), Text(_num(r['girls'])), Text(_num(r['total']), style: const TextStyle(fontWeight: FontWeight.w900)), bar(_n(r['using']), _n(r['total']))],
-            [const Text('Total'), Text('${rows.length} classes'), Text(_num(tb)), Text(_num(tg)), Text(_num(tt)), Text('${_num(tu)} of ${_num(tt)} · ${tt == 0 ? 0 : (tu * 100 / tt).round()}%')],
+            [const Text('Total'), Text('${rows.length} classes'), Text(_num(tb)), Text(_num(tg)), Text(_num(tt)), bar(tu, tt)],
           ], totals: {rows.length}, onTap: [for (final _ in rows) () => context.go('/staff/students')]),
         const SizedBox(height: 10),
         Text('${_num(st['joined'])} joined this year · ${_num(st['left'])} left · ${_num(st['rejoined'])} re-joined', style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
