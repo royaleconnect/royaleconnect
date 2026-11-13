@@ -396,7 +396,7 @@ Future<Uint8List> buildReportCardPdf(String reportCardId) async {
       ]),
       _section(k, isTest ? 'Scholastic' : 'Part 1 · Scholastic'),
       if (groups['main']!.isEmpty) pw.Text('Marks for this ${isTest ? 'test' : 'exam'} have not been entered yet.', style: const pw.TextStyle(fontSize: 9, color: _muted))
-      else table(groups['main']!),
+      else table(groups['main']!, withTotal: !isTest),   // periodic tests: marks and grade per subject, no total
       if (groups['r3']!.isNotEmpty) ...[pw.SizedBox(height: 6), _section(k, 'Third language · school-assessed'), table(groups['r3']!, withTotal: false, result: true)],
       if (groups['skill']!.isNotEmpty) ...[pw.SizedBox(height: 6), table(groups['skill']!, withTotal: false)],
       if (!isTest) ...[
