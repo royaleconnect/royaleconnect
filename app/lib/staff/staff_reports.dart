@@ -7,6 +7,7 @@ import 'package:intl/intl.dart' show DateFormat;
 import '../core/school_docs.dart' show openReportCardPdf;
 import '../core/theme.dart';
 import '../widgets/common.dart';
+import '../widgets/royal_extras.dart' show ShimmerPage;
 import 'staff_data.dart';
 import 'staff_shell.dart';
 import '../core/cache.dart';
@@ -22,21 +23,17 @@ final _coAreasProvider = FutureProvider<List<String>>((ref) async {
   return v.split(',').map((x) => x.trim()).where((x) => x.isNotEmpty).toList();
 });
 
-/// Report card names for a grade: Term I, Term II, plus every periodic test in the exam list.
-final _termsProvider = FutureProvider.autoDispose.family<List<String>, String>((ref, gradeId) async {
+/// Report card names for a grade: one card for each exam of the year (Periodic Test 1, Half Yearly …), in order.
+final _termsProvider = FutureProvider.autoDispose.family<List<(String, String)>, String>((ref, gradeId) async {
   ref.cacheFor();
   final yearId = await gradeYearId(gradeId);
-  final ex = await db.from('exam').select('name,term,max_marks').eq('grade_id', gradeId).eq('academic_year_id', yearId).order('starts_on', ascending: true);
-  final out = <String>['Term I', 'Term II'];
+  final ex = await db.from('exam').select('name,term,kind,sort,starts_on').eq('grade_id', gradeId).eq('academic_year_id', yearId).order('sort', ascending: true);
+  final out = <(String, String)>[];
   for (final e in ex) {
-    final t = '${e['term']}';
-    if (!out.contains(t)) out.add(t);
+    final key = e['kind'] == 'term' && '${e['term']}'.toLowerCase().startsWith('term ') ? '${e['term']}' : '${e['name']}';
+    if (!out.any((x) => x.$1 == key)) out.add((key, '${e['kind']}'));
   }
-  for (final e in ex) {
-    final n = '${e['name']}';
-    if ((e['max_marks'] as num) < 100 && !out.contains(n)) out.add(n);
-  }
-  return out;
+  return out.isEmpty ? const [('Half Yearly', 'term')] : out;
 });
 
 final _cardsProvider = FutureProvider.autoDispose.family<Map<String, Map<String, dynamic>>, (String, String)>((ref, key) async {
@@ -46,7 +43,7 @@ final _cardsProvider = FutureProvider.autoDispose.family<Map<String, Map<String,
   final studs = await ref.watch(sectionStudentsProvider(sectionId).future);
   final ids = [for (final s in studs) s['student']['id'] as String];
   if (ids.isEmpty) return {};
-  final rows = await db.from('report_card').select('id,student_id,status,working_days,days_present,height_cm,weight_kg,remarks,co_scholastic,published_at')
+  final rows = await db.from('report_card').select('id,student_id,status,working_days,days_present,height_cm,weight_kg,remarks,participation,co_scholastic,published_at')
       .eq('academic_year_id', yearId).eq('term', term).inFilter('student_id', ids);
   return {for (final r in rows) r['student_id'] as String: Map<String, dynamic>.from(r)};
 });
@@ -77,14 +74,14 @@ class StaffReportsScreen extends ConsumerStatefulWidget {
 }
 
 class _Row {
-  final present = TextEditingController(), height = TextEditingController(), weight = TextEditingController(), remarks = TextEditingController();
+  final present = TextEditingController(), height = TextEditingController(), weight = TextEditingController(), remarks = TextEditingController(), part = TextEditingController();
   final co = <String, String>{};
   String? id; String status = 'new';
-  void dispose() { present.dispose(); height.dispose(); weight.dispose(); remarks.dispose(); }
+  void dispose() { present.dispose(); height.dispose(); weight.dispose(); remarks.dispose(); part.dispose(); }
 }
 
 class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
-  String? sectionId; String term = 'Term I';
+  String? sectionId; String term = 'Half Yearly';
   final workingDays = TextEditingController();
   final rows = <String, _Row>{};
   String? loadedFor; bool busy = false;
@@ -113,6 +110,7 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
         r.height.text = _n(c['height_cm'] as num?);
         r.weight.text = _n(c['weight_kg'] as num?);
         r.remarks.text = c['remarks'] ?? '';
+        r.part.text = c['participation'] ?? '';
         if (c['co_scholastic'] is Map) { (c['co_scholastic'] as Map).forEach((k, v) => r.co['$k'] = '$v'); }
         if (workingDays.text.isEmpty && c['working_days'] != null) workingDays.text = _n(c['working_days'] as num?);
       }
@@ -142,6 +140,7 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
           'working_days': wd, 'days_present': _num(e.value.present.text),
           'height_cm': _num(e.value.height.text), 'weight_kg': _num(e.value.weight.text),
           'remarks': e.value.remarks.text.trim().isEmpty ? null : e.value.remarks.text.trim(),
+          'participation': e.value.part.text.trim().isEmpty ? null : e.value.part.text.trim(),
           'co_scholastic': {for (final a in areas) if ((e.value.co[a] ?? '').isNotEmpty) a: e.value.co[a]},
         },
       ];
@@ -159,10 +158,23 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
   }
 
   Future<void> _publish(List<String> areas) async {
+    List<Map<String, dynamic>> missing = const [];
+    try { missing = [for (final x in (await db.rpc('report_missing', params: {'p_section': sectionId, 'p_key': term})) as List? ?? const []) Map<String, dynamic>.from(x as Map)]; } catch (_) {}
+    if (!mounted) return;
     final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
-      title: Text('Publish $term report cards?'),
-      content: const Text('Every family in this section can then open and download the report card, and gets a notification. Please check a few with “Preview PDF” first.'),
-      actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Not yet')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Publish'))],
+      title: Text(missing.isEmpty ? 'Publish $term report cards?' : 'Some marks are still missing'),
+      content: SizedBox(width: 480, child: missing.isEmpty
+          ? const Text('Every family in this section can then open and download the report card, and gets a notification. Please check a few with “Preview PDF” first.')
+          : Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Text('${missing.length} ${missing.length == 1 ? 'student has' : 'students have'} a subject without marks. Their card will show “Not assessed” there.'),
+              const SizedBox(height: 10),
+              ConstrainedBox(constraints: const BoxConstraints(maxHeight: 260), child: ListView(shrinkWrap: true, children: [
+                for (final m in missing) Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Text.rich(TextSpan(children: [
+                  TextSpan(text: '${m['name']}  ', style: const TextStyle(fontWeight: FontWeight.w800)), TextSpan(text: '${m['subjects']}', style: TextStyle(color: Theme.of(c).colorScheme.onSurfaceVariant))]))),
+              ])),
+            ])),
+      actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: Text(missing.isEmpty ? 'Not yet' : 'Go back and fill them')),
+        FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(missing.isEmpty ? 'Publish' : 'Publish anyway'))],
     ));
     if (ok != true) return;
     if (!await _save(areas, quiet: true)) return;
@@ -191,7 +203,9 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
     if (sectionId == null && secs.isNotEmpty) sectionId = secs.first['id'];
     final sec = secs.where((x) => x['id'] == sectionId).firstOrNull;
     final areas = ref.watch(_coAreasProvider).value ?? const <String>[];
-    final terms = sec == null ? const <String>['Term I', 'Term II'] : (ref.watch(_termsProvider(sec['grade']['id'])).value ?? const <String>['Term I', 'Term II']);
+    final termKinds = sec == null ? const <(String, String)>[] : (ref.watch(_termsProvider(sec['grade']['id'])).value ?? const <(String, String)>[]);
+    final terms = termKinds.isEmpty ? const <String>['Half Yearly'] : [for (final t in termKinds) t.$1];
+    final isTestCard = termKinds.any((t) => t.$1 == term && t.$2 == 'test');
 
     if (secs.isEmpty && ref.watch(mySectionsProvider).hasValue) {
       return StaffPage(title: 'Report cards', body: Panel(child: Text('Report cards are filled in by class teachers. You are not class teacher of any section this year.', style: TextStyle(color: cs.onSurfaceVariant))));
@@ -206,19 +220,19 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
 
     return StaffPage(
       title: 'Report cards', hub: Hub.staffExams,
-      subtitle: 'Attendance, height & weight, co-scholastic grades and remarks. Marks come from Marks entry. Families see nothing until you publish.',
+      subtitle: 'Attendance, height & weight, co-scholastic grades, remarks and participation. Marks come from Marks entry. Families see nothing until you publish.',
       body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Panel(padding: const EdgeInsets.all(12), child: PickRow(children: [
           Expanded(child: PickField<String>(label: 'Section', value: sectionId, items: [for (final x in secs) DropdownMenuItem(value: x['id'] as String, child: Text(sectionLabel(x)))], onChanged: (v) => setState(() { sectionId = v; loadedFor = null; }))),
           const SizedBox(width: 12),
-          Expanded(child: PickField<String>(label: 'Report card', value: terms.contains(term) ? term : terms.first, items: [for (final t in terms) DropdownMenuItem(value: t, child: Text(t))], onChanged: (v) => setState(() { term = v ?? 'Term I'; loadedFor = null; }))),
+          Expanded(child: PickField<String>(label: 'Report card', value: terms.contains(term) ? term : terms.first, items: [for (final t in terms) DropdownMenuItem(value: t, child: Text(t))], onChanged: (v) => setState(() { term = v ?? terms.first; loadedFor = null; }))),
           const SizedBox(width: 12),
           Expanded(child: TextField(controller: workingDays, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Working days this term'))),
         ])),
         if (attInfo != null && (attInfo['working_days'] ?? 0) > 0) Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(
             'Days present are filled in from daily attendance (${_dm(attInfo['from'])} – ${_dm(attInfo['to'])} · ${attInfo['working_days']} days taken). You can change any number.',
             style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant))),
-        if (studs == null || cards == null || !attReady || studs.isLoading || cards.isLoading) const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()))
+        if (studs == null || cards == null || !attReady || studs.isLoading || cards.isLoading) const ShimmerPage()
         else if (studs.hasError || cards.hasError) Text(friendlyError(studs.error ?? cards.error), style: const TextStyle(color: Brand.crimsonDeep))
         else ...[
           Panel(padding: const EdgeInsets.all(12), child: Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
@@ -246,12 +260,13 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
               ]),
               const SizedBox(height: 10),
               Wrap(spacing: 10, runSpacing: 10, children: [
-                numBox(r.present, 'Days present'), numBox(r.height, 'Height (cm)'), numBox(r.weight, 'Weight (kg)'),
-                for (final a in areas) SizedBox(width: 190, child: DropdownButtonFormField<String>(
+                numBox(r.present, 'Days present'), if (!isTestCard) numBox(r.height, 'Height (cm)'), if (!isTestCard) numBox(r.weight, 'Weight (kg)'),
+                if (!isTestCard) for (final a in areas) SizedBox(width: 190, child: DropdownButtonFormField<String>(
                   value: (r.co[a] ?? '').isEmpty ? null : r.co[a],
                   isDense: true, isExpanded: true,
                   decoration: InputDecoration(labelText: a, isDense: true),
-                  items: const [DropdownMenuItem(value: 'A', child: Text('A · Outstanding')), DropdownMenuItem(value: 'B', child: Text('B · Very good')), DropdownMenuItem(value: 'C', child: Text('C · Fair'))],
+                  items: const [DropdownMenuItem(value: 'A', child: Text('A · Outstanding')), DropdownMenuItem(value: 'B', child: Text('B · Very good')), DropdownMenuItem(value: 'C', child: Text('C · Good')),
+                    DropdownMenuItem(value: 'D', child: Text('D · Fair')), DropdownMenuItem(value: 'E', child: Text('E · Needs improvement'))],
                   onChanged: locked ? null : (v) => setState(() => r.co[a] = v ?? ''),
                 )),
               ]),
@@ -264,6 +279,8 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
                   itemBuilder: (_) => [for (final x in _remarkIdeas) PopupMenuItem(value: x, child: Text(x))],
                 ),
               )),
+              if (!isTestCard) Padding(padding: const EdgeInsets.only(top: 10), child: TextField(controller: r.part, enabled: !locked, textCapitalization: TextCapitalization.sentences,
+                  decoration: const InputDecoration(labelText: 'Specific participation (optional)', hintText: 'e.g. First place in the inter-house quiz', isDense: true))),
             ]));
           }),
           if (rows.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text('Tip: “Save all” keeps your work as a draft. Preview a few PDFs, then “Publish to families”. Changes after publishing are saved straight to the published card.', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant))),
