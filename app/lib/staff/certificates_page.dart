@@ -12,6 +12,7 @@ import '../core/data.dart';
 import '../core/school_docs.dart' show PdfDocScreen;
 import '../core/theme.dart';
 import '../widgets/common.dart';
+import '../widgets/royal_extras.dart' show ShimmerPage;
 import 'staff_shell.dart';
 import '../auth/session.dart';
 import '../core/errors.dart';
@@ -216,7 +217,7 @@ class _StaffCertificatesScreenState extends ConsumerState<StaffCertificatesScree
         return Padding(padding: const EdgeInsets.all(12), child: Text('Type a name, admission number or a parent’s phone number. Past students are found too.', style: TextStyle(color: cs.onSurfaceVariant)));
       }
       return ref.watch(_certFindProvider(q)).when(
-        loading: () => const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
+        loading: () => const ShimmerPage(),
         error: (e, _) => Text(_msg(e), style: TextStyle(color: context.tone(Brand.crimsonDeep))),
         data: (rows) => rows.isEmpty
             ? Padding(padding: const EdgeInsets.all(12), child: Text('No student found for “$q”.', style: TextStyle(color: cs.onSurfaceVariant)))
@@ -261,7 +262,7 @@ class _StaffCertificatesScreenState extends ConsumerState<StaffCertificatesScree
           results(),
         ])),
         Panel(title: 'Issued recently', child: ref.watch(certificateRecentProvider).when(
-          loading: () => const Padding(padding: EdgeInsets.all(20), child: Center(child: CircularProgressIndicator())),
+          loading: () => const ShimmerPage(),
           error: (e, _) => Text(_msg(e)),
           data: (rows) => rows.isEmpty
               ? Text('Nothing printed yet. Certificates you print appear here, and can be printed again exactly the same.', style: TextStyle(color: cs.onSurfaceVariant))
