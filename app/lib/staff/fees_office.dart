@@ -10,6 +10,7 @@ import '../core/school_docs.dart' show openReceiptPdf;
 import '../core/theme.dart';
 import '../core/xlsx_writer.dart';
 import '../widgets/common.dart';
+import '../widgets/royal_extras.dart' show ShimmerPage;
 import 'office_reports.dart' show ReportTable, wideTable, printReport;
 import 'staff_data.dart';
 import 'staff_shell.dart';
@@ -150,7 +151,7 @@ class RecentPaymentsPanel extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     final s = ref.watch(sessionProvider).value;
     return ref.watch(feePaymentsProvider).when(
-      loading: () => const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator())),
+      loading: () => const ShimmerPage(),
       error: (e, _) => Padding(padding: const EdgeInsets.all(24), child: Text(_msg(e), style: const TextStyle(color: Brand.crimsonDeep))),
       data: (rows) => Panel(padding: const EdgeInsets.all(12), child: rows.isEmpty ? Text('No payments yet.', style: TextStyle(color: cs.onSurfaceVariant)) : Column(children: [
         for (final p in rows) Builder(builder: (_) {
@@ -335,7 +336,7 @@ class _StaffFeeReportsScreenState extends ConsumerState<StaffFeeReportsScreen> {
       ], selected: {tab}, onSelectionChanged: (v) => setState(() => tab = v.first))),
       const SizedBox(height: 16),
       data.when(
-        loading: () => const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator())),
+        loading: () => const ShimmerPage(),
         error: (e, _) => Padding(padding: const EdgeInsets.all(24), child: Text(_msg(e), style: const TextStyle(color: Brand.crimsonDeep))),
         data: (rows) => _table(rows, cs),
       ),
