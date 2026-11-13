@@ -8,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'royal_motion.dart';
+import '../core/theme.dart' show Brand;
 import '../core/data3.dart' show appSettingsProvider, featureOn;
 
 /// Royal Edition, part 2: shimmer loading, the living header, the sun / moon, the gold ring, press effect,
@@ -22,8 +23,17 @@ class GoldLoading extends StatefulWidget {
   State<GoldLoading> createState() => _GoldLoadingState();
 }
 
+/// What "Try again" does on a page that is still loading after 20 seconds (set once by the app: fetch the family's data again).
+VoidCallback? onLoadRetry;
+
 class _GoldLoadingState extends State<GoldLoading> with SingleTickerProviderStateMixin {
   late final AnimationController c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400));
+  // safety net: no page may keep loading for ever — after 20 s it says so and offers "Try again"
+  bool slow = false;
+  Timer? _slowTimer;
+  @override
+  void initState() { super.initState(); _arm(); }
+  void _arm() { _slowTimer?.cancel(); _slowTimer = Timer(const Duration(seconds: 20), () { if (mounted) setState(() => slow = true); }); }
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -32,12 +42,24 @@ class _GoldLoadingState extends State<GoldLoading> with SingleTickerProviderStat
     if (on && !c.isAnimating) { c.repeat(); } else if (!on) { c.stop(); }
   }
   @override
-  void dispose() { c.dispose(); super.dispose(); }
+  void dispose() { _slowTimer?.cancel(); c.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final base = dark ? const Color(0xFF2A272D) : const Color(0xFFECE5D8);
     final hi = dark ? const Color(0xFF5A4A2A) : const Color(0xFFF8E9C2);
+    if (slow) {
+      final cs = Theme.of(context).colorScheme;
+      return Center(child: Padding(padding: const EdgeInsets.all(28), child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.wifi_off_rounded, size: 34, color: Brand.gold),
+        const SizedBox(height: 12),
+        const Text('Couldn’t load this page', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        const SizedBox(height: 6),
+        Text('The school server did not answer in time. Check the internet and try again.', textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant, height: 1.4)),
+        const SizedBox(height: 16),
+        FilledButton.icon(onPressed: () { setState(() => slow = false); _arm(); onLoadRetry?.call(); }, icon: const Icon(Icons.refresh_rounded, size: 18), label: const Text('Try again')),
+      ])));
+    }
     return Center(child: Padding(padding: const EdgeInsets.all(20), child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 360), child: RepaintBoundary(child: AnimatedBuilder(animation: c, builder: (_, __) {
       final m = -0.5 + c.value * 2;
       return ShaderMask(blendMode: BlendMode.srcATop,
