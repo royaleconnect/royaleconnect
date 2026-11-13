@@ -9,6 +9,7 @@ import '../core/data.dart';
 import '../core/errors.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
+import '../widgets/royal_extras.dart' show ShimmerPage;
 import 'import_excel.dart';
 import 'staff_data.dart';
 import 'staff_shell.dart';
@@ -38,7 +39,7 @@ String _time12(dynamic t) {
   return DateFormat('h:mm a').format(DateTime(2000, 1, 1, int.parse(p[0]), int.parse(p[1])));
 }
 
-Widget _loading() => const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()));
+Widget _loading() => const ShimmerPage();
 Widget _err(Object e) => Padding(padding: const EdgeInsets.all(24), child: Text(_msg(e), style: const TextStyle(color: Brand.crimsonDeep)));
 Widget _label(BuildContext context, String t) => Padding(padding: const EdgeInsets.only(top: 14, bottom: 6),
     child: Text(t, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: .4, color: Theme.of(context).colorScheme.onSurfaceVariant)));
