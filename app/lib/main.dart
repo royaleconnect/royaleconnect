@@ -10,6 +10,7 @@ import 'core/theme.dart';
 import 'parent_layout.dart';
 import 'router.dart';
 import 'widgets/guided_tour.dart' show TourLayer;
+import 'widgets/royal_extras.dart' show onLoadRetry;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,6 +32,7 @@ class _RoyaleConnectAppState extends ConsumerState<RoyaleConnectApp> with Widget
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     Push.start(ref);
+    onLoadRetry = () => refreshFamilyData(ref, force: true);   // "Try again" on a page still loading after 20 s
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final s = ref.read(sessionProvider).value;
       Push.sync(s);
