@@ -3,16 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'office_reports.dart' show OfficeGlance;
+import 'school_home.dart' show SchoolHome, glanceProvider, schoolHomeProvider;
 import '../auth/session.dart';
 import '../core/data.dart';
 import '../core/errors.dart';
 import '../core/school_docs.dart' show openMonthlyReport;
 import '../core/theme.dart';
-import '../widgets/common.dart';
 import 'staff_data.dart';
 import 'staff_shell.dart';
-import '../widgets/royal_extras.dart' show GoldLoading, FestiveBanner, FestiveSky;
+import '../widgets/royal_extras.dart' show GoldLoading, FestiveBanner, FestiveSky, ShimmerPage;
 import 'health_dot.dart';
 import 'year_end.dart';
 import 'password_requests.dart' show PasswordRequestsCard;
@@ -39,23 +38,6 @@ final adminOverviewProvider = FutureProvider.autoDispose<Map<String, dynamic>?>(
   }
 });
 
-int _i(dynamic v) => v is num ? v.toInt() : int.tryParse('$v') ?? 0;
-String _ago(String? iso) {
-  if (iso == null) return '—';
-  final d = DateTime.now().difference(DateTime.parse(iso).toLocal());
-  if (d.inMinutes < 1) return 'just now';
-  if (d.inMinutes < 60) return '${d.inMinutes} min ago';
-  if (d.inHours < 24) return '${d.inHours} h ago';
-  return DateFormat('d MMM, h:mm a').format(DateTime.parse(iso).toLocal());
-}
-
-const _actionLabels = {
-  'calendar.insert': 'added to the calendar', 'calendar.update': 'changed a calendar item', 'calendar.delete': 'removed a calendar item', 'calendar.notify': 'told families about a calendar item',
-  'announcement.remind': 'sent a notice reminder', 'password.reset': 'printed a password slip', 'password.reset.staff': 'reset a staff password', 'password.change': 'changed their password',
-  'password.change.staff': 'changed their password', 'crew.account': 'made a bus crew login', 'view_as.family': 'viewed a family’s app (read-only)', 'session.revoke_all': 'signed out all phones of a student',
-  'login.staff': 'signed in', 'login.crew': 'signed in (bus)', 'login.student': 'signed in', 'payment.record': 'recorded a payment', 'mark.edit': 'changed marks after publishing',
-};
-
 class AdminDashboard extends ConsumerStatefulWidget {
   const AdminDashboard({super.key});
   @override
@@ -65,7 +47,7 @@ class AdminDashboard extends ConsumerStatefulWidget {
 class _AdminDashboardState extends ConsumerState<AdminDashboard> {
   Timer? tick;
   @override
-  void initState() { super.initState(); tick = Timer.periodic(const Duration(seconds: 60), (_) { ref.invalidate(adminDashProvider); ref.invalidate(adminOverviewProvider); }); }
+  void initState() { super.initState(); tick = Timer.periodic(const Duration(seconds: 60), (_) { ref.invalidate(adminDashProvider); ref.invalidate(glanceProvider); ref.invalidate(schoolHomeProvider); }); }
   @override
   void dispose() { tick?.cancel(); super.dispose(); }
 
@@ -73,7 +55,6 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
   Widget build(BuildContext context) {
     final s = ref.watch(sessionProvider).value!;
     final dash = ref.watch(adminDashProvider);
-    final cs = Theme.of(context).colorScheme;
     final h = DateTime.now().hour;
     final greet = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
     return FestiveSky(child: StaffPage(
@@ -81,13 +62,14 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
       subtitle: '${DateFormat('EEEE d MMMM yyyy').format(DateTime.now())} · the whole school at a glance${dash.value?['generated_at'] != null ? ' · updated ${DateFormat('h:mm a').format(DateTime.parse(dash.value!['generated_at']).toLocal())}' : ''}',
       actions: [
         const TourTarget('staff-health', child: HealthDot()),
+        OutlinedButton.icon(onPressed: () => showDialog(context: context, builder: (c) => const Dialog(child: SizedBox(width: 520, child: SingleChildScrollView(padding: EdgeInsets.all(8), child: _ViewAsFamily())))),
+            icon: const Icon(Icons.family_restroom_rounded, size: 18), label: const Text('View as family')),
         FilledButton.icon(onPressed: () => _monthly(context), icon: const Icon(Icons.picture_as_pdf_rounded, size: 18), label: const Text('Monthly report')),
-        OutlinedButton.icon(onPressed: () { ref.invalidate(adminDashProvider); ref.invalidate(adminOverviewProvider); ref.invalidate(_adoptionProvider); ref.invalidate(yearEndProvider); }, icon: const Icon(Icons.refresh_rounded, size: 18), label: const Text('Refresh')),
       ],
       body: dash.when(
-        loading: () => const Center(child: Padding(padding: EdgeInsets.all(48), child: CircularProgressIndicator())),
+        loading: () => const ShimmerPage(),
         error: (e, _) => Panel(child: Text('Could not load the dashboard. ${friendlyError(e)}', style: const TextStyle(color: Brand.crimsonDeep))),
-        data: (d) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [const FestiveBanner(), const StaffBirthdayLine(), const PasswordRequestsCard(), const YearEndCard(), _body(context, d, ref.watch(adminOverviewProvider).value, cs), const StaffBirthdaysPanel()]),
+        data: (d) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [const FestiveBanner(slim: true), const StaffBirthdayLine(), const PasswordRequestsCard(), const YearEndCard(), SchoolHome(admin: d), const StaffBirthdaysPanel()]),
       ),
     ));
   }
@@ -114,160 +96,6 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     if (go == true && context.mounted) openMonthlyReport(context, month, hl.text);
   }
 
-  Widget _body(BuildContext context, Map<String, dynamic> d, Map<String, dynamic>? o, ColorScheme cs) {
-    final bus = Map<String, dynamic>.from(d['buses'] ?? {});
-    final tch = Map<String, dynamic>.from(d['teaching'] ?? {});
-    final running = List<Map<String, dynamic>>.from(bus['running'] ?? const []);
-    final idle = List<String>.from(bus['idle'] ?? const []);
-
-
-    return LayoutBuilder(builder: (_, c) {
-      final w = c.maxWidth;
-      final panelCols = w >= 900 ? 2 : 1;
-      final panelW = (w - 14 * (panelCols - 1)) / panelCols;
-      Widget panel(Widget p) => SizedBox(width: panelW, child: p);
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const OfficeGlance(),
-        Wrap(spacing: 14, children: [
-          if (o != null) panel(_enrollment(context, o, cs)),
-          if (o != null) panel(Column(children: [_dataChecker(context, o, cs), _leaving(context, o, cs)])),
-          panel(_today(context, d, running, idle, cs)),
-          panel(_teaching(context, tch, cs)),
-          panel(const _AdoptionPanel()),
-          panel(const _ViewAsFamily()),
-          panel(_activity(context, d, cs)),
-        ]),
-        Text('Private chats stay private: the dashboard shows counts only, never message text.', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-      ]);
-    });
-  }
-
-  // ---------------------------------------------------------------- Enrollment
-  Widget _enrollment(BuildContext context, Map<String, dynamic> o, ColorScheme cs) {
-    final grades = List<Map<String, dynamic>>.from(o['grades'] ?? const []);
-    final secs = List<Map<String, dynamic>>.from(o['sections'] ?? const []);
-    return Panel(title: 'Enrollment', trailing: TextButton(onPressed: () => context.go('/staff/students'), child: const Text('Students')), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if (grades.isEmpty) Text('No students in the current classes yet.', style: TextStyle(color: cs.onSurfaceVariant)),
-      for (final g in grades) Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        SizedBox(width: 52, child: Text('${g['code']}', style: const TextStyle(fontWeight: FontWeight.w800))),
-        Expanded(child: Text([for (final s in secs) if (s['grade'] == g['code']) '${s['section']} ${s['n']}'].join(' · '), style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant))),
-        Text(g['seats'] != null && _i(g['seats']) > 0 ? '${g['n']} / ${g['seats']}' : '${g['n']}', style: const TextStyle(fontWeight: FontWeight.w800)),
-      ])),
-      const Divider(height: 20),
-      _row('New admissions this year', '${_i(o['new_this_year'])}', cs),
-      _row('Left this year', '${_i(o['left_this_year'])}', cs),
-    ]));
-  }
-
-  // ---------------------------------------------------------------- Data checker
-  static const _checks = [
-    ('dob', 'Students without a date of birth', false), ('blood_group', 'Students without a blood group', false), ('photo', 'Students without a photo', false),
-    ('phone', 'Students without a parent phone', false), ('house', 'Students without a house', false),
-    ('staff_phone', 'Staff without a phone number', true), ('no_class_teacher', 'Classes without a class teacher', true),
-  ];
-
-  Widget _dataChecker(BuildContext context, Map<String, dynamic> o, ColorScheme cs) {
-    final c = Map<String, dynamic>.from(o['checks'] ?? {});
-    final open = _checks.where((k) => _i(c[k.$1]) > 0).length;
-    return Panel(title: 'Data checker', trailing: Pill(open == 0 ? 'All complete' : '$open to fill in', fg: open == 0 ? Brand.green : Brand.amber, bg: open == 0 ? Brand.greenTint : Brand.amberTint),
-      child: Column(children: [for (final k in _checks) _checkRow(context, k.$1, k.$2, _i(c[k.$1]), cs)]));
-  }
-
-  Widget _checkRow(BuildContext context, String kind, String label, int n, ColorScheme cs) => Padding(padding: const EdgeInsets.symmetric(vertical: 2), child: Row(children: [
-    Icon(n == 0 ? Icons.check_circle_rounded : Icons.error_outline_rounded, size: 18, color: context.tone(n == 0 ? Brand.green : Brand.amber)),
-    const SizedBox(width: 8),
-    Expanded(child: Text(label, style: TextStyle(color: n == 0 ? cs.onSurfaceVariant : cs.onSurface))),
-    Text('$n', style: TextStyle(fontWeight: FontWeight.w800, color: n == 0 ? cs.onSurfaceVariant : context.tone(Brand.amber))),
-    SizedBox(width: 64, child: n == 0 ? null : TextButton(onPressed: () => _showList(context, kind, label), child: const Text('Show'))),
-  ]));
-
-  // ---------------------------------------------------------------- Leaving check
-  Widget _leaving(BuildContext context, Map<String, dynamic> o, ColorScheme cs) {
-    final n = _i(o['certificates_pending']);
-    return Panel(title: 'Leaving check', child: Row(children: [
-      Icon(n == 0 ? Icons.verified_rounded : Icons.assignment_late_rounded, color: context.tone(n == 0 ? Brand.green : Brand.crimson)),
-      const SizedBox(width: 10),
-      Expanded(child: Text(n == 0 ? 'Everyone who left has a TC and a conduct certificate uploaded.' : '$n student${n == 1 ? '' : 's'} left without a TC or conduct certificate uploaded.',
-          style: TextStyle(color: n == 0 ? cs.onSurfaceVariant : cs.onSurface))),
-      if (n > 0) TextButton(onPressed: () => _showList(context, 'certificates', 'Left without a TC or conduct certificate'), child: const Text('Show')),
-    ]));
-  }
-
-  void _showList(BuildContext context, String kind, String title) {
-    final staffList = kind == 'staff_phone' || kind == 'no_class_teacher';
-    showDialog(context: context, builder: (c) => AlertDialog(
-      title: Text(title),
-      content: SizedBox(width: 480, height: 420, child: FutureBuilder(
-        future: db.rpc('data_check_list', params: {'p_kind': kind}),
-        builder: (_, snap) {
-          if (snap.hasError) return Text('Could not load: ${snap.error}');
-          if (!snap.hasData) return const GoldLoading();
-          final rows = [for (final r in snap.data as List) Map<String, dynamic>.from(r as Map)];
-          if (rows.isEmpty) return const Center(child: Text('Nothing missing now ✓'));
-          return ListView.separated(itemCount: rows.length, separatorBuilder: (_, __) => const Divider(height: 1), itemBuilder: (_, i) => ListTile(
-            dense: true, contentPadding: EdgeInsets.zero,
-            title: Text('${rows[i]['name']}', style: const TextStyle(fontWeight: FontWeight.w700)),
-            subtitle: Text('${rows[i]['info'] ?? ''}'),
-          ));
-        },
-      )),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(c), child: const Text('Close')),
-        FilledButton(onPressed: () { Navigator.pop(c); context.go(kind == 'staff_phone' ? '/staff/users' : staffList ? '/staff/setup' : '/staff/students'); },
-            child: Text(kind == 'staff_phone' ? 'Open Staff' : staffList ? 'Open Classes' : 'Open Students')),
-      ],
-    ));
-  }
-
-  Widget _row(String k, String v, ColorScheme cs, {Color? color}) => Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Row(children: [
-    Expanded(child: Text(k, style: TextStyle(color: cs.onSurfaceVariant))),
-    Text(v, style: TextStyle(fontWeight: FontWeight.w800, color: color)),
-  ]));
-
-  Widget _teaching(BuildContext context, Map<String, dynamic> t, ColorScheme cs) {
-    final secs = _i(t['sections']), diary = _i(t['diary_sections_today']);
-    final chats = _i(t['chats_week']), ans = _i(t['chats_answered']);
-    final rc = List<Map<String, dynamic>>.from(t['report_cards'] ?? const []);
-    return Panel(title: 'Teaching today', child: Column(children: [
-      _row('Diary posted', '$diary of $secs sections · ${_i(t['diary_posts_today'])} notes', cs, color: secs > 0 && diary >= secs * .8 ? context.tone(Brand.green) : null),
-      _row('Parent chats answered (7 days)', chats == 0 ? '—' : '${(ans * 100 / chats).round()}% of $chats', cs, color: chats > 0 && ans / chats >= .9 ? context.tone(Brand.green) : null),
-      for (final r in rc) _row('Report cards · ${r['term']}', '${_i(r['published'])} of ${_i(r['total'])} published', cs),
-      if (rc.isEmpty) _row('Report cards', 'none started yet', cs),
-    ]));
-  }
-
-  Widget _today(BuildContext context, Map<String, dynamic> d, List<Map<String, dynamic>> running, List<String> idle, ColorScheme cs) {
-    final cal = List<Map<String, dynamic>>.from(d['calendar'] ?? const []);
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    return Panel(title: 'Today & tomorrow', trailing: TextButton(onPressed: () => context.go('/staff/calendar'), child: const Text('Calendar')), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if (cal.isEmpty) Text('Nothing on the calendar today or tomorrow.', style: TextStyle(color: cs.onSurfaceVariant)),
-      for (final e in cal) Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Row(children: [
-        Pill((e['starts_on'] as String).compareTo(today) <= 0 ? 'Today' : 'Tomorrow', fg: Brand.crimsonDeep, bg: Brand.crimsonTint),
-        const SizedBox(width: 8),
-        Expanded(child: Text('${e['title']}${(e['grades'] as List?)?.isNotEmpty == true ? ' · ${(e['grades'] as List).join(', ')}' : ''}', style: TextStyle(fontWeight: e['kind'] == 'holiday' ? FontWeight.w800 : FontWeight.w600))),
-      ])),
-      const Divider(height: 20),
-      Text('Transport', style: TextStyle(fontWeight: FontWeight.w800, color: cs.onSurfaceVariant, fontSize: 12)),
-      if (running.isEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text('No trip running right now.', style: TextStyle(color: cs.onSurfaceVariant))),
-      for (final r in running) Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Row(children: [
-        Icon(Icons.circle, size: 10, color: r['last_fix_at'] != null && DateTime.now().difference(DateTime.parse(r['last_fix_at']).toLocal()).inSeconds < 60 ? Brand.green : Brand.amber),
-        const SizedBox(width: 8),
-        Expanded(child: Text('${r['route']} · ${'${r['kind']}'.startsWith('morning') ? 'morning' : 'afternoon'}${r['next_stop'] != null ? ' · next: ${r['next_stop']}' : ''}')),
-        Text(_ago(r['last_fix_at']), style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-      ])),
-      if (running.isNotEmpty && idle.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text('Not started: ${idle.join(', ')}', style: TextStyle(fontSize: 12, color: context.tone(Brand.amber)))),
-    ]));
-  }
-
-  Widget _activity(BuildContext context, Map<String, dynamic> d, ColorScheme cs) {
-    final list = List<Map<String, dynamic>>.from(d['activity'] ?? const []).where((a) => !'${a['action']}'.startsWith('login.')).take(8).toList();
-    return Panel(title: 'Recent activity', child: list.isEmpty
-        ? Text('Nothing yet.', style: TextStyle(color: cs.onSurfaceVariant))
-        : Column(children: [for (final a in list) Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            SizedBox(width: 74, child: Text(_ago(a['at']), style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant))),
-            Expanded(child: Text('${a['who']} ${_actionLabels[a['action']] ?? a['action']}${a['detail'] is Map && (a['detail'] as Map)['title'] != null ? ' · “${(a['detail'] as Map)['title']}”' : ''}', style: const TextStyle(fontSize: 13))),
-          ]))]));
-  }
 }
 
 
@@ -314,41 +142,3 @@ class _ViewAsFamilyState extends ConsumerState<_ViewAsFamily> {
 }
 
 
-// ------------------------------------------------------------------ switching from MyClassBoard
-final _adoptionProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async =>
-    Map<String, dynamic>.from((await db.rpc('app_adoption')) as Map? ?? const {}));
-
-class _AdoptionPanel extends ConsumerWidget {
-  const _AdoptionPanel();
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final cs = Theme.of(context).colorScheme;
-    return Panel(title: 'Switching from MCB', child: ref.watch(_adoptionProvider).when(
-      loading: () => const SizedBox(height: 80, child: const GoldLoading()),
-      error: (e, _) => Text(friendlyError(e), style: const TextStyle(color: Brand.crimsonDeep)),
-      data: (a) {
-        final total = _i(a['total']), using = _i(a['using']);
-        final pct = total == 0 ? 0.0 : using / total;
-        final grades = List<Map<String, dynamic>>.from(a['grades'] ?? const []);
-        Widget bar(double v, {double h = 10}) => ClipRRect(borderRadius: BorderRadius.circular(9), child: LinearProgressIndicator(value: v, minHeight: h,
-            backgroundColor: cs.surfaceContainerHighest, color: v < .6 ? Brand.amber : Brand.green));
-        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Families using Royale Connect', style: TextStyle(color: cs.onSurfaceVariant)),
-          const SizedBox(height: 8), bar(pct, h: 14), const SizedBox(height: 6),
-          Text('$using of $total · ${(pct * 100).round()}%', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-          const SizedBox(height: 10),
-          for (final g in grades) Builder(builder: (_) {
-            final t = _i(g['total']), u = _i(g['using']); final v = t == 0 ? 0.0 : u / t;
-            return Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Row(children: [
-              SizedBox(width: 48, child: Text('${g['code']}', style: const TextStyle(fontWeight: FontWeight.w800))),
-              Expanded(child: bar(v)),
-              SizedBox(width: 120, child: Text('  ${(v * 100).round()}% · $u/$t${v < .6 ? ' · needs a push' : ''}', style: TextStyle(fontSize: 12, color: v < .6 ? context.tone(Brand.crimsonDeep) : cs.onSurfaceVariant, fontWeight: v < .6 ? FontWeight.w800 : FontWeight.w500))),
-            ]));
-          }),
-          const SizedBox(height: 6),
-          Text('Class teachers see the families not using the app yet on their Today page.', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-        ]);
-      },
-    ));
-  }
-}
