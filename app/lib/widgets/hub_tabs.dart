@@ -11,7 +11,7 @@ enum Hub { calendar, honours, attendance, staffExams, staffHonours, schoolSetup 
 
 const _hubs = <Hub, List<(String, String, String?)>>{   // path, label, feature switch
   Hub.calendar: [('/calendar', 'Calendar', null), ('/timetable', 'Timetable', 'timetable'), ('/exams', 'Exams', null)],
-  Hub.honours: [('/star', 'Star of the month', 'star'), ('/toppers', 'Toppers', 'toppers'), ('/fame', 'Hall of Fame', 'fame'), ('/council', 'Council', 'council'), ('/houses', 'Houses', 'houses')],
+  Hub.honours: [('/star', 'Star of the month', 'star'), ('/toppers', 'Toppers', 'toppers'), ('/council', 'Council', 'council'), ('/houses', 'Houses', 'houses'), ('/fame', 'Hall of Fame', 'fame')],   // Hall of Fame last (used least)
   Hub.attendance: [('/attendance', 'Attendance', null), ('/leave', 'Leave', 'leave')],
   Hub.staffExams: [('/staff/exams', 'Exams', null), ('/staff/marks', 'Marks entry', null), ('/staff/reports', 'Report cards', null)],
   Hub.staffHonours: [('/staff/toppers', 'Toppers & Hall of Fame', null), ('/staff/council', 'Council', 'council'), ('/staff/houses', 'Houses', 'houses')],
