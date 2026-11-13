@@ -31,7 +31,9 @@ const _tabRoutes = {'/', '/fees', '/diary', '/announcements', '/bus', '/reports'
 /// Help for parents & students ([staff] = false) or for teachers & office ([staff] = true).
 class HelpScreen extends ConsumerStatefulWidget {
   final bool staff;
-  const HelpScreen({super.key, required this.staff});
+  /// opened from the "?" on a staff page: start with the answers for that page
+  final String? page;
+  const HelpScreen({super.key, required this.staff, this.page});
   @override
   ConsumerState<HelpScreen> createState() => _HelpScreenState();
 }
@@ -40,6 +42,7 @@ class _HelpScreenState extends ConsumerState<HelpScreen> {
   final search = TextEditingController();
   String q = '';
   String? topic, openId;
+  late String? page = widget.page;
   final voted = <String>{};
 
   bool get _itBook { final s = ref.read(sessionProvider).value; return widget.staff && s != null && (s.hasRole('it_admin') || s.hasRole('principal')); }
@@ -83,6 +86,9 @@ class _HelpScreenState extends ConsumerState<HelpScreen> {
     } else if (topic != null) {
       shown = all.where((h) => h.topic == topic).toList();
       heading = topic!.toUpperCase();
+    } else if (page != null && all.any((h) => h.route == page || h.needs == page)) {
+      shown = all.where((h) => h.route == page || h.needs == page).toList();
+      heading = 'FOR THIS PAGE';
     } else {
       shown = all.where((h) => h.popular).toList();
       heading = 'MOST ASKED';
@@ -109,7 +115,7 @@ class _HelpScreenState extends ConsumerState<HelpScreen> {
         for (final t in topics) ChoiceChip(
           label: Text('${t.icon}  ${t.name}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
           selected: topic == t.name, showCheckmark: false,
-          onSelected: (on) => setState(() { topic = on ? t.name : null; openId = null; }),
+          onSelected: (on) => setState(() { topic = on ? t.name : null; openId = null; page = null; }),
         ),
       ]),
       Padding(padding: const EdgeInsets.fromLTRB(2, 18, 2, 8), child: Text(heading, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: .6, color: cs.onSurfaceVariant))),
