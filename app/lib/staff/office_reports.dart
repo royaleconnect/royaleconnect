@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart' show PdfPageFormat, PdfColor;
 import 'package:pdf/widgets.dart' as pw;
@@ -12,6 +11,7 @@ import '../core/school_docs.dart' show PdfDocScreen;
 import '../core/theme.dart';
 import '../core/xlsx_writer.dart';
 import '../widgets/common.dart';
+import '../widgets/royal_extras.dart' show ShimmerPage;
 import '../widgets/royal_motion.dart';
 import 'certificates_page.dart' show tcDraftFor, buildManyCertificatesPdf, certificateIssuedTick;
 import 'staff_shell.dart';
@@ -91,7 +91,7 @@ class ReportTable extends StatelessWidget {
 Widget wideTable(BuildContext context, Widget table, {double min = 760}) => LayoutBuilder(builder: (_, c) =>
     c.maxWidth >= min ? table : SingleChildScrollView(scrollDirection: Axis.horizontal, child: SizedBox(width: min, child: table)));
 
-Widget _loading() => const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator()));
+Widget _loading() => const ShimmerPage();
 Widget _err(Object e) => Padding(padding: const EdgeInsets.all(24), child: Text(friendlyError(e), style: const TextStyle(color: Brand.crimsonDeep)));
 
 // ================================================================== Student strength
@@ -444,123 +444,6 @@ Future<void> printReport(BuildContext context, String title, List<String> head, 
         ));
         return doc.save();
       })));
-
-// ================================================================== the office Home at a glance (the approved mock)
-final officeGlanceProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
-  ref.cacheFor();
-  try { return Map<String, dynamic>.from(await db.rpc('office_glance') as Map); } catch (_) { return null; }
-});
-
-String _inrShort(num v) {
-  if (v >= 10000000) return '₹${(v / 10000000).toStringAsFixed(2)} Cr';
-  if (v >= 100000) return '₹${(v / 100000).toStringAsFixed(1)} L';
-  return inr(v);
-}
-
-class OfficeGlance extends ConsumerWidget {
-  const OfficeGlance({super.key});
-
-  Future<void> _never(BuildContext context) async {
-    List<Map<String, dynamic>> rows = const [];
-    try { rows = [for (final x in (await db.rpc('office_never_logged_in')) as List? ?? const []) Map<String, dynamic>.from(x as Map)]; } catch (_) {}
-    if (!context.mounted) return;
-    await showDialog(context: context, builder: (c) {
-      final byClass = <String, List<Map<String, dynamic>>>{};
-      for (final r in rows) { byClass.putIfAbsent('${r['class'] ?? 'No class yet'}', () => []).add(r); }
-      return AlertDialog(
-        title: Text('Never signed in · ${rows.length}'),
-        content: SizedBox(width: 560, height: 480, child: rows.isEmpty ? const Text('Every family has signed in ✓') : ListView(children: [
-          const NoteBox('Class teachers can call these families and help them sign in with the admission number and the password slip.'),
-          for (final e in byClass.entries) ...[
-            Padding(padding: const EdgeInsets.fromLTRB(4, 14, 4, 4), child: Text('${e.key} · ${e.value.length}', style: TextStyle(fontWeight: FontWeight.w900, color: c.tone(Brand.gold)))),
-            for (final r in e.value) ListTile(dense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-              title: Text('${r['full_name']}', style: const TextStyle(fontWeight: FontWeight.w700)), subtitle: Text('${r['admission_no']}'),
-              trailing: Text('${r['phone'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800)),
-              onTap: () { Navigator.pop(c); openStudentRecord(context, r['id']); }),
-          ],
-        ])),
-        actions: [FilledButton(onPressed: () => Navigator.pop(c), child: const Text('Done'))],
-      );
-    });
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final d = ref.watch(officeGlanceProvider).value;
-    if (d == null) return const SizedBox.shrink();
-    final cs = Theme.of(context).colorScheme;
-    final st = Map<String, dynamic>.from(d['students'] ?? const {});
-    final sf = Map<String, dynamic>.from(d['staff'] ?? const {});
-    final fees = d['fees'] == null ? null : Map<String, dynamic>.from(d['fees']);
-    final notice = d['notice'] == null ? null : Map<String, dynamic>.from(d['notice']);
-    final usage = Map<String, dynamic>.from(d['usage'] ?? const {});
-    num n(Map m, String k) => (m[k] ?? 0) as num;
-    final boys = n(st, 'boys'), girls = n(st, 'girls');
-    final bg = boys + girls;
-    const pink = Color(0xFFD6407F);
-    final narrow = isNarrow(context);
-
-    Widget dot(Color c, String big, String text) => Row(mainAxisSize: MainAxisSize.min, children: [
-      Container(width: 9, height: 9, decoration: BoxDecoration(color: c, shape: BoxShape.circle)), const SizedBox(width: 8),
-      Text.rich(TextSpan(children: [TextSpan(text: big, style: const TextStyle(fontWeight: FontWeight.w900)), TextSpan(text: ' $text')]))]);
-
-    final strength = Panel(title: 'Student strength', trailing: TextButton(onPressed: () => GoRouter.of(context).go('/staff/strength'), child: const Text('Open →')),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Wrap(spacing: 28, runSpacing: 10, children: [
-          dot(Brand.green, _n(n(st, 'total')), 'on rolls'), dot(Brand.blue, _n(n(st, 'joined')), 'joined this year'),
-          dot(Brand.crimson, _n(n(st, 'left')), 'left this year'), dot(Brand.amber, _n(n(st, 'rejoined')), 're-joined'),
-        ]),
-        const SizedBox(height: 16),
-        ClipRRect(borderRadius: BorderRadius.circular(99), child: SizedBox(height: 9, child: Row(children: [
-          Expanded(flex: bg == 0 ? 1 : boys.toInt().clamp(1, 1 << 30), child: Container(color: Brand.blue)),
-          Expanded(flex: bg == 0 ? 1 : girls.toInt().clamp(1, 1 << 30), child: Container(color: pink)),
-        ]))),
-        const SizedBox(height: 8),
-        Text(bg == 0 ? 'Fill in Boy / Girl in the student details to see the split.' : 'Boys ${(boys * 100 / bg).round()}% · Girls ${(girls * 100 / bg).round()}%',
-            style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
-      ]));
-
-    final latest = Panel(title: 'Latest notice', trailing: TextButton(onPressed: () => GoRouter.of(context).go('/staff/announcements/report'), child: const Text('All →')),
-      child: notice == null ? Text('No notice sent yet.', style: TextStyle(color: cs.onSurfaceVariant)) : Builder(builder: (_) {
-        final to = n(notice, 'sent_to'), rd = n(notice, 'read_by');
-        final pc = to == 0 ? 0.0 : (rd / to).clamp(0, 1).toDouble();
-        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('${notice['title']}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
-          const SizedBox(height: 4),
-          Text('${notice['audience']} · ${DateFormat('d MMM').format(DateTime.parse(notice['sent_at']).toLocal())}', style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
-          const SizedBox(height: 12),
-          ClipRRect(borderRadius: BorderRadius.circular(99), child: LinearProgressIndicator(value: pc, minHeight: 8, backgroundColor: Brand.gold.withValues(alpha: .15), color: Brand.green)),
-          const SizedBox(height: 8),
-          Text('${(pc * 100).round()}% of families have read it', style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
-        ]);
-      }));
-
-    final fam = Map<String, dynamic>.from(usage['families'] ?? const {}), stf = Map<String, dynamic>.from(usage['staff'] ?? const {});
-    final apps = Panel(title: 'Who is using the app', trailing: OutlinedButton(onPressed: () => _never(context), child: Text('Never signed in (${_n(n(fam, 'never'))})')),
-      child: wideTable(context, ReportTable(
-        cols: const [('Who', 4, false), ('Web', 2, true), ('Android', 2, true), ('iPhone', 2, true), ('Never signed in', 3, true)],
-        rows: [
-          for (final (who, m) in [('Parents / students', fam), ('Staff', stf)]) [
-            Text(who), Text(_n(n(m, 'web'))), Text(_n(n(m, 'android'))), Text(_n(n(m, 'ios'))),
-            Text(_n(n(m, 'never')), style: TextStyle(fontWeight: FontWeight.w900, color: n(m, 'never') > 0 ? context.tone(Brand.crimsonDeep) : null)),
-          ],
-        ]), min: 560));
-
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      statGrid(context, [
-        StatCard('Students', n(st, 'total'), extra: Text.rich(TextSpan(children: [
-          TextSpan(text: '${_n(boys)} boys', style: TextStyle(color: context.tone(Brand.blue), fontWeight: FontWeight.w800)), const TextSpan(text: '  ·  '),
-          TextSpan(text: '${_n(girls)} girls', style: TextStyle(color: context.tone(pink), fontWeight: FontWeight.w800))]), style: const TextStyle(fontSize: 12.5))),
-        StatCard('Staff', n(sf, 'total'), sub: '${_n(n(sf, 'teaching'))} teaching · ${_n(n(sf, 'other'))} others'),
-        StatCard('Phone notifications sent', (d['notifications_month'] ?? 0) as num, sub: 'this month · free, no SMS credits'),
-        if (fees != null) StatCard('Fees collected', n(fees, 'collected'), money: _inrShort(n(fees, 'collected')),
-            sub: n(fees, 'expected') == 0 ? 'this school year' : 'of ${_inrShort(n(fees, 'expected'))} this year · ${(n(fees, 'collected') * 100 / n(fees, 'expected')).round()}%'),
-      ]),
-      if (narrow) ...[strength, latest] else Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(flex: 5, child: strength), const SizedBox(width: 14), Expanded(flex: 3, child: latest)]),
-      apps,
-    ]);
-  }
-}
 
 // ================================================================== Fee dues (fee by fee, like MCB)
 final _duesSummaryProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, grade) async {
