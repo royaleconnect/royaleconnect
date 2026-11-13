@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/royal_extras.dart' show ShimmerPage;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart' show DateFormat;
@@ -110,7 +111,7 @@ class _StaffAttendanceScreenState extends ConsumerState<StaffAttendanceScreen> {
           if (sheet?['marked'] == true) const Pill('Marked ✓', fg: Brand.green, bg: Brand.greenTint),
         ])),
         if (list.isEmpty) const NoteBox('Attendance is taken by the class teacher. You are not class teacher of a class this year.')
-        else if (loading || sheet == null) const Padding(padding: EdgeInsets.all(30), child: Center(child: CircularProgressIndicator()))
+        else if (loading || sheet == null) const ShimmerPage()
         else ...[
           if (sheet?['closed'] == true) const NoteBox('The school is closed on this day (Sunday or a holiday). No need to take attendance, and families are not sent alerts.', icon: Icons.beach_access_rounded),
           if (!canMark) const NoteBox('You can see attendance here. Only the class teacher marks it (the office can correct a past day).', icon: Icons.visibility_rounded),
