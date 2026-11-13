@@ -145,7 +145,8 @@ class _StudentMarksTabState extends ConsumerState<StudentMarksTab> {
           const SizedBox(height: 10),
           Builder(builder: (_) {
             final t = _totals(d, ex);
-            return Text('No percentage is printed on the report card — only Total and Grade, as the school does now.${t.$2 > 0 ? ' For staff: ${(t.$1 * 100 / t.$2).toStringAsFixed(1)}%.' : ''}',
+            final test = ex['kind'] == 'test';
+            return Text('${test ? 'Periodic tests show each subject’s marks and grade only — no total and no percentage.' : 'No percentage is printed on the report card — only Total and Grade, as the school does now.'}${t.$2 > 0 ? ' For staff: ${(t.$1 * 100 / t.$2).toStringAsFixed(1)}%.' : ''}',
                 style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant));
           }),
         ]);
@@ -180,7 +181,7 @@ class _StudentMarksTabState extends ConsumerState<StudentMarksTab> {
       final list = groups[key]!;
       if (list.isEmpty) continue;
       if (title.isNotEmpty) out.add(Padding(padding: const EdgeInsets.fromLTRB(2, 18, 2, 8), child: Text(title.toUpperCase(), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1, color: context.tone(Brand.gold)))));
-      out.add(_table(context, gno, list, m, cs, total: key == 'main', result: key == 'r3'));
+      out.add(_table(context, gno, list, m, cs, total: key == 'main' && ex['kind'] != 'test', result: key == 'r3'));   // periodic tests: no total, as on the school's paper
     }
     return out;
   }
