@@ -51,6 +51,45 @@ class _GoldLoadingState extends State<GoldLoading> with SingleTickerProviderStat
   }
 }
 
+/// While a page loads: soft gold-shimmer cards in the shape of the page (instead of a spinning circle).
+class ShimmerPage extends StatefulWidget {
+  final int cards;
+  const ShimmerPage({super.key, this.cards = 3});
+  @override
+  State<ShimmerPage> createState() => _ShimmerPageState();
+}
+
+class _ShimmerPageState extends State<ShimmerPage> with SingleTickerProviderStateMixin {
+  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500));
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final on = TickerMode.of(context) && (ModalRoute.of(context)?.isCurrent ?? true);
+    if (on && !c.isAnimating) { c.repeat(); } else if (!on) { c.stop(); }
+  }
+  @override
+  void dispose() { c.dispose(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final base = dark ? const Color(0xFF26232A) : const Color(0xFFEFE9DE);
+    final hi = dark ? const Color(0xFF4A3D25) : const Color(0xFFF9EDCF);
+    Widget block(double h, {double? w}) => Container(height: h, width: w, margin: const EdgeInsets.only(bottom: 14),
+        decoration: BoxDecoration(color: base, borderRadius: BorderRadius.circular(16)));
+    return Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: RepaintBoundary(child: AnimatedBuilder(animation: c, builder: (_, __) {
+      final m = -0.5 + c.value * 2;
+      return ShaderMask(blendMode: BlendMode.srcATop,
+        shaderCallback: (r) => LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [base, hi, base],
+            stops: [(m - .25).clamp(0.0, 1.0), m.clamp(0.0, 1.0), (m + .25).clamp(0.0, 1.0)]).createShader(r),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Align(alignment: Alignment.centerLeft, child: block(14, w: 220)),
+          for (var i = 0; i < widget.cards; i++) block(i == 0 ? 96 : 140),
+        ]),
+      );
+    })));
+  }
+}
+
 // ================================================================== the living header
 /// The crimson header slowly moves like silk, with a soft light drifting across it.
 class LivingSilk extends StatefulWidget {
@@ -745,27 +784,40 @@ final festivalReplay = ValueNotifier<int>(0);
 /// The festive banner on Home (families) and Today (all staff), all through the festival's days, with a soft glow.
 /// Tap it to see the celebration again.
 class FestiveBanner extends ConsumerWidget {
-  const FestiveBanner({super.key});
+  /// slim = one calm line (staff Home); the full banner stays for families
+  final bool slim;
+  const FestiveBanner({super.key, this.slim = false});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(appSettingsProvider).value;
     final fest = featureOn(settings, 'festivals') ? festivalToday(settings) : null;
     if (fest == null) return const SizedBox.shrink();
-    return Padding(padding: const EdgeInsets.only(bottom: 14), child: GestureDetector(
+    return Padding(padding: EdgeInsets.only(bottom: slim ? 16 : 14), child: GestureDetector(
       onTap: () => festivalReplay.value++,
       child: Container(
-        constraints: const BoxConstraints(minHeight: 88), clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: fest.colors),
+        constraints: BoxConstraints(minHeight: slim ? 50 : 88), clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(slim ? 14 : 20), gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: fest.colors),
             border: Border.all(color: const Color(0xFFE8C97A).withValues(alpha: .55)),
-            boxShadow: [BoxShadow(color: fest.colors.first.withValues(alpha: .45), blurRadius: 24, spreadRadius: 1, offset: const Offset(0, 6))]),
-        child: ShineSweep(delay: const Duration(milliseconds: 800), shine: const Color(0x44FFFFFF), child: Padding(padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10), child: Row(children: [
-          Text(fest.mark, style: TextStyle(fontSize: 40, shadows: [Shadow(color: const Color(0xFFFFE08A).withValues(alpha: .7), blurRadius: 18)])),
-          const SizedBox(width: 14),
-          Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(fest.greeting, maxLines: 1, style: GoogleFonts.greatVibes(fontSize: 30, color: Colors.white, height: 1.1, shadows: const [Shadow(color: Colors.black38, blurRadius: 6)]))),
-            Text(fest.line, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withValues(alpha: .92), fontSize: 13, fontWeight: FontWeight.w600)),
-          ])),
-        ]))),
+            boxShadow: [BoxShadow(color: fest.colors.first.withValues(alpha: slim ? .25 : .45), blurRadius: slim ? 14 : 24, spreadRadius: slim ? 0 : 1, offset: const Offset(0, 6))]),
+        child: ShineSweep(delay: const Duration(milliseconds: 800), shine: const Color(0x44FFFFFF), child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 18, vertical: slim ? 6 : 10),
+          child: slim
+              ? Row(children: [
+                  Text(fest.mark, style: const TextStyle(fontSize: 24)),
+                  const SizedBox(width: 12),
+                  Flexible(child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(fest.greeting, maxLines: 1,
+                      style: GoogleFonts.greatVibes(fontSize: 24, color: Colors.white, height: 1.1, shadows: const [Shadow(color: Colors.black38, blurRadius: 6)])))),
+                  const SizedBox(width: 14),
+                  Expanded(child: Text(fest.line, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withValues(alpha: .9), fontSize: 13, fontWeight: FontWeight.w600))),
+                ])
+              : Row(children: [
+                  Text(fest.mark, style: TextStyle(fontSize: 40, shadows: [Shadow(color: const Color(0xFFFFE08A).withValues(alpha: .7), blurRadius: 18)])),
+                  const SizedBox(width: 14),
+                  Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(fest.greeting, maxLines: 1, style: GoogleFonts.greatVibes(fontSize: 30, color: Colors.white, height: 1.1, shadows: const [Shadow(color: Colors.black38, blurRadius: 6)]))),
+                    Text(fest.line, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white.withValues(alpha: .92), fontSize: 13, fontWeight: FontWeight.w600)),
+                  ])),
+                ]))),
       ),
     ));
   }
