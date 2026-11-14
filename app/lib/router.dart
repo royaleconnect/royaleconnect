@@ -16,6 +16,7 @@ import 'screens/placeholders.dart';
 import 'screens/students_screen.dart';
 import 'screens/verify_screen.dart';
 import 'shell.dart';
+import 'staff/albums_admin.dart' show StaffAlbumsScreen;
 import 'staff/staff_screens_1.dart';
 import 'staff/staff_screens_2.dart';
 import 'staff/staff_calendar.dart';
@@ -123,6 +124,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         GoRoute(path: '/staff/bin', builder: (_, __) => const StaffPage(title: 'Bin', hub: Hub.schoolSetup, subtitle: 'Everything deleted in the last 30 days. Bring anything back with one tap.', body: BinPanel())),
         GoRoute(path: '/staff/star', builder: (_, __) => const StaffStarScreen()),
         GoRoute(path: '/staff/moments', builder: (_, __) => const StaffMomentsScreen()),
+        GoRoute(path: '/staff/albums', builder: (_, st) => StaffAlbumsScreen(albumId: st.uri.queryParameters['id'])),
         GoRoute(path: '/staff/feedback', builder: (_, __) => const StaffFeedbackScreen()),
         GoRoute(path: '/staff/fees', builder: (_, __) => const StaffFeesScreen()),
         GoRoute(path: '/staff/fees/reports', builder: (_, __) => const StaffFeeReportsScreen()),
