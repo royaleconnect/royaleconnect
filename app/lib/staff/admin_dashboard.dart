@@ -17,6 +17,7 @@ import 'year_end.dart';
 import 'password_requests.dart' show PasswordRequestsCard;
 import '../widgets/guided_tour.dart' show TourTarget;
 import '../widgets/staff_birthday.dart';
+import 'principal_morning.dart';
 
 /// First screen for the IT admin, Principal and Vice Principal: the whole school at a glance.
 /// Kept calm on purpose: six numbers, then Enrollment, Data checker and Leaving check, then the day.
@@ -69,7 +70,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
       body: dash.when(
         loading: () => const ShimmerPage(),
         error: (e, _) => Panel(child: Text('Could not load the dashboard. ${friendlyError(e)}', style: const TextStyle(color: Brand.crimsonDeep))),
-        data: (d) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [const FestiveBanner(slim: true), const StaffBirthdayLine(), const PasswordRequestsCard(), const YearEndCard(), SchoolHome(admin: d), const StaffBirthdaysPanel()]),
+        data: (d) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [const FestiveBanner(slim: true), if (s.hasRole('principal') || s.hasRole('vice_principal') || s.hasRole('it_admin')) const PrincipalMorning(), const StaffBirthdayLine(), const PasswordRequestsCard(), const YearEndCard(), SchoolHome(admin: d), const StaffBirthdaysPanel()]),
       ),
     ));
   }
