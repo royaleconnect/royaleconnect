@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../core/config.dart';
 import '../core/errors.dart';
+import '../widgets/password_rules.dart';
 import '../core/theme.dart';
 import '../widgets/auth_layout.dart';
 import '../widgets/common.dart';
@@ -238,14 +239,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         PrimaryButton(widget.addSibling ? 'Add to this phone' : 'Sign in', busy: busy, onPressed: _signIn),
         if (!widget.addSibling) ...[
           const SizedBox(height: 12),
-          Center(child: TextButton(onPressed: () => showForgotPassword(context, admission: adm.text.trim()), child: const Text('Forgot password?', style: TextStyle(fontWeight: FontWeight.w800)))),
-          // big and easy to spot for teachers
-          Padding(padding: const EdgeInsets.only(top: 14), child: Center(child: TextButton.icon(
-            onPressed: () => context.go('/staff-login'),
-            style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14), minimumSize: const Size(0, 52)),
-            icon: const Icon(Icons.badge_outlined, size: 26),
-            label: const Text('School staff? Sign in here', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-          ))),
+          Center(child: TextButton(onPressed: () {
+            final id = adm.text.trim();
+            if (id.contains('@') || RegExp(r'^(dr|as)\d+$', caseSensitive: false).hasMatch(id)) {
+              setState(() => error = 'Please ask the IT admin for a new password.');   // staff and bus crew: IT / transport office issue a new one
+              return;
+            }
+            showForgotPassword(context, admission: id);
+          }, child: const Text('Forgot password?', style: TextStyle(fontWeight: FontWeight.w800)))),
         ],
         const SizedBox(height: 16),
         Center(child: TextButton(onPressed: () => context.push('/privacy'), child: const Text('Privacy policy'))),
@@ -258,7 +259,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void _signIn() {
     if (busy) return;
     _run(() async {
-      await ref.read(sessionProvider.notifier).loginWithPassword(adm.text, pw.text, linkToExisting: widget.addSibling);
+      final id = adm.text.trim();
+      // One box for everyone. The screen says only "Admission number"; staff are told to type their school email here,
+      // bus crew their login ID (dr7 / as7). Families never see that staff sign in the same way.
+      final staffish = !widget.addSibling && (id.contains('@') || RegExp(r'^(dr|as)\d+$', caseSensitive: false).hasMatch(id));
+      if (staffish) {
+        await ref.read(sessionProvider.notifier).loginStaff(id, pw.text);
+        signedInWithPassword = pw.text;
+        if (mounted) context.go(ref.read(sessionProvider).value?.kind == 'crew' ? '/driver' : '/staff');
+        return;
+      }
+      await ref.read(sessionProvider.notifier).loginWithPassword(id, pw.text, linkToExisting: widget.addSibling);
+      signedInWithPassword = pw.text;
       if (mounted) context.go(widget.addSibling ? '/students' : '/');
     });
   }
@@ -285,16 +297,17 @@ class _SetPasswordScreenState extends ConsumerState<SetPasswordScreen> {
       subtitle: 'The password sent by the school was for first use only. Choose one only your family knows.',
       formTitle: 'New password',
       children: [
-        TextField(controller: a, obscureText: true, decoration: const InputDecoration(labelText: 'New password', hintText: 'At least 8 characters')),
+        TextField(controller: a, obscureText: true, decoration: const InputDecoration(labelText: 'New password', hintText: 'At least 8, with letters and a number')),
         const SizedBox(height: 16),
         TextField(controller: b, obscureText: true, decoration: const InputDecoration(labelText: 'Repeat new password')),
-        const SizedBox(height: 20),
+        const SizedBox(height: 12),
+        PasswordRulesView(a, b),
+        const SizedBox(height: 18),
         if (error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(error!, style: TextStyle(color: context.tone(Brand.crimsonDeep), fontWeight: FontWeight.w700))),
         PrimaryButton('Save and continue', busy: busy, onPressed: () async {
-          if (a.text.length < 8) { setState(() => error = 'Use at least 8 characters.'); return; }
-          if (a.text != b.text) { setState(() => error = "The two passwords don't match."); return; }
+          if (!passwordOk(a.text, b.text)) { setState(() => error = 'Please meet all four ticks above.'); return; }
           setState(() { busy = true; error = null; });
-          try { await ref.read(sessionProvider.notifier).changePassword(a.text); if (mounted) context.go('/'); }
+          try { await ref.read(sessionProvider.notifier).changePassword(a.text); signedInWithPassword = null; if (mounted) context.go('/'); }
           on AuthError catch (e) { setState(() => error = e.message); } catch (e) { setState(() => error = friendlyError(e)); }
           if (mounted) setState(() => busy = false);
         }),
