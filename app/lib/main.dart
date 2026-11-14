@@ -11,6 +11,7 @@ import 'parent_layout.dart';
 import 'router.dart';
 import 'widgets/guided_tour.dart' show TourLayer;
 import 'widgets/royal_extras.dart' show onLoadRetry;
+import 'widgets/pin_gate.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -71,7 +72,7 @@ class _RoyaleConnectAppState extends ConsumerState<RoyaleConnectApp> with Widget
         // Staff: full-width panel. Parents on a laptop (960 px and wider): side menu + full page.
         // Parents on a tablet (600–959 px, e.g. an upright iPad): the full width, Home in two columns.
         // Everything else on a big screen (the child picker, consent) is framed at phone width, centred.
-        builder: (context, child) => TourLayer(child: _ViewAsBanner(child: OfflineBanner(child: AnimatedBuilder(animation: ref.watch(routerProvider).routerDelegate, builder: (context, _) => LayoutBuilder(builder: (_, c) {
+        builder: (context, child) => PinGate(child: TourLayer(child: _ViewAsBanner(child: OfflineBanner(child: AnimatedBuilder(animation: ref.watch(routerProvider).routerDelegate, builder: (context, _) => LayoutBuilder(builder: (_, c) {
           final sess = ref.watch(sessionProvider).value;
           final loc = ref.read(routerProvider).routerDelegate.currentConfiguration.uri.path;
           final family = sess != null && sess.kind == 'student' && !sess.mustChangePassword && sess.active != null && ref.watch(splashDoneProvider) && (sess.students.length == 1 || (sess.activeStudentId != null && ref.watch(childPickedProvider)));
@@ -83,7 +84,7 @@ class _RoyaleConnectAppState extends ConsumerState<RoyaleConnectApp> with Widget
             decoration: BoxDecoration(gradient: RadialGradient(radius: 1.2, colors: dark ? const [Color(0xFF1E1A20), Color(0xFF0E0C10)] : const [Color(0xFFFFFDF8), Color(0xFFF1E9DB)])),
             child: Center(child: ClipRRect(borderRadius: BorderRadius.circular(c.maxHeight > 900 ? 28 : 0), child: ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: 480, maxHeight: c.maxHeight > 900 ? 860 : c.maxHeight), child: child!))));
-        }))))),
+        })))))),
       );
   }
 }
