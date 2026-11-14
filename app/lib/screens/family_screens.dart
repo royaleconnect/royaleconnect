@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -135,27 +136,153 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
       }));
   }
 
+  int? year;   // the school year shown in School albums (2026 = 2026-27)
   Widget _albums(ColorScheme cs) {
     final a = ref.watch(albumsProvider);
-    // photos are built only as they scroll into view (one grid per album, all in one scrolling list)
-    return a.when(loading: _loading, error: (e, _) => _empty(context, friendlyError(e)), data: (list) => list.isEmpty ? const EmptyState(kind: EmptyKind.photos, title: 'No albums yet', line: 'School event albums appear here.') :
-      LayoutBuilder(builder: (context, box) {
-        final cols = box.maxWidth >= 900 ? 5 : box.maxWidth >= 600 ? 4 : 3;
-        final cell = (box.maxWidth - 40 - 6 * (cols - 1)) / cols;
-        return CustomScrollView(slivers: [for (final al in list) ...() {
-          final photos = (List<Map<String, dynamic>>.from(al['album_photo'] ?? [])..sort((x, y) => (x['sort_order'] as int).compareTo(y['sort_order'] as int))).map((p) => p['path'] as String).toList();
-          return [
-            SliverPadding(padding: const EdgeInsets.fromLTRB(20, 20, 20, 8), sliver: SliverToBoxAdapter(child: Row(children: [Expanded(child: Text(al['title'], style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17))), if (al['event_date'] != null) Text(DateFormat('d MMM yyyy').format(DateTime.parse(al['event_date'])), style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant))]))),
-            SliverPadding(padding: const EdgeInsets.symmetric(horizontal: 20), sliver: SliverGrid(
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: cols, mainAxisSpacing: 6, crossAxisSpacing: 6),
-              delegate: SliverChildBuilderDelegate((_, i) => GestureDetector(onTap: () => _view(photos, i), child: Hero(tag: 'ph${photos[i]}', child: StorageImage(photos[i], width: cell, height: cell, radius: BorderRadius.circular(12)))), childCount: photos.length))),
-          ];
-        }()]);
-      }));
+    return a.when(loading: _loading, error: (e, _) => _empty(context, friendlyError(e)), data: (list) {
+      final now = DateTime.now();
+      final thisYear = now.month >= 4 ? now.year : now.year - 1;
+      final years = <int>{thisYear, thisYear - 1, for (final al in list) if (al['event_date'] != null) albumYear(DateTime.parse(al['event_date']))}.toList()..sort((x, y) => y.compareTo(x));
+      final y = year ?? thisYear;
+      final shown = [for (final al in list) if (al['event_date'] != null && albumYear(DateTime.parse(al['event_date'])) == y) al];
+      return LayoutBuilder(builder: (context, box) {
+        final cols = box.maxWidth >= 1000 ? 3 : box.maxWidth >= 620 ? 2 : 1;
+        return ListView(padding: const EdgeInsets.fromLTRB(20, 16, 20, 30), children: [
+          Wrap(spacing: 8, runSpacing: 8, children: [for (final yy in years) ChoiceChip(
+            label: Text('$yy-${(yy + 1) % 100}'.replaceAllMapped(RegExp(r'-(\d)$'), (m) => '-0${m[1]}'), style: TextStyle(fontWeight: FontWeight.w800, color: yy == y ? Colors.white : null)),
+            selected: yy == y, selectedColor: Brand.crimsonDeep, showCheckmark: false, onSelected: (_) => setState(() => year = yy))]),
+          const SizedBox(height: 16),
+          if (shown.isEmpty) const EmptyState(kind: EmptyKind.photos, title: 'No albums for this year', line: 'Each school year keeps its own events and teams.')
+          else GridView.count(crossAxisCount: cols, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), mainAxisSpacing: 14, crossAxisSpacing: 14, childAspectRatio: 1.25,
+            children: [for (final al in shown) _AlbumCard(al, onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => AlbumScreen(al))))]),
+        ]);
+      });
+    });
   }
 
   void _view(List<String> paths, int start) => Navigator.of(context).push(PageRouteBuilder(transitionDuration: const Duration(milliseconds: 450), pageBuilder: (_, __, ___) => _Viewer(paths, start),
       transitionsBuilder: (_, a, __, child) => FadeTransition(opacity: a, child: child)));
+}
+
+/// The school year an event belongs to (April – March): 2026 means 2026-27.
+int albumYear(DateTime d) => d.month >= 4 ? d.year : d.year - 1;
+
+List<String> _albumPhotos(Map<String, dynamic> al) => (List<Map<String, dynamic>>.from(al['album_photo'] ?? [])
+  ..sort((x, y) => (x['sort_order'] as int).compareTo(y['sort_order'] as int))).map((p) => p['path'] as String).toList();
+
+class _AlbumCard extends StatelessWidget {
+  final Map<String, dynamic> al; final VoidCallback onTap;
+  const _AlbumCard(this.al, {required this.onTap});
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final photos = _albumPhotos(al);
+    final cover = (al['cover_path'] as String?) ?? (photos.isNotEmpty ? photos.first : null);
+    final created = DateTime.tryParse('${al['created_at'] ?? ''}');
+    // "New": added in the last 7 days, for a recent event (old events put in later do not shout "New")
+    final ev = DateTime.tryParse('${al['event_date'] ?? ''}');
+    final isNew = created != null && DateTime.now().difference(created).inDays < 7 && ev != null && DateTime.now().difference(ev).inDays <= 30;
+    return Material(color: cs.surface, borderRadius: BorderRadius.circular(20), clipBehavior: Clip.antiAlias, child: InkWell(onTap: onTap, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Expanded(child: Stack(fit: StackFit.expand, children: [
+        cover != null ? LayoutBuilder(builder: (_, c) => StorageImage(cover, width: c.maxWidth, height: c.maxHeight)) : const _NoPhotosYet(),
+        Positioned(left: 10, top: 10, child: Row(children: [
+          if (al['team'] != null) const _Tag('🏅 Student team', fg: Color(0xFF6B4A08), bg: Color(0xFFF7E9C6)),
+        ])),
+        if (isNew) const Positioned(right: 10, top: 10, child: _Tag('New', fg: Colors.white, bg: Brand.crimson)),
+      ])),
+      Padding(padding: const EdgeInsets.fromLTRB(14, 10, 14, 12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(al['title'], style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
+        Text('${al['event_date'] != null ? DateFormat('d MMMM yyyy').format(DateTime.parse(al['event_date'])) : ''} · ${photos.isEmpty ? 'photos coming soon' : '${photos.length} photo${photos.length == 1 ? '' : 's'}'}',
+            style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+      ])),
+    ])));
+  }
+}
+
+class _Tag extends StatelessWidget {
+  final String text; final Color fg, bg;
+  const _Tag(this.text, {required this.fg, required this.bg});
+  @override
+  Widget build(BuildContext context) => Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(99)),
+      child: Text(text, style: TextStyle(color: fg, fontSize: 11.5, fontWeight: FontWeight.w800)));
+}
+
+class _NoPhotosYet extends StatelessWidget {
+  const _NoPhotosYet();
+  @override
+  Widget build(BuildContext context) => Container(decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Brand.crimsonDeep, Brand.crimson])),
+      child: Center(child: Icon(Icons.photo_library_rounded, size: 40, color: Colors.white.withValues(alpha: .5))));
+}
+
+/// One event: the student team card on top (when there is one), then the photos.
+class AlbumScreen extends StatelessWidget {
+  final Map<String, dynamic> al;
+  const AlbumScreen(this.al, {super.key});
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final photos = _albumPhotos(al);
+    final team = al['team'] is Map ? Map<String, dynamic>.from(al['team']) : null;
+    return AppPage(title: al['title'], body: LayoutBuilder(builder: (context, box) {
+      final cols = box.maxWidth >= 900 ? 5 : box.maxWidth >= 600 ? 4 : 3;
+      final cell = (box.maxWidth - 40 - 8 * (cols - 1)) / cols;
+      return ListView(padding: const EdgeInsets.fromLTRB(20, 16, 20, 30), children: [
+        if (al['event_date'] != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(DateFormat('d MMMM yyyy').format(DateTime.parse(al['event_date'])), style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w700))),
+        if (team != null) TeamCard(team),
+        if (photos.isEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text('Photos of this event will appear here soon.', style: TextStyle(color: cs.onSurfaceVariant)))
+        else Wrap(spacing: 8, runSpacing: 8, children: [for (final (i, p) in photos.indexed) GestureDetector(
+          onTap: () => Navigator.of(context).push(PageRouteBuilder(transitionDuration: const Duration(milliseconds: 450), pageBuilder: (_, __, ___) => _Viewer(photos, i), transitionsBuilder: (_, a, __, child) => FadeTransition(opacity: a, child: child))),
+          child: Hero(tag: 'ph$p', child: StorageImage(p, width: cell, height: cell, radius: BorderRadius.circular(14))))]),
+      ]);
+    }));
+  }
+}
+
+/// "The student team behind …": names only, all the same size. Teachers who guided it on top; the Council helpers below;
+/// a thank-you to all teachers and staff at the end.
+class TeamCard extends StatelessWidget {
+  final Map<String, dynamic> team;
+  const TeamCard(this.team, {super.key});
+  static const _gold = Color(0xFFA8822F), _ink = Color(0xFF5A3A06);
+  List<List<String>> _rows(String k) => [for (final r in (team[k] as List? ?? const [])) [for (final x in (r as List)) '$x']];
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final soft = Theme.of(context).colorScheme.onSurfaceVariant;
+    final guide = _rows('guide'), lead = _rows('lead'), support = _rows('support');
+    Widget label(String t) => Padding(padding: const EdgeInsets.only(top: 16, bottom: 8), child: Text(t, style: const TextStyle(fontSize: 11, letterSpacing: 1.4, fontWeight: FontWeight.w900, color: _gold)));
+    Widget people(List<List<String>> rows, {bool small = false}) => LayoutBuilder(builder: (_, c) {
+      final per = c.maxWidth >= 720 ? 3 : c.maxWidth >= 440 ? 2 : 1;
+      final w = (c.maxWidth - 8 * (per - 1)) / per;
+      return Wrap(spacing: 8, runSpacing: 8, children: [for (final r in rows) Container(width: w, padding: EdgeInsets.symmetric(horizontal: 12, vertical: small ? 8 : 10),
+        decoration: BoxDecoration(color: dark ? const Color(0xFF2A2420) : Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFF0E3C4))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(r.first, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: _gold)),
+          const SizedBox(height: 2),
+          Text(r.length > 1 ? r[1] : '', style: TextStyle(fontSize: small ? 14 : 15, fontWeight: FontWeight.w800)),
+        ]))]);
+    });
+    return Container(margin: const EdgeInsets.only(bottom: 18), clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFE7CF8E)),
+        gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: dark ? const [Color(0xFF2B241B), Color(0xFF241E17)] : const [Color(0xFFFFFCF4), Color(0xFFFFF8E8)])),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Container(height: 4, decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFFC9A24A), Color(0xFFF3DE9C), Color(0xFFC9A24A)]))),
+        Padding(padding: const EdgeInsets.fromLTRB(20, 16, 20, 18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Text('🏅', style: TextStyle(fontSize: 20)), const SizedBox(width: 8),
+            Expanded(child: Text('${team['title'] ?? 'The student team'}', style: GoogleFonts.playfairDisplay(fontSize: 21, fontWeight: FontWeight.w700, color: dark ? const Color(0xFFF1D58A) : _ink))),
+          ]),
+          if ((team['note'] ?? '').toString().isNotEmpty) Padding(padding: const EdgeInsets.only(top: 6), child: Text('${team['note']}', style: TextStyle(color: soft, height: 1.4))),
+          if (guide.isNotEmpty) ...[label('GUIDED BY'), people(guide)],
+          label(support.isNotEmpty ? 'LED BY' : 'STUDENTS'), people(lead),
+          if (support.isNotEmpty) ...[label('WITH SUPPORT FROM THE STUDENT COUNCIL'), people(support, small: true),
+            Padding(padding: const EdgeInsets.only(top: 12), child: Text('With help from all the other members of the Student Council.', style: TextStyle(color: soft, fontStyle: FontStyle.italic)))],
+          const SizedBox(height: 12),
+          Container(height: 1, color: const Color(0xFFF0E3C4)),
+          Padding(padding: const EdgeInsets.only(top: 10), child: Text('With grateful thanks to our teachers and staff, whose guidance and hard work made it all possible.', style: TextStyle(color: soft, fontStyle: FontStyle.italic))),
+        ])),
+      ]));
+  }
 }
 
 class _Viewer extends StatelessWidget {
