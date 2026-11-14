@@ -6,6 +6,7 @@ import '../auth/session.dart';
 import '../core/data.dart';
 import '../core/errors.dart';
 import '../core/data2.dart';
+import '../widgets/password_rules.dart';
 import '../core/theme.dart';
 import '../widgets/auth_layout.dart';
 import '../widgets/common.dart';
@@ -57,7 +58,7 @@ class _StaffLoginScreenState extends ConsumerState<StaffLoginScreen> {
   }
   Future<void> _go() async {
     setState(() { busy = true; error = null; });
-    try { await ref.read(sessionProvider.notifier).loginStaff(email.text, pw.text); if (mounted) context.go(ref.read(sessionProvider).value?.kind == 'crew' ? '/driver' : '/staff'); }
+    try { await ref.read(sessionProvider.notifier).loginStaff(email.text, pw.text); signedInWithPassword = pw.text; if (mounted) context.go(ref.read(sessionProvider).value?.kind == 'crew' ? '/driver' : '/staff'); }
     on AuthError catch (e) { setState(() => error = e.message); } catch (e) { setState(() => error = friendlyError(e)); }
     if (mounted) setState(() => busy = false);
   }
@@ -77,14 +78,14 @@ class _StaffSetPasswordScreenState extends ConsumerState<StaffSetPasswordScreen>
     subtitle: 'The password you were given was for first use only. Choose one only you know.',
     formTitle: 'New password',
     children: [
-      TextField(controller: a, obscureText: true, decoration: const InputDecoration(labelText: 'New password (8+ characters)')), const SizedBox(height: 12),
-      TextField(controller: b, obscureText: true, decoration: const InputDecoration(labelText: 'Repeat new password')), const SizedBox(height: 16),
+      TextField(controller: a, obscureText: true, decoration: const InputDecoration(labelText: 'New password', hintText: 'At least 8, with letters and a number')), const SizedBox(height: 12),
+      TextField(controller: b, obscureText: true, decoration: const InputDecoration(labelText: 'Repeat new password')), const SizedBox(height: 12),
+      PasswordRulesView(a, b), const SizedBox(height: 16),
       if (error != null) Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(error!, style: TextStyle(color: context.tone(Brand.crimsonDeep), fontWeight: FontWeight.w700))),
       PrimaryButton('Save and continue', busy: busy, onPressed: () async {
-        if (a.text.length < 8) { setState(() => error = 'Use at least 8 characters.'); return; }
-        if (a.text != b.text) { setState(() => error = "The two passwords don't match."); return; }
+        if (!passwordOk(a.text, b.text)) { setState(() => error = 'Please meet all four ticks above.'); return; }
         setState(() { busy = true; error = null; });
-        try { await ref.read(sessionProvider.notifier).changeStaffPassword(a.text); if (mounted) context.go('/staff'); } on AuthError catch (e) { setState(() => error = e.message); } catch (e) { setState(() => error = friendlyError(e)); }
+        try { await ref.read(sessionProvider.notifier).changeStaffPassword(a.text); signedInWithPassword = null; if (mounted) context.go('/staff'); } on AuthError catch (e) { setState(() => error = e.message); } catch (e) { setState(() => error = friendlyError(e)); }
         if (mounted) setState(() => busy = false);
       }),
     ],
