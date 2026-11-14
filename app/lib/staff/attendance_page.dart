@@ -16,7 +16,8 @@ import 'staff_shell.dart';
 /// Attendance: the class teacher types who is absent ("aarv, priya, 15" — spelling mistakes are fine, or use the keyboard mic),
 /// taps Find, checks the faces, taps Save. Everyone else is present.
 /// Families of absent children are told at 10:00 (straight away if saved after 10:00).
-/// Only the class teacher marks (the office / IT can correct a past day). Coordinator, vice principal, principal: view only.
+/// The class teacher marks (the office / IT can correct a past day). Any teacher can cover a class not marked today
+/// ("Take attendance for a class", one confirmation). Coordinator, vice principal, principal: view only.
 class StaffAttendanceScreen extends ConsumerStatefulWidget {
   const StaffAttendanceScreen({super.key});
   @override
@@ -25,7 +26,8 @@ class StaffAttendanceScreen extends ConsumerStatefulWidget {
 
 class _StaffAttendanceScreenState extends ConsumerState<StaffAttendanceScreen> {
   String? section; DateTime day = DateUtils.dateOnly(DateTime.now());
-  Map<String, dynamic>? sheet; final marks = <String, String>{}; bool loading = false, busy = false, saved = false, showAll = false;
+  Map<String, dynamic>? sheet; final marks = <String, String>{}; bool loading = false, busy = false, saved = false, showAll = true;
+  String? coverLabel;   // covering another teacher's class today (null = own class)
   final input = TextEditingController();
   List<AbsentQuery> pending = []; List<String> notFound = [];
 
@@ -40,7 +42,7 @@ class _StaffAttendanceScreenState extends ConsumerState<StaffAttendanceScreen> {
     try {
       final r = Map<String, dynamic>.from(await db.rpc('attendance_sheet', params: {'p_section': section, 'p_day': DateFormat('yyyy-MM-dd').format(day)}) as Map);
       marks..clear()..addAll({for (final x in (r['students'] as List)) x['id'] as String: (x['status'] ?? 'present') as String});
-      if (mounted) setState(() { sheet = r; loading = false; showAll = r['can_mark'] != true; });
+      if (mounted) setState(() { sheet = r; loading = false; showAll = true; });
     } catch (e) { if (mounted) { setState(() => loading = false); toast(context, friendlyError(e)); } }
   }
 
@@ -55,7 +57,7 @@ class _StaffAttendanceScreenState extends ConsumerState<StaffAttendanceScreen> {
       else { none.add(m.query); left.add(m.query); }
     }
     HapticFeedback.selectionClick();
-    // the box keeps only what was not found, so a spelling can be fixed and Find tapped again
+    // the box keeps only what was not found, so a spelling can be fixed and Mark absent tapped again
     setState(() { saved = false; pending = [...pending, ...many]; notFound = none; input.text = left.join(', '); });
   }
 
@@ -74,6 +76,35 @@ class _StaffAttendanceScreenState extends ConsumerState<StaffAttendanceScreen> {
           : 'Saved ✓ · $absent absent. Their families are told at 10:00.';
       if (mounted) { setState(() { busy = false; saved = true; sheet = {...?sheet, 'marked': true}; }); toast(context, msg); }
     } catch (e) { if (mounted) { setState(() => busy = false); toast(context, friendlyError(e)); } }
+  }
+
+  /// Covering: any teacher may take TODAY's attendance of a class its class teacher has not marked. Pick the class, confirm once.
+  Future<void> _cover() async {
+    List<Map<String, dynamic>> all;
+    try { all = [for (final x in (await db.rpc('cover_sections')) as List? ?? const []) Map<String, dynamic>.from(x as Map)]; }
+    catch (e) { if (mounted) toast(context, friendlyError(e)); return; }
+    if (!mounted) return;
+    final pick = await showDialog<Map<String, dynamic>>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('Which class?'),
+      content: SizedBox(width: 520, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Wrap(spacing: 8, runSpacing: 8, children: [for (final c in all) ChoiceChip(
+          label: Text('${c['label']}${c['marked'] == true ? ' ✓' : ''}'), selected: false,
+          onSelected: c['can'] == true ? (_) => Navigator.pop(ctx, c) : null)]),
+        const SizedBox(height: 12),
+        Text('Classes with ✓ are already marked today. Only their class teacher or the office can change them.', style: TextStyle(fontSize: 12.5, color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
+      ]))),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close'))]));
+    if (pick == null || !mounted) return;
+    final teacher = pick['teacher'] as String?;
+    final sure = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: Text('Take attendance for ${pick['label']}?'),
+      content: Text(pick['marked'] == true ? 'You marked ${pick['label']} earlier today. You can correct it now.'
+          : 'The class teacher of ${pick['label']}${teacher != null ? ', $teacher,' : ''} hasn’t marked today. You’ll mark it in her place — she and the office will see that you did.'),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('No')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), style: FilledButton.styleFrom(backgroundColor: Brand.crimson), child: const Text('Yes, take attendance'))]));
+    if (sure != true || !mounted) return;
+    setState(() { section = pick['id'] as String; coverLabel = pick['label'] as String; day = DateUtils.dateOnly(DateTime.now()); input.clear(); });
+    _load();
   }
 
   @override
@@ -96,24 +127,36 @@ class _StaffAttendanceScreenState extends ConsumerState<StaffAttendanceScreen> {
     final today = DateUtils.dateOnly(DateTime.now());
 
     return StaffPage(title: 'Attendance',
-      subtitle: canMark || sheet == null ? 'Type who is absent, tap Find, then Save. Everyone else is present. Families of absent children are told at 10:00.' : 'See who was present and absent. The class teacher marks attendance.',
+      subtitle: canMark || sheet == null ? 'Type who is absent and tap Mark absent — or tap Present / Absent for each child below. Then Save. Families of absent children are told at 10:00.' : 'See who was present and absent. The class teacher marks attendance.',
       body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Panel(padding: const EdgeInsets.all(12), child: Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          if (list.length > 1) DropdownButton<String>(value: section, items: [for (final x in list) DropdownMenuItem(value: x['id'] as String, child: Text(sectionLabel(x)))],
+        if (list.isNotEmpty || coverLabel != null) Panel(padding: const EdgeInsets.all(12), child: Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          if (coverLabel != null) Text('$coverLabel · today', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          if (coverLabel == null && list.length > 1 && list.any((x) => x['id'] == section)) DropdownButton<String>(value: section, items: [for (final x in list) DropdownMenuItem(value: x['id'] as String, child: Text(sectionLabel(x)))],
               onChanged: (v) { setState(() => section = v); _load(); }),
-          if (list.length == 1) Text(sectionLabel(list.first), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-          OutlinedButton.icon(onPressed: () async {
+          if (coverLabel == null && list.length == 1) Text(sectionLabel(list.first), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          if (coverLabel == null) OutlinedButton.icon(onPressed: () async {
             // teachers: today and the 7 days before (the server refuses older); the office / IT can correct further back
             final d = await showDatePicker(context: context, initialDate: day, firstDate: today.subtract(Duration(days: canCorrectOld ? 365 : 7)), lastDate: today);
             if (d != null) { setState(() => day = d); _load(); }
           }, icon: const Icon(Icons.event_rounded, size: 18), label: Text(DateFormat('EEEE, d MMMM').format(day))),
           if (sheet != null) Text('${students.length} students', style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w700)),
           if (sheet?['marked'] == true) const Pill('Marked ✓', fg: Brand.green, bg: Brand.greenTint),
+          if (sheet?['marked'] == true && sheet?['marked_by'] != null) Text('by ${sheet!['marked_by']}', style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w700)),
+          if (coverLabel != null && list.isNotEmpty) TextButton(onPressed: () { setState(() { coverLabel = null; section = list.first['id'] as String; }); _load(); }, child: const Text('Back to my class')),
+          TextButton.icon(onPressed: _cover, icon: const Icon(Icons.swap_horiz_rounded, size: 18), label: const Text('Take attendance for a class')),
         ])),
-        if (list.isEmpty) const NoteBox('Attendance is taken by the class teacher. You are not class teacher of a class this year.')
+        if (list.isEmpty && coverLabel == null) Panel(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('You don’t have a class of your own', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          const SizedBox(height: 6),
+          Text('If a class teacher is away today, you can take her class’s attendance.', style: TextStyle(color: cs.onSurfaceVariant)),
+          const SizedBox(height: 12),
+          FilledButton.icon(onPressed: _cover, style: FilledButton.styleFrom(backgroundColor: Brand.crimson, foregroundColor: Colors.white),
+              icon: const Icon(Icons.fact_check_rounded), label: const Text('Take attendance for a class')),
+        ]))
         else if (loading || sheet == null) const ShimmerPage()
         else ...[
           if (sheet?['closed'] == true) const NoteBox('The school is closed on this day (Sunday or a holiday). No need to take attendance, and families are not sent alerts.', icon: Icons.beach_access_rounded),
+          if (sheet?['cover'] == true) NoteBox('Covering $label today${sheet?['class_teacher'] != null ? ' · in place of ${sheet!['class_teacher']}' : ''}', icon: Icons.swap_horiz_rounded),
           if (!canMark) const NoteBox('You can see attendance here. Only the class teacher marks it (the office can correct a past day).', icon: Icons.visibility_rounded),
           if (canMark) Panel(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text('WHO IS ABSENT TODAY?', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 1.2, color: cs.onSurfaceVariant)),
@@ -124,7 +167,7 @@ class _StaffAttendanceScreenState extends ConsumerState<StaffAttendanceScreen> {
             Text('Spelling mistakes are fine · 🎤 use the keyboard mic to speak', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
             const SizedBox(height: 10),
             FilledButton.icon(onPressed: _find, style: FilledButton.styleFrom(backgroundColor: Brand.crimson, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14)),
-                icon: const Icon(Icons.search_rounded), label: const Text('Find')),
+                icon: const Icon(Icons.person_off_rounded), label: const Text('Mark absent')),
           ])),
           if (canMark && (absent > 0 || pending.isNotEmpty || notFound.isNotEmpty)) Panel(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text('ABSENT · $absent', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 1.2, color: cs.onSurfaceVariant)),
@@ -150,15 +193,14 @@ class _StaffAttendanceScreenState extends ConsumerState<StaffAttendanceScreen> {
           ])),
           Panel(padding: const EdgeInsets.fromLTRB(14, 4, 14, 4), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             InkWell(onTap: () => setState(() => showAll = !showAll), child: Padding(padding: const EdgeInsets.symmetric(vertical: 12), child: Row(children: [
-              Expanded(child: Text(canMark ? 'Full class list (tap a child to change)' : 'Class list · $present present, $absent absent', style: const TextStyle(fontWeight: FontWeight.w800))),
+              Expanded(child: Text(canMark ? 'Or tap for each child · $present present, $absent absent' : 'Class list · $present present, $absent absent', style: const TextStyle(fontWeight: FontWeight.w800))),
               Icon(showAll ? Icons.expand_less_rounded : Icons.expand_more_rounded),
             ]))),
             if (showAll) for (final st in students) _KidRow(st: st, rollFirst: true,
-              onTap: !canMark ? null : () {
+              trailing: !canMark ? _statusPill(marks[st['id']] ?? 'present') : _PresentAbsent(marks[st['id']] ?? 'present', (v) {
                 HapticFeedback.selectionClick();
-                setState(() { saved = false; marks[st['id']] = marks[st['id']] == 'absent' ? 'present' : 'absent'; });
-              },
-              trailing: _statusPill(marks[st['id']] ?? 'present')),
+                setState(() { saved = false; marks[st['id']] = v; });
+              })),
           ])),
           if (canMark) Stack(alignment: Alignment.center, clipBehavior: Clip.none, children: [
             SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: busy ? null : _save,
@@ -179,10 +221,31 @@ Widget _statusPill(String status) => switch (status) {
   _ => const Pill('Present', fg: Brand.green, bg: Brand.greenTint),
 };
 
+/// Present / Absent buttons for one child (a child on approved leave shows "Leave" first).
+class _PresentAbsent extends StatelessWidget {
+  final String status; final ValueChanged<String> onChange;
+  const _PresentAbsent(this.status, this.onChange);
+  @override
+  Widget build(BuildContext context) {
+    Widget b(String v, String text, Color fg, Color bg) {
+      final on = status == v || (v == 'present' && status == 'late');
+      return Padding(padding: const EdgeInsets.only(left: 6), child: InkWell(onTap: () => onChange(v), borderRadius: BorderRadius.circular(99), child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180), padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        decoration: BoxDecoration(color: on ? bg : Colors.transparent, borderRadius: BorderRadius.circular(99), border: Border.all(color: on ? fg.withValues(alpha: .35) : Theme.of(context).colorScheme.outlineVariant)),
+        child: Text(text, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: on ? fg : Theme.of(context).colorScheme.onSurface)))));
+    }
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      if (status == 'leave') const Pill('Leave', fg: Brand.violet, bg: Brand.violetTint),
+      b('present', 'Present', Brand.green, Brand.greenTint),
+      b('absent', 'Absent', Brand.crimson, Brand.crimsonTint),
+    ]);
+  }
+}
+
 /// One child: photo (or initials / roll), name, roll number.
 class _KidRow extends StatelessWidget {
-  final Map<String, dynamic> st; final Widget trailing; final VoidCallback? onTap; final bool rollFirst;
-  const _KidRow({required this.st, required this.trailing, this.onTap, this.rollFirst = false});
+  final Map<String, dynamic> st; final Widget trailing; final bool rollFirst;
+  const _KidRow({required this.st, required this.trailing, this.rollFirst = false});
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -192,7 +255,7 @@ class _KidRow extends StatelessWidget {
     final Widget face = rollFirst
         ? Avatar('${st['roll'] ?? initials}', size: 36, bg: cs.surfaceContainerHighest, fg: cs.onSurface)
         : (photo != null && photo.isNotEmpty) ? StorageImage(photo, width: 40, height: 40, radius: BorderRadius.circular(13)) : Avatar(initials, size: 40);
-    return InkWell(onTap: onTap, borderRadius: BorderRadius.circular(10), child: Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Row(children: [
+    return InkWell(borderRadius: BorderRadius.circular(10), child: Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Row(children: [
       face, const SizedBox(width: 12),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5), maxLines: 1, overflow: TextOverflow.ellipsis),
