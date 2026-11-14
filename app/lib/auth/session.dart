@@ -1,3 +1,4 @@
+import 'dart:math' show Random;
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -6,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import '../core/config.dart';
-import '../core/data.dart' show setDbToken, viewOnlyMode;
+import '../core/data.dart' show db, setDbToken, viewOnlyMode;
 import '../core/push.dart' show Push;
 
 /// A student as returned by the login functions.
@@ -109,6 +110,13 @@ class SessionController extends AsyncNotifier<Session?> {
       return;
     }
     await _save(Session(token: j['token'], kind: 'staff', staff: Map<String, dynamic>.from(j['staff']), mustChangePassword: j['must_change_password'] == true));
+    // "Signed in on a new phone": the school is told which device this is; a new one sends the staff member an alert
+    try {
+      final p = await SharedPreferences.getInstance();
+      var dev = p.getString('rc_device_id');
+      if (dev == null) { dev = '${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1000000000)}'; await p.setString('rc_device_id', dev); }
+      await db.rpc('staff_device_seen', params: {'p_device': dev, 'p_label': kIsWeb ? 'computer' : 'phone'});
+    } catch (_) {}
   }
 
   Future<void> changeStaffPassword(String newPassword, {String? current}) async {
