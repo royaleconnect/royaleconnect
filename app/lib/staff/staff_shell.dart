@@ -41,7 +41,8 @@ const staffMenu = [
   StaffItem('/staff/messages', 'Messages', Icons.chat_bubble_rounded, 'TODAY'),
   StaffItem('/staff/announcements', 'Notices', Icons.campaign_rounded, 'TODAY', roles: ['class_teacher', 'coordinator', 'transport_incharge', ...officeRoles]),
   StaffItem('/staff/desk', "Principal's Desk", Icons.auto_awesome_rounded, 'TODAY', roles: ['it_admin', 'principal']),
-  StaffItem('/staff/attendance', 'Attendance', Icons.fact_check_rounded, 'MY CLASS', roles: ['class_teacher', 'coordinator', ...officeRoles]),
+  StaffItem('/staff/attendance', 'Attendance', Icons.fact_check_rounded, 'MY CLASS', roles: ['teacher', 'class_teacher', 'coordinator', ...officeRoles]),
+  StaffItem('/staff/albums', 'School albums', Icons.collections_rounded, 'SCHOOL', roles: officeRoles),
   StaffItem('/staff/diary', 'Diary', Icons.menu_book_rounded, 'MY CLASS'),
   StaffItem('/staff/leave', 'Leave requests', Icons.event_busy_rounded, 'MY CLASS', roles: ['class_teacher', ...officeRoles]),
   StaffItem('/staff/exams', 'Exams & marks', Icons.grading_rounded, 'MY CLASS'),
@@ -72,13 +73,13 @@ const _honours = ('SCHOOL', ['/staff/toppers']);
 
 /// The menu of each role (groups in order). Honours is in every menu. A person with several roles gets all their pages.
 const staffLayouts = <String, List<(String, List<String>)>>{
-  'teacher': [('TODAY', ['/staff', '/staff/messages']), ('MY CLASSES', ['/staff/diary', '/staff/exams', '/staff/moments']), _honours, _me],
+  'teacher': [('TODAY', ['/staff', '/staff/messages']), ('MY CLASSES', ['/staff/attendance', '/staff/diary', '/staff/exams', '/staff/moments']), _honours, _me],
   'class_teacher': [('TODAY', ['/staff', '/staff/messages', '/staff/announcements']),
     ('MY CLASS', ['/staff/attendance', '/staff/diary', '/staff/leave', '/staff/exams', '/staff/star', '/staff/moments', '/staff/students', '/staff/class-logins']), _honours, _me],
   'coordinator': [('TODAY', ['/staff', '/staff/messages', '/staff/announcements']), ('MY GRADES', ['/staff/attendance', '/staff/diary', '/staff/exams', '/staff/students']), _honours, _me],
   'accounts': [('TODAY', ['/staff']), ('FEES', ['/staff/fees', '/staff/fees/reports', '/staff/fees/dues']), ('STUDENTS', ['/staff/students', '/staff/certificates']), _honours, _me],
   'office': [('TODAY', ['/staff', '/staff/approvals', '/staff/messages', '/staff/announcements']),
-    ('STUDENTS', ['/staff/students', '/staff/strength', '/staff/leaving', '/staff/certificates', '/staff/id-cards', '/staff/transport']), ('FEES', ['/staff/fees', '/staff/fees/reports', '/staff/fees/dues']), ('SCHOOL', ['/staff/calendar', '/staff/feedback', '/staff/toppers']), _me],
+    ('STUDENTS', ['/staff/students', '/staff/strength', '/staff/leaving', '/staff/certificates', '/staff/id-cards', '/staff/transport']), ('FEES', ['/staff/fees', '/staff/fees/reports', '/staff/fees/dues']), ('SCHOOL', ['/staff/calendar', '/staff/albums', '/staff/feedback', '/staff/toppers']), _me],
   'transport_incharge': [('TODAY', ['/staff', '/staff/announcements']), ('TRANSPORT', ['/staff/transport', '/staff/bus-pins', '/staff/students']), _honours, _me],
   'principal': [('TODAY', ['/staff', '/staff/approvals', '/staff/announcements', '/staff/desk']),
     ('SCHOOL', ['/staff/students', '/staff/strength', '/staff/leaving', '/staff/attendance', '/staff/exams', '/staff/toppers', '/staff/feedback', '/staff/week']), _me],
@@ -88,7 +89,7 @@ const staffLayouts = <String, List<(String, List<String>)>>{
   'it_admin': [('TODAY', ['/staff', '/staff/approvals', '/staff/messages', '/staff/announcements']),
     ('STUDENTS', ['/staff/students', '/staff/strength', '/staff/leaving', '/staff/certificates', '/staff/id-cards', '/staff/transport', '/staff/toppers']),
     ('FEES', ['/staff/fees', '/staff/fees/reports', '/staff/fees/dues']),
-    ('SCHOOL', ['/staff/desk', '/staff/calendar', '/staff/feedback', '/staff/setup', '/staff/week']),
+    ('SCHOOL', ['/staff/desk', '/staff/calendar', '/staff/albums', '/staff/feedback', '/staff/setup', '/staff/week']),
     ('CLASSES', ['/staff/attendance', '/staff/diary', '/staff/leave', '/staff/exams', '/staff/star', '/staff/moments', '/staff/class-logins', '/staff/bus-pins']), _me],
 };
 
