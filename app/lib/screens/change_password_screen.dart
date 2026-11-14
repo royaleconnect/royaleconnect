@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../auth/session.dart';
 import '../core/errors.dart';
+import '../widgets/password_rules.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
 import 'academics_screens.dart' show AppPage;
@@ -23,9 +24,7 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
 
   Future<void> _save() async {
     if (cur.text.isEmpty) { setState(() => error = 'Please type your current password.'); return; }
-    if (a.text.length < 8) { setState(() => error = 'Use at least 8 characters for the new password.'); return; }
-    if (a.text != b.text) { setState(() => error = "The two new passwords don't match."); return; }
-    if (a.text == cur.text) { setState(() => error = 'The new password is the same as the current one.'); return; }
+    if (!passwordOk(a.text, b.text, old: cur.text)) { setState(() => error = 'Please meet all four ticks below the boxes.'); return; }
     setState(() { busy = true; error = null; });
     try {
       await ref.read(sessionProvider.notifier).changePassword(a.text, current: cur.text);
@@ -53,9 +52,11 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
         const SizedBox(height: 14),
         TextField(controller: cur, obscureText: !show, autofillHints: const [AutofillHints.password], decoration: deco('Current password')),
         const SizedBox(height: 14),
-        TextField(controller: a, obscureText: !show, autofillHints: const [AutofillHints.newPassword], decoration: deco('New password', hint: 'At least 8 characters')),
+        TextField(controller: a, obscureText: !show, autofillHints: const [AutofillHints.newPassword], decoration: deco('New password', hint: 'At least 8, with letters and a number')),
         const SizedBox(height: 14),
         TextField(controller: b, obscureText: !show, decoration: deco('Repeat new password'), onSubmitted: (_) => busy ? null : _save()),
+        const SizedBox(height: 12),
+        PasswordRulesView(a, b, old: cur.text),
         const SizedBox(height: 18),
         if (error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(error!, style: TextStyle(color: context.tone(Brand.crimsonDeep), fontWeight: FontWeight.w700))),
         PrimaryButton('Save new password', icon: Icons.lock_rounded, busy: busy, onPressed: s?.viewOnly == true ? null : _save),
