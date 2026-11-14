@@ -190,7 +190,8 @@ Future<void> toggleLike(String momentId, String studentId, bool liked) async {
 
 final albumsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   ref.cacheFor();
-  final data = await db.from('album').select('id,title,event_date,cover_path,album_photo(id,path,sort_order)').order('event_date', ascending: false);
+  // oldest first: a school year reads like a story, July onwards (a new album gets a red “New” for 7 days)
+  final data = await db.from('album').select('id,title,event_date,cover_path,team,created_at,album_photo(id,path,sort_order)').order('event_date', ascending: true);
   return List<Map<String, dynamic>>.from(data);
 });
 
