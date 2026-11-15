@@ -19,6 +19,7 @@ import '../widgets/hub_tabs.dart';
 String _msg(Object e) => e is PostgrestException ? e.message : e.toString().replaceFirst('Exception: ', '');
 bool _canManage(Session s) => s.hasRole('it_admin') || s.hasRole('principal');
 const _photoExt = ['jpg', 'jpeg', 'png', 'webp'];
+const _groups = ['Artemis House', 'Athena House', 'Ares House', 'Apollo House'];
 
 class StaffCouncilScreen extends ConsumerWidget {
   const StaffCouncilScreen({super.key});
@@ -101,10 +102,15 @@ class _MembersTab extends ConsumerWidget {
     final title = TextEditingController(text: p?['title'] ?? '');
     final row = TextEditingController(text: '${p?['row_no'] ?? 3}');
     final order = TextEditingController(text: '${p?['sort'] ?? 100}');
-    final r = await showDialog<String>(context: context, builder: (c) => AlertDialog(
+    String? section = p?['section'] as String?;
+    final r = await showDialog<String>(context: context, builder: (c) => StatefulBuilder(builder: (c, set) => AlertDialog(
       title: Text(p == null ? 'Add a post' : 'Post'),
       content: SizedBox(width: 400, child: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: title, autofocus: p == null, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Post', hintText: 'e.g. House Captain – Red House')),
+        TextField(controller: title, autofocus: p == null, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Post', hintText: 'e.g. Captain')),
+        const SizedBox(height: 10),
+        DropdownButtonFormField<String?>(value: section, decoration: const InputDecoration(labelText: 'Group'),
+          items: [const DropdownMenuItem(value: null, child: Text('Main council')), for (final g in _groups) DropdownMenuItem(value: g, child: Text(g))],
+          onChanged: (v) => set(() => section = v)),
         const SizedBox(height: 10),
         TextField(controller: row, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Line on the page', helperText: '1 = top line (Head Boy / Girl), 2 = next line … two posts a line look best')),
         const SizedBox(height: 10),
@@ -115,11 +121,11 @@ class _MembersTab extends ConsumerWidget {
         TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
         FilledButton(onPressed: () => Navigator.pop(c, 'save'), child: const Text('Save')),
       ],
-    ));
+    )));
     try {
       if (r == 'delete') { await db.from('council_post').delete().eq('id', p!['id']); if (context.mounted) showUndo(context, 'Post', () => ref.invalidate(councilTermsProvider)); }
       else if (r == 'save' && title.text.trim().isNotEmpty) {
-        final data = {'term_id': term['id'], 'title': title.text.trim(), 'row_no': int.tryParse(row.text.trim()) ?? 3, 'sort': int.tryParse(order.text.trim()) ?? 100};
+        final data = {'term_id': term['id'], 'section': section, 'title': title.text.trim(), 'row_no': int.tryParse(row.text.trim()) ?? 3, 'sort': int.tryParse(order.text.trim()) ?? 100};
         if (p == null) { await db.from('council_post').insert(data); } else { await db.from('council_post').update(data).eq('id', p['id']); }
       }
       ref.invalidate(councilTermsProvider);
@@ -129,8 +135,9 @@ class _MembersTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
+    int g(Map p) => p['section'] == null ? -1 : _groups.indexOf(p['section']);
     final posts = List<Map<String, dynamic>>.from(term['council_post'] ?? const [])
-      ..sort((a, b) { final r = ((a['row_no'] ?? 9) as int).compareTo((b['row_no'] ?? 9) as int); return r != 0 ? r : ((a['sort'] ?? 100) as int).compareTo((b['sort'] ?? 100) as int); });
+      ..sort((a, b) { final s0 = g(a).compareTo(g(b)); if (s0 != 0) return s0; final r = ((a['row_no'] ?? 9) as int).compareTo((b['row_no'] ?? 9) as int); return r != 0 ? r : ((a['sort'] ?? 100) as int).compareTo((b['sort'] ?? 100) as int); });
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Panel(title: 'Council ${term['label']}', trailing: Wrap(spacing: 8, children: [
         OutlinedButton.icon(onPressed: () => _post(context, ref), icon: const Icon(Icons.add_rounded, size: 18), label: const Text('Add a post')),
@@ -138,9 +145,12 @@ class _MembersTab extends ConsumerWidget {
           try { await db.from('council_term').update({'published': term['published'] != true}).eq('id', term['id']); ref.invalidate(councilTermsProvider); } catch (e) { if (context.mounted) toast(context, _msg(e)); }
         }, child: Text(term['published'] == true ? 'Hide from families' : 'Show to families')),
       ]), child: posts.isEmpty ? Text('No posts yet. Add Head Boy, Head Girl, … or start the Elections tab.', style: TextStyle(color: cs.onSurfaceVariant)) : Column(children: [
-        for (final p in posts) Builder(builder: (_) {
+        for (final (i, p) in posts.indexed) Builder(builder: (_) {
           final m = List<Map<String, dynamic>>.from(p['council_member'] ?? const []).firstOrNull;
-          return ListTile(
+          final head = i == 0 || posts[i - 1]['section'] != p['section'];
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (head) Padding(padding: const EdgeInsets.fromLTRB(4, 14, 4, 4), child: Text('${p['section'] ?? 'Main council'}'.toUpperCase(), style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, letterSpacing: 1.2, color: Brand.gold))),
+            ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 4),
             leading: m == null ? CircleAvatar(backgroundColor: Brand.surface2, child: Text('${p['row_no']}', style: const TextStyle(fontWeight: FontWeight.w800, color: Brand.muted))) : Face(m['full_name'] ?? '', m['photo_path'], size: 46),
             title: Text('${p['title']} · ${m?['full_name'] ?? 'not added'}', style: const TextStyle(fontWeight: FontWeight.w700)),
@@ -152,10 +162,10 @@ class _MembersTab extends ConsumerWidget {
                 if (ok == true) ref.invalidate(councilTermsProvider);
               }),
             ]),
-          );
+          )]);
         }),
       ])),
-      const NoteBox('Lines: 1 = Head Boy & Head Girl (big photos), 2 = Deputies, 3 = Cultural, 4 = Sports … Each line shows its posts side by side.'),
+      const NoteBox('Main council lines: 1 = Head Boy & Head Girl, 2 = Deputies, 3 = Cultural, 4 = Sports, 5 = Junior, 6 = Sub-Junior. On laptops and tablets they show 4 a line. Each house shows under its own heading: Captain and Vice Captain, then the Prefects.'),
     ]);
   }
 }
