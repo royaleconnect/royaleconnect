@@ -1,4 +1,6 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -20,9 +22,21 @@ import 'staff_shell.dart';
 /// the teams were put in once; editing them comes next year).
 final staffAlbumsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   ref.cacheFor();
-  final data = await db.from('album').select('id,title,event_date,cover_path,team,created_at,album_photo(id,path,sort_order)').order('event_date', ascending: false);
+  final data = await db.from('album').select('id,title,event_date,cover_path,team,created_at,album_photo(id,path,thumb_path,sort_order)').order('event_date', ascending: false);
   return List<Map<String, dynamic>>.from(data);
 });
+
+/// A small copy of a photo (480 px wide, ~40 KB) for the album grid; the full photo opens only when tapped.
+Uint8List? makePreview(Uint8List bytes) {
+  try {
+    final im = img.decodeImage(bytes);
+    if (im == null) return null;
+    final small = im.width > 480 ? img.copyResize(im, width: 480) : im;
+    return Uint8List.fromList(img.encodeJpg(small, quality: 72));
+  } catch (_) { return null; }
+}
+
+String previewPathOf(String path) { final i = path.lastIndexOf('/'); return '${path.substring(0, i)}/small/${path.substring(i + 1)}.jpg'; }
 
 List<Map<String, dynamic>> _photos(Map<String, dynamic> al) =>
     List<Map<String, dynamic>>.from(al['album_photo'] ?? [])..sort((x, y) => (x['sort_order'] as int).compareTo(y['sort_order'] as int));
@@ -75,8 +89,11 @@ class _StaffAlbumsScreenState extends ConsumerState<StaffAlbumsScreen> {
         final safe = x.name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
         final path = 'albums/${al['id']}/${DateTime.now().millisecondsSinceEpoch}_$safe';
         await db.storage.from('files').uploadBinary(path, b, fileOptions: const FileOptions(contentType: 'image/jpeg'));
+        String? thumb;
+        final small = makePreview(b);
+        if (small != null) { thumb = previewPathOf(path); await db.storage.from('files').uploadBinary(thumb, small, fileOptions: const FileOptions(contentType: 'image/jpeg', upsert: true)); }
         sort++;
-        await db.from('album_photo').insert({'album_id': al['id'], 'path': path, 'sort_order': sort});
+        await db.from('album_photo').insert({'album_id': al['id'], 'path': path, 'thumb_path': thumb, 'sort_order': sort});
       } catch (_) { failed++; }
       if (mounted) setState(() => done++);
     }
@@ -85,6 +102,28 @@ class _StaffAlbumsScreenState extends ConsumerState<StaffAlbumsScreen> {
       setState(() => busy = false);
       toast(context, failed == 0 ? '${take.length} photo${take.length == 1 ? '' : 's'} added ✓${xs.length > 30 ? ' · add the rest in the next round' : ''}' : '${take.length - failed} added, $failed could not be uploaded — try those again.');
     }
+  }
+
+  /// Photos added before previews existed: make their small copies now (once per album).
+  Future<void> _makePreviews(Map<String, dynamic> al) async {
+    final todo = _photos(al).where((p) => p['thumb_path'] == null && !(p['path'] as String).startsWith('sample:')).toList();
+    if (todo.isEmpty) return;
+    setState(() { busy = true; done = 0; total = todo.length; });
+    var failed = 0;
+    for (final p in todo) {
+      try {
+        final b = await db.storage.from('files').download(p['path']);
+        final small = makePreview(b);
+        if (small == null) { failed++; } else {
+          final t = previewPathOf(p['path']);
+          await db.storage.from('files').uploadBinary(t, small, fileOptions: const FileOptions(contentType: 'image/jpeg', upsert: true));
+          await db.from('album_photo').update({'thumb_path': t}).eq('id', p['id']);
+        }
+      } catch (_) { failed++; }
+      if (mounted) setState(() => done++);
+    }
+    _refresh();
+    if (mounted) { setState(() => busy = false); toast(context, failed == 0 ? 'Previews made ✓ — the album opens faster now' : '${todo.length - failed} done, $failed could not be made'); }
   }
 
   Future<void> _photoMenu(Map<String, dynamic> al, Map<String, dynamic> p) async {
@@ -96,6 +135,7 @@ class _StaffAlbumsScreenState extends ConsumerState<StaffAlbumsScreen> {
       if (pick == 'cover') { await db.from('album').update({'cover_path': p['path']}).eq('id', al['id']); if (mounted) toast(context, 'Cover changed ✓'); }
       if (pick == 'remove') {
         await db.from('album_photo').delete().eq('id', p['id']);
+        try { await db.storage.from('files').remove([p['path'], if (p['thumb_path'] != null) p['thumb_path']]); } catch (_) {}
         if (al['cover_path'] == p['path']) await db.from('album').update({'cover_path': null}).eq('id', al['id']);
         if (mounted) toast(context, 'Photo removed');
       }
@@ -171,6 +211,8 @@ class _StaffAlbumsScreenState extends ConsumerState<StaffAlbumsScreen> {
           actions: [
             TextButton.icon(onPressed: () => context.go('/staff/albums'), icon: const Icon(Icons.arrow_back_rounded, size: 18), label: const Text('All albums')),
             TextButton.icon(onPressed: () => _edit(al), icon: const Icon(Icons.edit_rounded, size: 18), label: const Text('Edit')),
+            if (ph.any((p) => p['thumb_path'] == null && !(p['path'] as String).startsWith('sample:'))) OutlinedButton.icon(onPressed: busy ? null : () => _makePreviews(al),
+                icon: const Icon(Icons.speed_rounded, size: 18), label: const Text('Make it faster')),
             FilledButton.icon(onPressed: busy ? null : () => _addPhotos(al), style: FilledButton.styleFrom(backgroundColor: Brand.crimson),
                 icon: const Icon(Icons.add_photo_alternate_rounded), label: Text(busy ? 'Adding $done of $total…' : 'Add photos')),
           ],
@@ -181,7 +223,7 @@ class _StaffAlbumsScreenState extends ConsumerState<StaffAlbumsScreen> {
               final cols = c.maxWidth >= 900 ? 6 : c.maxWidth >= 600 ? 4 : 3;
               final cell = (c.maxWidth - 8 * (cols - 1)) / cols;
               return Wrap(spacing: 8, runSpacing: 8, children: [for (final p in ph) GestureDetector(onTap: () => _photoMenu(al, p), child: Stack(children: [
-                StorageImage(p['path'], width: cell, height: cell, radius: BorderRadius.circular(12)),
+                StorageImage(p['thumb_path'] ?? p['path'], width: cell, height: cell, radius: BorderRadius.circular(12)),
                 if (al['cover_path'] == p['path']) const Positioned(left: 6, top: 6, child: Pill('Cover', fg: Colors.white, bg: Brand.gold)),
               ]))]);
             }),
