@@ -191,7 +191,7 @@ Future<void> toggleLike(String momentId, String studentId, bool liked) async {
 final albumsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   ref.cacheFor();
   // oldest first: a school year reads like a story, July onwards (a new album gets a red “New” for 7 days)
-  final data = await db.from('album').select('id,title,event_date,cover_path,team,created_at,album_photo(id,path,sort_order)').order('event_date', ascending: true);
+  final data = await db.from('album').select('id,title,event_date,cover_path,team,created_at,album_photo(id,path,thumb_path,sort_order)').order('event_date', ascending: true);
   return List<Map<String, dynamic>>.from(data);
 });
 
@@ -239,7 +239,8 @@ final busFamilyProvider = StreamProvider.autoDispose<Map<String, dynamic>?>((ref
     if (!alive) return;
     if (again) { again = false; tick(); return; }
     final fast = last?['trip'] != null && front && ref.read(busPageVisibleProvider);
-    timer = Timer(fast ? const Duration(seconds: 3) : const Duration(minutes: 2), tick);
+    // every 8 s while the bus runs and the map is open (hundreds of parents at 7:30 am stay light on the server)
+    timer = Timer(fast ? const Duration(seconds: 8) : const Duration(minutes: 2), tick);
   }
   final life = AppLifecycleListener(
     onResume: () { front = true; tick(); },
