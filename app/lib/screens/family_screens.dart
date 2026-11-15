@@ -167,8 +167,11 @@ class _GalleryScreenState extends ConsumerState<GalleryScreen> {
 /// The school year an event belongs to (April – March): 2026 means 2026-27.
 int albumYear(DateTime d) => d.month >= 4 ? d.year : d.year - 1;
 
-List<String> _albumPhotos(Map<String, dynamic> al) => (List<Map<String, dynamic>>.from(al['album_photo'] ?? [])
-  ..sort((x, y) => (x['sort_order'] as int).compareTo(y['sort_order'] as int))).map((p) => p['path'] as String).toList();
+List<Map<String, dynamic>> _albumRows(Map<String, dynamic> al) => List<Map<String, dynamic>>.from(al['album_photo'] ?? [])
+  ..sort((x, y) => (x['sort_order'] as int).compareTo(y['sort_order'] as int));
+List<String> _albumPhotos(Map<String, dynamic> al) => _albumRows(al).map((p) => p['path'] as String).toList();
+/// the small preview copy when there is one (much faster), else the photo itself
+String _small(Map<String, dynamic> al, String path) => (_albumRows(al).where((p) => p['path'] == path).firstOrNull?['thumb_path'] as String?) ?? path;
 
 class _AlbumCard extends StatelessWidget {
   final Map<String, dynamic> al; final VoidCallback onTap;
@@ -184,7 +187,7 @@ class _AlbumCard extends StatelessWidget {
     final isNew = created != null && DateTime.now().difference(created).inDays < 7 && ev != null && DateTime.now().difference(ev).inDays <= 30;
     return Material(color: cs.surface, borderRadius: BorderRadius.circular(20), clipBehavior: Clip.antiAlias, child: InkWell(onTap: onTap, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Expanded(child: Stack(fit: StackFit.expand, children: [
-        cover != null ? LayoutBuilder(builder: (_, c) => StorageImage(cover, width: c.maxWidth, height: c.maxHeight)) : const _NoPhotosYet(),
+        cover != null ? LayoutBuilder(builder: (_, c) => StorageImage(_small(al, cover), width: c.maxWidth, height: c.maxHeight)) : const _NoPhotosYet(),
         Positioned(left: 10, top: 10, child: Row(children: [
           if (al['team'] != null) const _Tag('🏅 Student team', fg: Color(0xFF6B4A08), bg: Color(0xFFF7E9C6)),
         ])),
@@ -232,7 +235,7 @@ class AlbumScreen extends StatelessWidget {
         if (photos.isEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text('Photos of this event will appear here soon.', style: TextStyle(color: cs.onSurfaceVariant)))
         else Wrap(spacing: 8, runSpacing: 8, children: [for (final (i, p) in photos.indexed) GestureDetector(
           onTap: () => Navigator.of(context).push(PageRouteBuilder(transitionDuration: const Duration(milliseconds: 450), pageBuilder: (_, __, ___) => _Viewer(photos, i), transitionsBuilder: (_, a, __, child) => FadeTransition(opacity: a, child: child))),
-          child: Hero(tag: 'ph$p', child: StorageImage(p, width: cell, height: cell, radius: BorderRadius.circular(14))))]),
+          child: StorageImage(_small(al, p), width: cell, height: cell, radius: BorderRadius.circular(14)))]),
       ]);
     }));
   }
