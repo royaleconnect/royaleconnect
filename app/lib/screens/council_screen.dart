@@ -88,40 +88,31 @@ class _CouncilViewState extends ConsumerState<CouncilView> {
             ])),
             if (election != null && election['eligible'] == true) _VoteBanner(election),
             if (t == null) const NoteBox('The Student Council will appear here once the school adds it.', icon: Icons.groups_rounded),
-            if (t != null) Padding(padding: const EdgeInsets.only(top: 6, bottom: 10), child: Text('Student Council ${t['label']}', textAlign: TextAlign.center,
+            if (t != null) Padding(padding: const EdgeInsets.only(top: 2, bottom: 8), child: Text('Student Council ${t['label']}', textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: context.tone(Brand.crimsonDeep)))),
             LayoutBuilder(builder: (_, c) {
-              final wide = c.maxWidth >= 820;
-              // one line of cards; every card in a line the same height, photos grow on big screens
-              Widget line(List<Map<String, dynamic>> ms, int per) {
-                final w = (c.maxWidth - 10 * (per - 1)) / per;
-                final face = (w * .32).clamp(76.0, 120.0);
-                return Padding(padding: const EdgeInsets.only(bottom: 10), child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  for (var i = 0; i < per; i++) ...[if (i > 0) const SizedBox(width: 10), Expanded(child: i < ms.length ? _MemberCard(ms[i], size: face, big: wide) : const SizedBox())],
+              // two a line on every screen, edge to edge. Wide cards lie flat (photo left, name right) so the first three
+              // lines — Head Boy / Girl, the Deputies, Cultural Secretary and Deputy — are seen without scrolling.
+              Widget line(List<Map<String, dynamic>> ms) {
+                final flat = (c.maxWidth - 12) / 2 >= 300;
+                return Padding(padding: const EdgeInsets.only(bottom: 12), child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  for (var i = 0; i < 2; i++) ...[if (i > 0) const SizedBox(width: 12), Expanded(child: i < ms.length ? _MemberCard(ms[i], flat: flat) : const SizedBox())],
                 ])));
               }
-              List<Widget> chunked(List<Map<String, dynamic>> ms, int per) => [for (var i = 0; i < ms.length; i += per) line(ms.sublist(i, math.min(i + per, ms.length)), per)];
-              final keys = rows.keys.toList()..sort();
+              List<Widget> chunked(List<Map<String, dynamic>> ms) => [for (var i = 0; i < ms.length; i += 2) line(ms.sublist(i, math.min(i + 2, ms.length)))];
               final out = <Widget>[];
-              if (wide) {
-                // tablet / laptop: 4 a line — Head Boy, Head Girl and the Deputies together; Sports before Cultural
-                bool has(int k, String w) => rows[k]!.any((m) => '${m['post']}'.startsWith(w));
-                final iC = keys.indexWhere((k) => has(k, 'Cultural')), iS = keys.indexWhere((k) => has(k, 'Sports'));
-                if (iC >= 0 && iS > iC) { final x = keys[iC]; keys[iC] = keys[iS]; keys[iS] = x; }
-                out.addAll(chunked([for (final k in keys) ...rows[k]!], 4));
-              } else {
-                for (final k in keys) { out.addAll(chunked(rows[k]!, 2)); }
-              }
+              for (final k in (rows.keys.toList()..sort())) { out.addAll(chunked(rows[k]!)); }
               for (final sec in sections) {
                 final hr = rowsOf(sec);
                 if (hr.isEmpty) continue;
                 final col = houseColors[houseOrder.firstWhere((h) => sec.startsWith(h), orElse: () => '')] ?? Brand.crimson;
                 final onCol = col.computeLuminance() > .5 ? const Color(0xFF3B2E00) : Colors.white;
-                out.add(Container(margin: const EdgeInsets.fromLTRB(0, 14, 0, 12), padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                  decoration: BoxDecoration(color: col, borderRadius: BorderRadius.circular(16)),
+                out.add(Container(margin: const EdgeInsets.fromLTRB(0, 16, 0, 12), padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(16),
+                      gradient: LinearGradient(colors: [col, Color.lerp(col, Colors.black, .18)!])),
                   child: Row(children: [Icon(Icons.shield_rounded, color: onCol.withValues(alpha: .9), size: 22), const SizedBox(width: 10),
                     Text(sec, style: GoogleFonts.playfairDisplay(fontSize: 21, fontWeight: FontWeight.w700, color: onCol))])));
-                for (final k in (hr.keys.toList()..sort())) { out.addAll(chunked(hr[k]!, hr[k]!.length > 2 ? (wide ? 4 : 2) : 2)); }
+                for (final k in (hr.keys.toList()..sort())) { out.addAll(chunked(hr[k]!)); }
               }
               return Column(children: out);
             }),
@@ -138,21 +129,36 @@ class _CouncilViewState extends ConsumerState<CouncilView> {
 }
 
 class _MemberCard extends StatelessWidget {
-  final Map<String, dynamic> m; final double size; final bool big;
-  const _MemberCard(this.m, {this.size = 88, this.big = false});
+  final Map<String, dynamic> m; final bool flat;
+  const _MemberCard(this.m, {this.flat = false});
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.fromLTRB(8, 12, 8, 10),
-    decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, borderRadius: BorderRadius.circular(18)),
-    child: Column(mainAxisAlignment: MainAxisAlignment.start, children: [
-      Face(m['full_name'] ?? '', m['photo_path'], size: size),
-      const SizedBox(height: 8),
-      Text('${m['post']}'.toUpperCase(), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: big ? 12.5 : 10.5, fontWeight: FontWeight.w800, letterSpacing: .4, color: context.tone(Brand.crimson))),
-      const SizedBox(height: 2),
-      Text('${m['full_name']}', textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w800, fontSize: big ? 17 : 15)),
-      if ((m['class_label'] ?? '').toString().isNotEmpty) Text('${m['class_label']}', maxLines: 1, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-    ]),
-  );
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final post = Text('${m['post']}'.toUpperCase(), textAlign: flat ? TextAlign.start : TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: flat ? 12 : 10.5, fontWeight: FontWeight.w800, letterSpacing: .6, color: context.tone(Brand.crimson)));
+    final name = Text('${m['full_name']}', textAlign: flat ? TextAlign.start : TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis,
+        style: flat ? GoogleFonts.playfairDisplay(fontWeight: FontWeight.w700, fontSize: 21, height: 1.15) : const TextStyle(fontWeight: FontWeight.w800, fontSize: 15));
+    final cls = (m['class_label'] ?? '').toString().isEmpty ? null
+        : Text('${m['class_label']}', maxLines: 1, style: TextStyle(fontSize: flat ? 13 : 12, color: cs.onSurfaceVariant));
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(color: cs.surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: cs.outlineVariant)),
+      child: flat
+          // laptop / tablet: photo on the left, a thin gold edge, the post and the name beside it
+          ? Row(children: [
+              Container(width: 4, color: Brand.gold),
+              Padding(padding: const EdgeInsets.fromLTRB(16, 14, 16, 14), child: Face(m['full_name'] ?? '', m['photo_path'], size: 92)),
+              Expanded(child: Padding(padding: const EdgeInsets.only(right: 16), child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+                post, const SizedBox(height: 4), name, if (cls != null) ...[const SizedBox(height: 2), cls],
+              ]))),
+            ])
+          // phone: photo on top, compact
+          : Padding(padding: const EdgeInsets.fromLTRB(8, 10, 8, 10), child: Column(mainAxisAlignment: MainAxisAlignment.start, children: [
+              Face(m['full_name'] ?? '', m['photo_path'], size: 64),
+              const SizedBox(height: 6), post, const SizedBox(height: 2), name, if (cls != null) cls,
+            ])),
+    );
+  }
 }
 
 class _VoteBanner extends ConsumerWidget {
