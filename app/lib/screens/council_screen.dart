@@ -94,12 +94,19 @@ class _CouncilViewState extends ConsumerState<CouncilView> {
               // two a line on every screen, edge to edge. Wide cards lie flat (photo left, name right) so the first three
               // lines — Head Boy / Girl, the Deputies, Cultural Secretary and Deputy — are seen without scrolling.
               Widget line(List<Map<String, dynamic>> ms) {
-                final flat = (c.maxWidth - 12) / 2 >= 300;
+                final half = (c.maxWidth - 12) / 2;
+                final flat = half >= 300;
+                // a card on its own sits in the middle, the same size as the others
+                if (ms.length == 1) return Padding(padding: const EdgeInsets.only(bottom: 12), child: Center(child: SizedBox(width: half, child: _MemberCard(ms.first, flat: flat))));
                 return Padding(padding: const EdgeInsets.only(bottom: 12), child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                  for (var i = 0; i < 2; i++) ...[if (i > 0) const SizedBox(width: 12), Expanded(child: i < ms.length ? _MemberCard(ms[i], flat: flat) : const SizedBox())],
+                  Expanded(child: _MemberCard(ms[0], flat: flat)), const SizedBox(width: 12), Expanded(child: _MemberCard(ms[1], flat: flat)),
                 ])));
               }
-              List<Widget> chunked(List<Map<String, dynamic>> ms) => [for (var i = 0; i < ms.length; i += 2) line(ms.sublist(i, math.min(i + 2, ms.length)))];
+              // two a line; with an odd number, the first one sits alone in the middle and the rest pair up below it
+              List<Widget> chunked(List<Map<String, dynamic>> ms) => [
+                if (ms.length.isOdd) line([ms.first]),
+                for (var i = ms.length.isOdd ? 1 : 0; i < ms.length; i += 2) line(ms.sublist(i, math.min(i + 2, ms.length))),
+              ];
               final out = <Widget>[];
               for (final k in (rows.keys.toList()..sort())) { out.addAll(chunked(rows[k]!)); }
               for (final sec in sections) {
