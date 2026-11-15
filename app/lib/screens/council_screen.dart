@@ -2,12 +2,14 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../auth/session.dart';
 import '../core/data.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
 import 'academics_screens.dart' show AppPage;
 import 'toppers_screen.dart' show Face;
+import 'houses_screen.dart' show houseColors;
 import '../widgets/royal_extras.dart' show GoldLoading;
 import '../core/cache.dart';
 import '../widgets/hub_tabs.dart';
@@ -21,7 +23,7 @@ String _msg(Object e) => friendlyError(e);
 /// Councils with their posts and members, newest first (families see published ones; staff see all).
 final councilTermsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   ref.cacheFor();
-  final rows = await db.from('council_term').select('id,label,published,council_post(id,title,row_no,sort,council_member(id,full_name,class_label,photo_path,sort))').order('label', ascending: false);
+  final rows = await db.from('council_term').select('id,label,published,council_post(id,title,row_no,sort,section,council_member(id,full_name,class_label,photo_path,sort))').order('label', ascending: false);
   return List<Map<String, dynamic>>.from(rows);
 });
 
@@ -62,13 +64,21 @@ class _CouncilViewState extends ConsumerState<CouncilView> {
         final t = terms.where((x) => x['id'] == termId).firstOrNull ?? terms.firstOrNull;
         final posts = List<Map<String, dynamic>>.from(t?['council_post'] ?? const [])
           ..sort((a, b) { final r = ((a['row_no'] ?? 9) as int).compareTo((b['row_no'] ?? 9) as int); return r != 0 ? r : ((a['sort'] ?? 100) as int).compareTo((b['sort'] ?? 100) as int); });
-        final rows = <int, List<Map<String, dynamic>>>{};
-        for (final p in posts) {
-          for (final m in List<Map<String, dynamic>>.from(p['council_member'] ?? const [])) {
-            rows.putIfAbsent((p['row_no'] ?? 9) as int, () => []).add({...m, 'post': p['title']});
+        // the main council (no heading) first, then each house under its own coloured heading
+        Map<int, List<Map<String, dynamic>>> rowsOf(String? section) {
+          final rows = <int, List<Map<String, dynamic>>>{};
+          for (final p in posts.where((p) => p['section'] == section)) {
+            for (final m in List<Map<String, dynamic>>.from(p['council_member'] ?? const [])) {
+              rows.putIfAbsent((p['row_no'] ?? 9) as int, () => []).add({...m, 'post': '${p['title']}'.replaceFirst(RegExp(r' \d+$'), '')});
+            }
           }
+          return rows;
         }
-        return Align(alignment: Alignment.topCenter, child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 640), child: RRefresh(
+        final rows = rowsOf(null);
+        const houseOrder = ['Artemis', 'Athena', 'Ares', 'Apollo'];
+        final sections = posts.map((p) => p['section'] as String?).whereType<String>().toSet().toList()
+          ..sort((a, b) { int k(String x) { final i = houseOrder.indexWhere((h) => x.startsWith(h)); return i < 0 ? 99 : i; } final r = k(a).compareTo(k(b)); return r != 0 ? r : a.compareTo(b); });
+        return Align(alignment: Alignment.topCenter, child: RRefresh(
           onRefresh: () async { ref.invalidate(councilTermsProvider); ref.invalidate(openElectionProvider); },
           child: ListView(padding: const EdgeInsets.fromLTRB(16, 14, 16, 32), children: [
             if (terms.length > 1) SizedBox(height: 40, child: ListView(scrollDirection: Axis.horizontal, children: [
@@ -80,30 +90,56 @@ class _CouncilViewState extends ConsumerState<CouncilView> {
             if (t == null) const NoteBox('The Student Council will appear here once the school adds it.', icon: Icons.groups_rounded),
             if (t != null) Padding(padding: const EdgeInsets.only(top: 6, bottom: 10), child: Text('Student Council ${t['label']}', textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: context.tone(Brand.crimsonDeep)))),
-            for (final e in (rows.entries.toList()..sort((a, b) => a.key.compareTo(b.key)))) Padding(padding: const EdgeInsets.only(bottom: 0), child: LayoutBuilder(builder: (_, c) {
-              // every card the same: two per line, same photo size; the two of a line share one height (no empty space)
-              final pairs = [for (var i = 0; i < e.value.length; i += 2) e.value.sublist(i, math.min(i + 2, e.value.length))];
-              return Column(children: [for (final pr in pairs) Padding(padding: const EdgeInsets.only(bottom: 10), child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                for (final (i, m) in pr.indexed) ...[if (i > 0) const SizedBox(width: 10), Expanded(child: _MemberCard(m))],
-                if (pr.length == 1) const Expanded(child: SizedBox()),
-              ])))]);
-            })),
+            LayoutBuilder(builder: (_, c) {
+              final wide = c.maxWidth >= 820;
+              // one line of cards; every card in a line the same height, photos grow on big screens
+              Widget line(List<Map<String, dynamic>> ms, int per) {
+                final w = (c.maxWidth - 10 * (per - 1)) / per;
+                final face = (w * .32).clamp(76.0, 120.0);
+                return Padding(padding: const EdgeInsets.only(bottom: 10), child: IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  for (var i = 0; i < per; i++) ...[if (i > 0) const SizedBox(width: 10), Expanded(child: i < ms.length ? _MemberCard(ms[i], size: face, big: wide) : const SizedBox())],
+                ])));
+              }
+              List<Widget> chunked(List<Map<String, dynamic>> ms, int per) => [for (var i = 0; i < ms.length; i += per) line(ms.sublist(i, math.min(i + per, ms.length)), per)];
+              final keys = rows.keys.toList()..sort();
+              final out = <Widget>[];
+              if (wide) {
+                // tablet / laptop: 4 a line — Head Boy, Head Girl and the Deputies together; Sports before Cultural
+                bool has(int k, String w) => rows[k]!.any((m) => '${m['post']}'.startsWith(w));
+                final iC = keys.indexWhere((k) => has(k, 'Cultural')), iS = keys.indexWhere((k) => has(k, 'Sports'));
+                if (iC >= 0 && iS > iC) { final x = keys[iC]; keys[iC] = keys[iS]; keys[iS] = x; }
+                out.addAll(chunked([for (final k in keys) ...rows[k]!], 4));
+              } else {
+                for (final k in keys) { out.addAll(chunked(rows[k]!, 2)); }
+              }
+              for (final sec in sections) {
+                final hr = rowsOf(sec);
+                if (hr.isEmpty) continue;
+                final col = houseColors[houseOrder.firstWhere((h) => sec.startsWith(h), orElse: () => '')] ?? Brand.crimson;
+                final onCol = col.computeLuminance() > .5 ? const Color(0xFF3B2E00) : Colors.white;
+                out.add(Container(margin: const EdgeInsets.fromLTRB(0, 14, 0, 12), padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                  decoration: BoxDecoration(color: col, borderRadius: BorderRadius.circular(16)),
+                  child: Row(children: [Icon(Icons.shield_rounded, color: onCol.withValues(alpha: .9), size: 22), const SizedBox(width: 10),
+                    Text(sec, style: GoogleFonts.playfairDisplay(fontSize: 21, fontWeight: FontWeight.w700, color: onCol))])));
+                for (final k in (hr.keys.toList()..sort())) { out.addAll(chunked(hr[k]!, hr[k]!.length > 2 ? (wide ? 4 : 2) : 2)); }
+              }
+              return Column(children: out);
+            }),
             if (t != null && rows.isEmpty) Text('Members will appear here soon.', textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant)),
             const SizedBox(height: 8),
             if (election == null || election['eligible'] != true) Container(padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(color: Brand.amberTint, border: Border.all(color: Brand.gold), borderRadius: BorderRadius.circular(12)),
               child: const Text('🗳  Next year’s Student Council elections will open here.', textAlign: TextAlign.center, style: TextStyle(color: Brand.ink, fontWeight: FontWeight.w700))),
           ]),
-        )));
+        ));
       },
     );
   }
 }
 
 class _MemberCard extends StatelessWidget {
-  final Map<String, dynamic> m;
-  const _MemberCard(this.m);
-  static const size = 88.0;
+  final Map<String, dynamic> m; final double size; final bool big;
+  const _MemberCard(this.m, {this.size = 88, this.big = false});
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.fromLTRB(8, 12, 8, 10),
@@ -111,9 +147,9 @@ class _MemberCard extends StatelessWidget {
     child: Column(mainAxisAlignment: MainAxisAlignment.start, children: [
       Face(m['full_name'] ?? '', m['photo_path'], size: size),
       const SizedBox(height: 8),
-      Text('${m['post']}'.toUpperCase(), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, letterSpacing: .4, color: context.tone(Brand.crimson))),
+      Text('${m['post']}'.toUpperCase(), textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: big ? 12.5 : 10.5, fontWeight: FontWeight.w800, letterSpacing: .4, color: context.tone(Brand.crimson))),
       const SizedBox(height: 2),
-      Text('${m['full_name']}', textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+      Text('${m['full_name']}', textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w800, fontSize: big ? 17 : 15)),
       if ((m['class_label'] ?? '').toString().isNotEmpty) Text('${m['class_label']}', maxLines: 1, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
     ]),
   );
