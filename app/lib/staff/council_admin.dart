@@ -193,7 +193,10 @@ class _PersonDialogState extends ConsumerState<_PersonDialog> {
         if (widget.slogan) 'slogan': slogan.text.trim().isEmpty ? null : slogan.text.trim()};
       if (widget.row == null) { await db.from(widget.table).insert(data); } else { await db.from(widget.table).update(data).eq('id', widget.row!['id']); }
       if (mounted) Navigator.pop(context, true);
-    } catch (e) { if (mounted) { toast(context, _msg(e)); setState(() => busy = false); } }
+    } catch (e) {
+      final dup = '$e'.contains('council_member_one_per_post') || '$e'.contains('23505');
+      if (mounted) { toast(context, dup ? 'This post already has a person. Close this and tap the person to change the name or photo.' : _msg(e)); setState(() => busy = false); }
+    }
   }
 
   @override
