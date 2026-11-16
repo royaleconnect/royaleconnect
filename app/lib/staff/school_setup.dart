@@ -13,6 +13,8 @@ import '../widgets/royal_extras.dart' show ShimmerPage;
 import 'import_excel.dart';
 import 'staff_data.dart';
 import 'staff_shell.dart';
+import 'subjects_ui.dart';
+import '../core/marks_rules.dart' show streamGroups, electivesFor;
 import '../core/cache.dart';
 import '../widgets/hub_tabs.dart';
 
@@ -169,7 +171,7 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
       mEmail = TextEditingController(), mEdu = TextEditingController(), mJob = TextEditingController(), mIncome = TextEditingController(),
       gRelation = TextEditingController(), gPhone = TextEditingController(), gEmail = TextEditingController();
   DateTime? admissionDate;
-  String? category, lang2, lang3;
+  String? category, lang2, lang3, grp, elective;   // grp / elective: Grade XI – XII (Release K7)
   bool? staffChild;
   Map<String, dynamic> origExtra = const {};
   final labels = ['Father', 'Mother', 'Other'];
@@ -182,6 +184,9 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
   Map<String, dynamic>? pendingCorrection;
 
   bool get isNew => widget.studentId == null;
+  Map<String, dynamic>? get _sec => (ref.read(setupSectionsProvider).value ?? const <Map<String, dynamic>>[]).where((x) => x['id'] == sectionId).firstOrNull;
+  int get _gradeNo => romanGrade['${_sec?['grade']?['code'] ?? ''}'] ?? 0;
+  String? get _stream => sectionStream(_sec?['grade']?['code'] as String?, _sec?['name'] as String?);
 
   @override
   void initState() {
@@ -220,7 +225,7 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
           mEmail.text = t('mother_email'); mEdu.text = t('mother_education'); mJob.text = t('mother_occupation'); mIncome.text = t('mother_income');
           gRelation.text = t('guardian_relation'); gPhone.text = t('guardian_phone'); gEmail.text = t('guardian_email');
           admissionDate = x['admission_date'] == null ? null : DateTime.parse(x['admission_date']);
-          category = x['category']; lang2 = x['second_language']; lang3 = x['third_language']; staffChild = x['staff_child'] as bool?;
+          category = x['category']; lang2 = x['second_language']; lang3 = x['third_language']; grp = x['subject_group']; elective = x['elective']; staffChild = x['staff_child'] as bool?;
         }
       } catch (_) {}
       final te = r['transport_enrolment'];
@@ -299,7 +304,12 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
     String? n(TextEditingController c) => c.text.trim().isEmpty ? null : c.text.trim();
     final now = <String, dynamic>{
       'application_no': n(appNo), 'admission_date': admissionDate == null ? null : _iso(admissionDate!), 'nationality': n(nationality),
-      'religion': n(religion), 'category': category, 'second_language': lang2, 'third_language': lang3, 'staff_child': staffChild,
+      'religion': n(religion), 'category': category, 'staff_child': staffChild,
+      // only the subjects that belong to the chosen class are sent
+      if (_gradeNo <= 10) 'second_language': lang2,
+      if (_gradeNo <= 10) 'third_language': lang3,
+      if (_gradeNo >= 11 && streamGroups(_stream).length > 1) 'subject_group': grp,
+      if (_gradeNo >= 11) 'elective': elective,
       'father_email': n(fEmail), 'father_education': n(fEdu), 'father_occupation': n(fJob), 'father_income': n(fIncome),
       'mother_email': n(mEmail), 'mother_education': n(mEdu), 'mother_occupation': n(mJob), 'mother_income': n(mIncome),
       'guardian_relation': n(gRelation), 'guardian_phone': n(gPhone), 'guardian_email': n(gEmail),
@@ -406,8 +416,18 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
       const SizedBox(height: 10),
       field('Category (office only)', chips(const ['General', 'OBC', 'SC', 'ST'], category, (v) => category = v)),
       const SizedBox(height: 10),
-      two(field('2nd language (Grade I – X)', chips(const ['Kannada', 'Hindi'], lang2, (v) => lang2 = v)),
-          field('3rd language (Grade VI and up)', chips(const ['Kannada', 'Hindi'], lang3, (v) => lang3 = v))),
+      if (_gradeNo >= 11 && _stream != null) ...[
+        Text('Stream of this section: $_stream', style: TextStyle(fontWeight: FontWeight.w700, color: context.tone(Brand.green))),
+        const SizedBox(height: 8),
+        two(streamGroups(_stream).length > 1
+                ? field('Group', chips(streamGroups(_stream), grp, (v) { grp = v; if (elective != null && !electivesFor(v).contains(elective)) elective = null; }))
+                : field('Group', Text(streamGroups(_stream).first, style: const TextStyle(fontWeight: FontWeight.w800))),
+            field('Elective', chips(electivesFor(streamGroups(_stream).length == 1 ? streamGroups(_stream).first : grp), elective, (v) => elective = v))),
+      ] else if (_gradeNo <= 10) two(
+          field('2nd language', chips(const ['Kannada', 'Hindi'], lang2, (v) { lang2 = v; if (v != null && has3rd(_gradeNo == 0 ? 1 : _gradeNo)) lang3 = otherLang(v); })),
+          has3rd(_gradeNo == 0 ? 1 : _gradeNo)
+              ? field('3rd language', chips(const ['Kannada', 'Hindi'], lang3, (v) { lang3 = v; if (v != null && lang2 == v) lang2 = otherLang(v); }))
+              : field('3rd language', Text('From 2027-28 for Grade X', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)))),
       const SizedBox(height: 6),
       SwitchListTile(contentPadding: EdgeInsets.zero, value: staffChild == true, onChanged: (v) => setState(() => staffChild = v),
           title: const Text('Staff child'), subtitle: const Text('A parent works at the school. The app also suggests this by itself.')),
