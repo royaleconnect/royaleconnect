@@ -58,7 +58,7 @@ class _StudentMarksTabState extends ConsumerState<StudentMarksTab> {
     final rows = <Map<String, dynamic>>[];
     final old = Map<String, dynamic>.from(ex['marks'] ?? const {});
     for (final p in List<Map<String, dynamic>>.from(ex['papers'] ?? const [])) {
-      if (p['can'] != true || !takesSubject(d['l2'], d['l3'], '${p['name']}')) continue;
+      if (p['can'] != true || !takesSubject(d['l2'], d['l3'], '${p['name']}', grp: d['grp'], el: d['el'])) continue;
       final ti = marks['${p['subject_id']}|i']?.text ?? '', te = marks['${p['subject_id']}|e']?.text ?? '';
       final ri = readMark(ti), re = readMark(te);
       if (ri.bad || re.bad || (p['mi'] == null && ti.trim().isNotEmpty) ||
@@ -160,7 +160,7 @@ class _StudentMarksTabState extends ConsumerState<StudentMarksTab> {
     final m = Map<String, dynamic>.from(ex['marks'] ?? const {});
     num got = 0, max = 0;
     for (final p in List<Map<String, dynamic>>.from(ex['papers'] ?? const [])) {
-      if (!takesSubject(d['l2'], d['l3'], '${p['name']}') || cardPart(gno, '${p['part']}', '${p['name']}', d['l3']) != 'main') continue;
+      if (!takesSubject(d['l2'], d['l3'], '${p['name']}', grp: d['grp'], el: d['el']) || cardPart(gno, '${p['part']}', '${p['name']}', d['l3']) != 'main') continue;
       final mm = m[p['subject_id']] is Map ? Map<String, dynamic>.from(m[p['subject_id']]) : null;
       if (mm == null || (mm['i'] == null && mm['e'] == null && mm['ab'] != true)) continue;
       got += ((mm['i'] ?? 0) as num) + ((mm['e'] ?? 0) as num);
@@ -171,7 +171,7 @@ class _StudentMarksTabState extends ConsumerState<StudentMarksTab> {
 
   List<Widget> _tables(BuildContext context, Map<String, dynamic> d, Map<String, dynamic> ex, ColorScheme cs) {
     final gno = (d['grade_no'] ?? 0) as int;
-    final papers = [for (final p in List<Map<String, dynamic>>.from(ex['papers'] ?? const [])) if (takesSubject(d['l2'], d['l3'], '${p['name']}')) p];
+    final papers = [for (final p in List<Map<String, dynamic>>.from(ex['papers'] ?? const [])) if (takesSubject(d['l2'], d['l3'], '${p['name']}', grp: d['grp'], el: d['el'])) p];
     final m = Map<String, dynamic>.from(ex['marks'] ?? const {});
     final groups = <String, List<Map<String, dynamic>>>{'main': [], 'r3': [], 'skill': []};
     for (final p in papers) { groups[cardPart(gno, '${p['part']}', '${p['name']}', d['l3'])]!.add(p); }
