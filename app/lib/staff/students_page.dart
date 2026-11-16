@@ -17,6 +17,7 @@ import 'school_setup.dart' show StudentEditor, setupSectionsProvider, GenderPick
 import 'staff_data.dart';
 import 'staff_screens_2.dart' show StaffStudentsScreen, pickAndUpload;
 import 'staff_shell.dart';
+import 'subjects_ui.dart';
 import '../core/cache.dart';
 import 'certificates_page.dart' show pickCertificate, openCertificate, openCertificateReprint, certificateIssuedTick, tcDraftFor, tcFilledCount, buildCertificatePdf;
 import 'class_logins.dart' show resetFirstPassword, printClassSlips;
@@ -63,6 +64,23 @@ class StudentsPage extends ConsumerStatefulWidget {
 
 class _StudentsPageState extends ConsumerState<StudentsPage> {
   bool past = false; String q = ''; String filter = ''; int limit = 50;
+  // Release K7: subjects on each line; with one class chosen, tick students and set them together
+  final ed = SubjectEdits(); final Set<String> ticked = {}; String subj = ''; bool saving = false;
+  bool get classOn => !past && filter.isNotEmpty && q.trim().length < 2;
+
+  Future<void> _saveSubjects() async {
+    final n = ed.count;
+    setState(() => saving = true);
+    try {
+      await db.rpc('student_subjects_save', params: {'p_items': ed.payload()});
+      ed.clear(); ticked.clear();
+      ref.invalidate(_listProvider);
+      if (mounted) toast(context, 'Saved $n student${n == 1 ? '' : 's'}. Marks entry and report cards now follow these subjects.');
+    } catch (e) {
+      if (mounted) toast(context, _msg(e));
+    }
+    if (mounted) setState(() => saving = false);
+  }
 
   void _refresh() { ref.invalidate(_listProvider); ref.invalidate(_linksProvider); ref.invalidate(_certsProvider); }
 
@@ -84,15 +102,18 @@ class _StudentsPageState extends ConsumerState<StudentsPage> {
     final links = ref.watch(_linksProvider).value ?? const [];
     final toCheck = links.where((l) => l['status'] == 'suggested').length;
     final autoLinked = links.where((l) => l['status'] == 'auto').length;
-    final key = (q: q.trim().length >= 2 ? q.trim() : '', past: past, filter: past ? '' : filter, limit: limit);
+    final key = (q: q.trim().length >= 2 ? q.trim() : '', past: past, filter: past ? '' : filter, limit: classOn ? 300 : limit);
     final data = ref.watch(_listProvider(key));
-    final rows = [for (final x in (data.value?['rows'] as List?) ?? const []) Map<String, dynamic>.from(x as Map)];
+    final allRows = [for (final x in (data.value?['rows'] as List?) ?? const []) Map<String, dynamic>.from(x as Map)];
+    final rows = classOn && subj.isNotEmpty ? allRows.where((r) => FindBySubject.matches(ed, r, subj)).toList() : allRows;
+    final canEdit = _canEdit(ref);
+    void reset() { ticked.clear(); subj = ''; }
     final total = (data.value?['total'] ?? 0) as int;
 
     // class picker: All · each grade (all sections) · each section
     final grades = <String, Map<String, dynamic>>{};
     for (final x in sections) { final g = x['grade'] as Map?; if (g != null) grades.putIfAbsent('${g['id']}', () => Map<String, dynamic>.from(g)); }
-    final picker = PickField<String>(label: 'Class', value: filter, onChanged: (v) => setState(() { filter = v ?? ''; limit = 50; }), items: [
+    final picker = PickField<String>(label: 'Class', value: filter, onChanged: (v) => setState(() { filter = v ?? ''; limit = 50; reset(); }), items: [
       const DropdownMenuItem(value: '', child: Text('All classes')),
       for (final g in grades.values) ...[
         DropdownMenuItem(value: 'g:${g['id']}', child: Text('${g['name']} – all sections', style: const TextStyle(fontWeight: FontWeight.w700))),
@@ -115,13 +136,16 @@ class _StudentsPageState extends ConsumerState<StudentsPage> {
       if (narrow) {
         return Column(children: [for (final (i, r) in rows.indexed) ...[if (i > 0) Divider(height: 1, color: cs.outlineVariant.withValues(alpha: .5)), ListTile(
           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          leading: Avatar(_initials(r['full_name'] ?? ''), size: 40, bg: past ? Brand.surface2 : Brand.crimsonTint, fg: past ? Brand.muted : Brand.crimsonDeep),
+          leading: classOn && canEdit
+              ? Checkbox(value: ticked.contains(r['id']), onChanged: (v) => setState(() => v == true ? ticked.add(r['id']) : ticked.remove(r['id'])))
+              : Avatar(_initials(r['full_name'] ?? ''), size: 40, bg: past ? Brand.surface2 : Brand.crimsonTint, fg: past ? Brand.muted : Brand.crimsonDeep),
           title: Text(r['full_name'] ?? '', style: const TextStyle(fontWeight: FontWeight.w800)),
           subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(past
                 ? [r['admission_no'], r['last_class'], if (r['left_on'] != null) 'left ${_dmy(r['left_on'])}', r['reason']].whereType<String>().join(' · ')
-                : [r['admission_no'], r['class'], r['phone']].whereType<String>().join(' · '), style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12.5)),
+                : [r['admission_no'], r['class']].whereType<String>().join(' · '), style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12.5)),
             if (!past) tags(r),
+            if (!past) Padding(padding: const EdgeInsets.only(top: 6), child: SubjectsCell(r: r, ed: ed, canEdit: canEdit, onChange: () => setState(() {}))),
             if (past && ((r['fees_due'] ?? 0) as num) > 0) Text('Fees pending ${inr(r['fees_due'] as num)}', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5, color: context.tone(Brand.crimsonDeep))),
           ]),
           trailing: const Icon(Icons.chevron_right_rounded),
@@ -144,14 +168,21 @@ class _StudentsPageState extends ConsumerState<StudentsPage> {
       String? year(String? adm) => RegExp(r'(20\d\d)').firstMatch(adm ?? '')?.group(1);
       final header = past
           ? [('STUDENT', 6), ('ADMISSION NO.', 3), ('LAST CLASS', 3), ('LEFT ON', 3), ('TC NO.', 4), ('FATHER', 4), ('FEES PENDING', 3)]
-          : [('STUDENT', 7), ('ADMISSION NO.', 3), ('CLASS', 2), ('FATHER', 5), ('PHONE', 3)];
+          : [('STUDENT', 7), ('ADMISSION NO.', 3), ('CLASS', 2), ('FATHER', 4), ('SUBJECTS', 7)];
       return Column(children: [
         Container(padding: const EdgeInsets.fromLTRB(18, 14, 18, 14), color: Brand.gold.withValues(alpha: .07),
-            child: Row(children: [const SizedBox(width: 56), for (final (h, f) in header) cell(Text(h, style: head), f), const SizedBox(width: 28)])),
+            child: Row(children: [
+              if (classOn && canEdit) SizedBox(width: 40, child: Checkbox(
+                  value: rows.isNotEmpty && rows.every((r) => ticked.contains(r['id'])),
+                  onChanged: (v) => setState(() { for (final r in rows) { v == true ? ticked.add(r['id']) : ticked.remove(r['id']); } }))),
+              const SizedBox(width: 56), for (final (h, f) in header) cell(Text(h, style: head), f), const SizedBox(width: 28)])),
         for (final r in rows) InkWell(onTap: () => _open(r['id']), hoverColor: Brand.gold.withValues(alpha: .05), child: Container(
           padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-          decoration: BoxDecoration(border: Border(top: BorderSide(color: cs.outlineVariant.withValues(alpha: .5)))),
+          decoration: BoxDecoration(color: ticked.contains(r['id']) ? Brand.gold.withValues(alpha: .07) : null,
+              border: Border(top: BorderSide(color: cs.outlineVariant.withValues(alpha: .5)))),
           child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+            if (classOn && canEdit) SizedBox(width: 40, child: Checkbox(value: ticked.contains(r['id']),
+                onChanged: (v) => setState(() => v == true ? ticked.add(r['id']) : ticked.remove(r['id'])))),
             avatar(r), const SizedBox(width: 14),
             ...past ? [
               cell(two(r['full_name'], [gender(r['gender']), r['reason']].whereType<String>().where((x) => x.isNotEmpty).join(' · '), bold: true), 6),
@@ -163,7 +194,10 @@ class _StudentsPageState extends ConsumerState<StudentsPage> {
               cell(((r['fees_due'] ?? 0) as num) > 0 ? t(inr(r['fees_due'] as num), bold: true, c: context.tone(Brand.crimsonDeep)) : t('—'), 3),
             ] : [
               cell(Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                Text(r['full_name'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5)),
+                Row(children: [
+                  Flexible(child: Text(r['full_name'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14.5))),
+                  if (ed.changed(r)) const Padding(padding: EdgeInsets.only(left: 6), child: Pill('changed', fg: Brand.amber, bg: Brand.amberTint)),
+                ]),
                 const SizedBox(height: 4),
                 Wrap(spacing: 8, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
                   Text([if (r['roll_no'] != null) 'Roll ${r['roll_no']}', gender(r['gender'])].where((x) => x.isNotEmpty).join(' · '),
@@ -173,7 +207,7 @@ class _StudentsPageState extends ConsumerState<StudentsPage> {
               ]), 7),
               cell(two(r['admission_no'], year(r['admission_no']) == null ? null : 'joined ${year(r['admission_no'])}'), 3),
               cell(t(r['class'], bold: true), 2),
-              cell(t(r['father']), 5), cell(t(r['phone']), 3),
+              cell(t(r['father']), 4), cell(SubjectsCell(r: r, ed: ed, canEdit: canEdit, onChange: () => setState(() {})), 7),
             ],
             Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant.withValues(alpha: .6)),
           ]),
@@ -181,7 +215,9 @@ class _StudentsPageState extends ConsumerState<StudentsPage> {
       ]);
     }
 
-    return StaffPage(
+    final showBar = !past && canEdit && (ticked.isNotEmpty || !ed.isEmpty);
+    final tickedRows = allRows.where((r) => ticked.contains(r['id'])).toList();
+    final page = StaffPage(
       title: 'Students',
       subtitle: 'The whole school, class by class. Search finds anyone by name, admission number or a parent’s phone.',
       actions: [
@@ -209,17 +245,18 @@ class _StudentsPageState extends ConsumerState<StudentsPage> {
         Panel(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           PickRow(children: [
             Expanded(flex: 3, child: TextField(decoration: const InputDecoration(prefixIcon: Icon(Icons.search_rounded), hintText: 'Search by name, admission number or parent’s phone'),
-                onChanged: (v) => setState(() { q = v; limit = 50; }))),
+                onChanged: (v) => setState(() { q = v; limit = 50; reset(); }))),
             const SizedBox(width: 10),
             SegmentedButton<bool>(
               segments: const [ButtonSegment(value: false, label: Text('Current')), ButtonSegment(value: true, label: Text('Past students'))],
-              selected: {past}, onSelectionChanged: (v) => setState(() { past = v.first; limit = 50; }), showSelectedIcon: false),
+              selected: {past}, onSelectionChanged: (v) => setState(() { past = v.first; limit = 50; reset(); }), showSelectedIcon: false),
             if (!past) ...[const SizedBox(width: 10), Expanded(flex: 2, child: picker)],
           ]),
         ])),
+        if (classOn && allRows.isNotEmpty) FindBySubject(rows: allRows, ed: ed, selected: subj, onPick: (k) => setState(() => subj = k)),
         Padding(padding: const EdgeInsets.fromLTRB(4, 0, 4, 8), child: Row(children: [
           Expanded(child: Text(data.isLoading && data.value == null ? 'Loading…'
-              : '${NumberFormat.decimalPattern('en_IN').format(total)} ${past ? 'past ' : ''}student${total == 1 ? '' : 's'}${q.trim().length >= 2 ? ' found in the whole school' : ''}${rows.length < total ? ' · showing ${rows.length}' : ''}',
+              : '${NumberFormat.decimalPattern('en_IN').format(total)} ${past ? 'past ' : ''}student${total == 1 ? '' : 's'}${q.trim().length >= 2 ? ' found in the whole school' : ''}${classOn && subj.isNotEmpty ? ' · showing ${rows.length}' : !classOn && rows.length < total ? ' · showing ${rows.length}' : ''}',
               style: TextStyle(color: cs.onSurfaceVariant, fontWeight: FontWeight.w700))),
           if (!past && filter.startsWith('s:') && sections.any((x) => 's:${x['id']}' == filter)) TextButton.icon(
             onPressed: () => printClassSlips(context, ref, filter.substring(2), sectionLabel(sections.firstWhere((x) => 's:${x['id']}' == filter))),
@@ -232,15 +269,29 @@ class _StudentsPageState extends ConsumerState<StudentsPage> {
           error: (e, _) => Padding(padding: const EdgeInsets.all(20), child: Text(_msg(e), style: const TextStyle(color: Brand.crimsonDeep))),
           data: (_) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             table(),
-            if (rows.length < total) Padding(padding: const EdgeInsets.all(12), child: Center(child: OutlinedButton(
+            if (!classOn && rows.length < total) Padding(padding: const EdgeInsets.all(12), child: Center(child: OutlinedButton(
                 onPressed: () => setState(() => limit += 50), child: Text('Show ${(total - rows.length).clamp(0, 50)} more')))),
           ]),
         )),
         NoteBox(past
             ? 'Past students stay here for ever. Open one for their TC, marksheet, report cards and receipts.'
-            : 'Open a student for the full page. Suspend is for a few days; Inactive is for a student who is leaving — the Principal approves it.'),
+            : classOn && canEdit
+                ? 'Tick students to set their subjects together, or change one student on their line. Nothing is saved until you press Save. Open a student for the full page.'
+                : 'Choose a class to tick students and find them by subject. Open a student for the full page. Suspend is for a few days; Inactive is for a student who is leaving — the Principal approves it.'),
+        if (showBar) const SizedBox(height: 110),
       ]),
     );
+    if (!showBar) return page;
+    return Stack(children: [
+      Positioned.fill(child: page),
+      Positioned(left: 0, right: 0, bottom: 0, child: SubjectsBar(
+        ticked: tickedRows, ed: ed, busy: saving,
+        onSet: (k, v) => setState(() { for (final r in tickedRows) { ed.set(r, k, v); } }),
+        onClear: () => setState(() => ticked.clear()),
+        onUndo: () => setState(() => ed.clear()),
+        onSave: _saveSubjects,
+      )),
+    ]);
   }
 }
 
@@ -430,12 +481,12 @@ class _Section extends StatelessWidget {
 
 String? _gradeRoman(Map<String, dynamic>? cls) => cls?['grade_code'] as String?;
 const _romanN = {'I': 1, 'II': 2, 'III': 3, 'IV': 4, 'V': 5, 'VI': 6, 'VII': 7, 'VIII': 8, 'IX': 9, 'X': 10, 'XI': 11, 'XII': 12};
-/// 2nd language: Grade I – X. 3rd language: Grade VI – IX this year (VI – X from 2027-28, as the batch moves up).
+/// 2nd language: Grade I – X. 3rd language: Grade I – IX this year (I – X from 2027-28, as the batch moves up).
 (bool, bool) _languagesFor(Map<String, dynamic>? cls) {
   final n = _romanN[_gradeRoman(cls) ?? ''] ?? 0;
   final yearStart = int.tryParse(RegExp(r'^\d{4}').stringMatch('${cls?['year_label'] ?? ''}') ?? '') ?? DateTime.now().year;
   final top3 = (9 + (yearStart - 2026)).clamp(9, 10);
-  return (n >= 1 && n <= 10, n >= 6 && n <= top3);
+  return (n >= 1 && n <= 10, n >= 1 && n <= top3);
 }
 
 class _DetailsTab extends ConsumerWidget {
@@ -557,6 +608,10 @@ class _DetailsTab extends ConsumerWidget {
           _kv(context, 'Mother tongue', r['mother_tongue']),
           if (show2) _kv(context, '2nd language', x['second_language']),
           if (show3) _kv(context, '3rd language', x['third_language']),
+          if ((_romanN[_gradeRoman(cls) ?? ''] ?? 0) >= 11) ...[
+            if (x['subject_group'] != null) _kv(context, 'Group', x['subject_group']),
+            _kv(context, 'Elective', x['elective']),
+          ],
           _kv(context, 'Place of birth', r['place_of_birth']),
           if (prof['can_edit'] == true) _kv(context, 'Religion', x['religion'], lock: true),
           if (prof['can_edit'] == true) _kv(context, 'Category', x['category'], lock: true),
