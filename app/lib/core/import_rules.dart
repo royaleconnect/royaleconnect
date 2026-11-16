@@ -39,6 +39,11 @@ const importKinds = <ImpKind>[
     ImpField('blood_group', 'Blood group', ['blood group', 'blood', 'bloodgroup']),
     ImpField('house', 'House', ['house', 'house name']),
     ImpField('admission_type', 'Admission type', ['admission type', 'student type', 'boarding type', 'day scholar boarder']),
+    // Release K7: subjects (checked against the class when saved)
+    ImpField('second_language', '2nd language (I – X)', ['2nd language', 'second language', 'ii language', 'language 2', '2nd lang', 'second lang', 'lang 2', 'l2', 'ii lang']),
+    ImpField('third_language', '3rd language (I – IX)', ['3rd language', 'third language', 'iii language', 'language 3', '3rd lang', 'third lang', 'lang 3', 'l3', 'iii lang']),
+    ImpField('subject_group', 'Group (XI – XII: PCM / PCB)', ['group', 'subject group', 'science group', 'stream group', 'combination group']),
+    ImpField('elective', 'Elective (XI – XII)', ['elective', 'elective subject', 'optional subject', 'optional', '5th subject', 'fifth subject', 'additional subject']),
   ]),
   ImpKind('staff', 'Staff', 'One row per staff member. Matched by email: new emails are added, existing ones updated. Drivers and bus assistants are set up in Transport instead.',
       'staff.csv', 'admin_import_staff', ['it_admin', 'principal'], [
@@ -465,6 +470,10 @@ CheckResult checkRows({
         }
         final g = parseGender(cell('gender'));
         if (g != null) rec['gender'] = g;
+        for (final k in const ['second_language', 'third_language', 'subject_group', 'elective']) {
+          final v = cell(k);
+          if (v.isNotEmpty) rec[k] = v;
+        }
 
       case 'staff':
         final email = cell('email').toLowerCase();
