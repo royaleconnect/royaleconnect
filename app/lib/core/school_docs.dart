@@ -322,7 +322,7 @@ Future<Uint8List> buildReportCardPdf(String reportCardId) async {
   final l2 = data['l2'] as String?, l3 = data['l3'] as String?;
   final isTest = exam?['kind'] == 'test';
   final marks = {for (final m in List<Map<String, dynamic>>.from(data['marks'] ?? const [])) if (m['exam_id'] == exam?['id']) m['subject_id'] as String: m};
-  final papers = [for (final p in List<Map<String, dynamic>>.from(data['papers'] ?? const [])) if (p['exam_id'] == exam?['id'] && takesSubject(l2, l3, '${p['subject']}')) p];
+  final papers = [for (final p in List<Map<String, dynamic>>.from(data['papers'] ?? const [])) if (p['exam_id'] == exam?['id'] && takesSubject(l2, l3, '${p['subject']}', grp: data['grp'] as String?, el: data['el'] as String?)) p];
   // old papers without their own maximum: the exam's (internal 20 for a term exam)
   num mi(Map p) => (p['mi'] as num?) ?? (isTest ? 0 : (exam?['max_marks'] as num? ?? 100) >= 100 ? 20 : 0);
   num me(Map p) => (p['me'] as num?) ?? ((exam?['max_marks'] as num? ?? 100) - mi(p));
