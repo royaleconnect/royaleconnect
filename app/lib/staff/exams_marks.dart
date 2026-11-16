@@ -442,7 +442,7 @@ class _StaffMarksScreenState extends ConsumerState<StaffMarksScreen> {
     var missing = 0;
     for (final st in students) {
       for (final p in papers) {
-        if (!takesSubject(st['l2'], st['l3'], '${p['name']}')) continue;
+        if (!takesSubject(st['l2'], st['l3'], '${p['name']}', grp: st['grp'], el: st['el'])) continue;
         final e = _text(_key(st['id'], p['subject_id'], 'e')), i = _text(_key(st['id'], p['subject_id'], 'i'));
         if (e.trim().isEmpty && (p['mi'] == null || i.trim().isEmpty)) missing++;
       }
@@ -464,7 +464,7 @@ class _StaffMarksScreenState extends ConsumerState<StaffMarksScreen> {
           SizedBox(width: 44, child: Text('${st['roll'] ?? ''}', style: TextStyle(color: cs.onSurfaceVariant))),
           SizedBox(width: 220, child: Text('${st['name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700))),
           for (final p in papers) SizedBox(width: groupW(p), child: Row(children: [
-            for (final f in fields(p)) Padding(padding: const EdgeInsets.only(right: gap), child: SizedBox(width: boxW, child: !takesSubject(st['l2'], st['l3'], '${p['name']}')
+            for (final f in fields(p)) Padding(padding: const EdgeInsets.only(right: gap), child: SizedBox(width: boxW, child: !takesSubject(st['l2'], st['l3'], '${p['name']}', grp: st['grp'], el: st['el'])
               ? Center(child: Tooltip(message: 'Not this student’s language', child: Text('—', style: TextStyle(color: cs.onSurfaceVariant))))
               : _MarkBox(key: ValueKey('${_key(st['id'], p['subject_id'], f)}|$loadedFor'), initial: _text(_key(st['id'], p['subject_id'], f)),
                   max: (f == 'i' ? p['mi'] : p['me']) as num?, pending: pending.containsKey(_key(st['id'], p['subject_id'], f)),
