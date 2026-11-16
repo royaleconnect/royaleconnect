@@ -141,6 +141,19 @@ class _ImportTabState extends ConsumerState<ImportTab> {
           }
           if (x['error'] != null) result.failed.add(Problem(row?.line ?? x['i'], row?.who ?? '', '${x['error']}', blocking: st == 'error'));
         }
+        // Release K7: languages, group and elective go in after the students exist (each is checked against the class)
+        if (k.key == 'students') {
+          final subs = [for (final r in chunk) if (r.rec.keys.any((x) => const {'second_language', 'third_language', 'subject_group', 'elective'}.contains(x)))
+            {'i': r.line, 'admission_no': r.rec['admission_no'], for (final x in const ['second_language', 'third_language', 'subject_group', 'elective']) if (r.rec[x] != null) x: r.rec[x]}];
+          if (subs.isNotEmpty) {
+            final sres = await db.rpc('student_subjects_import', params: {'p_rows': subs});
+            for (final x in (sres as List)) {
+              if (x['error'] == null) continue;
+              final row = byLine[x['i']];
+              result.failed.add(Problem(row?.line ?? x['i'], row?.who ?? '', '${x['error']}', blocking: false));
+            }
+          }
+        }
         if (mounted) setState(() => progress = (at + chunk.length) / c.ready.length);
       }
       ref.invalidate(setupSectionsProvider); ref.invalidate(staffListProvider); ref.invalidate(routesProvider); ref.invalidate(studentSearchProvider);
