@@ -1,3 +1,4 @@
+import 'package:go_router/go_router.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -36,11 +37,11 @@ class _SchoolSettingsScreenState extends ConsumerState<SchoolSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(sessionProvider).value!;
-    if (!s.hasRole('it_admin') && !s.hasRole('principal')) return const StaffPage(title: 'School settings', body: NoteBox('Only IT can change school settings.'));
+    if (!s.hasRole('it_admin') && !s.hasRole('principal')) return const StaffPage(title: 'Settings', body: NoteBox('Only IT can change the settings.'));
     final settings = ref.watch(appSettingsProvider);
     return StaffPage(
-      title: 'School settings', hub: Hub.schoolSetup,
-      subtitle: 'Who can use what, which features are on, the move-up dates and the school’s details. Changes apply at once.',
+      title: 'Settings', hub: Hub.schoolSetup,
+      subtitle: 'Every switch and rule of the school in one place. Changes apply at once.',
       body: settings.when(
         loading: () => const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator())),
         error: (e, _) => Text(_msg(e)),
@@ -49,12 +50,22 @@ class _SchoolSettingsScreenState extends ConsumerState<SchoolSettingsScreen> {
             for (final (i, l, ic) in [(0, 'Who can use what', Icons.lock_person_rounded), (1, 'Sections on / off', Icons.toggle_on_rounded), (2, 'Year dates', Icons.event_repeat_rounded), (3, 'School details', Icons.apartment_rounded), if (s.hasRole('it_admin')) (4, 'Branches', Icons.account_tree_rounded)])
               ChoiceChip(avatar: Icon(ic, size: 18, color: tab == i ? Colors.white : Brand.crimsonDeep), label: Text(l), selected: tab == i, showCheckmark: false,
                   selectedColor: Brand.crimson, labelStyle: TextStyle(fontWeight: FontWeight.w800, color: tab == i ? Colors.white : null), onSelected: (_) => setState(() => tab = i)),
+            // subjects, marks, grades, report card: the school's rules (IT)
+            if (s.hasRole('it_admin')) ActionChip(avatar: const Icon(Icons.rule_rounded, size: 18, color: Brand.crimsonDeep), label: const Text('School rules'), labelStyle: const TextStyle(fontWeight: FontWeight.w800), onPressed: () => context.pushReplacement('/staff/rules')),
           ]),
           const SizedBox(height: 16),
           switch (tab) {
             0 => _AccessTab(settings: m),
             1 => _FeaturesTab(settings: m),
-            2 => _YearTab(settings: m),
+            2 => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                // the year-end jobs are here all year (the card on Today shows only from February)
+                Wrap(spacing: 10, runSpacing: 8, children: [
+                  OutlinedButton.icon(onPressed: () => context.go('/staff/year-end'), icon: const Icon(Icons.event_available_rounded, size: 18), label: const Text('Year-end checklist')),
+                  OutlinedButton.icon(onPressed: () => context.go('/staff/sections'), icon: const Icon(Icons.view_module_rounded, size: 18), label: const Text('New sections')),
+                ]),
+                const SizedBox(height: 12),
+                _YearTab(settings: m),
+              ]),
             4 => const BranchesTab(),
             _ => _DetailsTab(settings: m),
           },
@@ -101,11 +112,11 @@ class _AccessTabState extends ConsumerState<_AccessTab> {
     String? group;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Panel(title: 'Who can use what', trailing: FilledButton(onPressed: busy ? null : _save, child: Text(busy ? 'Saving…' : 'Save')), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('Tick the roles that see each page in their menu. Only roles that are allowed to see that information can be ticked.', style: TextStyle(color: cs.onSurfaceVariant)),
-        for (final m in [...staffMenu, ...staffSubPages]) if (!m.locked) ...[
-          if (group != m.group) ...[Padding(padding: const EdgeInsets.only(top: 16, bottom: 4), child: Text(group = m.group, style: const TextStyle(fontSize: 11.5, letterSpacing: 1.4, fontWeight: FontWeight.w800, color: Brand.muted)))],
+        Text('Tick the roles that see each page. A line with ↳ is a tab inside the page above it. Only roles that are allowed to see that information can be ticked.', style: TextStyle(color: cs.onSurfaceVariant)),
+        for (final (m, isTab) in staffAccessOrder()) if (!m.locked) ...[
+          if (!isTab && group != m.group) ...[Padding(padding: const EdgeInsets.only(top: 16, bottom: 4), child: Text(group = m.group, style: const TextStyle(fontSize: 11.5, letterSpacing: 1.4, fontWeight: FontWeight.w800, color: Brand.muted)))],
           Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: CardRow(children: [
-            SizedBox(width: isNarrow(context) ? null : 190, child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(m.icon, size: 18, color: Brand.crimson), const SizedBox(width: 8), Flexible(child: Text(m.label, style: const TextStyle(fontWeight: FontWeight.w800)))])),
+            SizedBox(width: isNarrow(context) ? null : 190, child: Row(mainAxisSize: MainAxisSize.min, children: [if (isTab) const SizedBox(width: 18), Icon(m.icon, size: isTab ? 15 : 18, color: isTab ? Brand.muted : Brand.crimson), const SizedBox(width: 8), Flexible(child: Text(isTab ? '↳ ${m.label}' : m.label, style: const TextStyle(fontWeight: FontWeight.w800)))])),
             const SizedBox(width: 10),
             Expanded(child: Wrap(spacing: 6, runSpacing: 6, children: [
               for (final r in maxRolesOf(m)) FilterChip(
