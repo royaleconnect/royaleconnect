@@ -1,3 +1,4 @@
+import 'part8_extras.dart' show VoteLinkPanel;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -240,9 +241,8 @@ final _electionProvider = FutureProvider.autoDispose.family<Map<String, dynamic>
   final e = await db.from('council_election').select('id,opens_at,closes_at,voter_grades,status,council_candidate(id,post_id,full_name,class_label,slogan,photo_path,sort)').eq('term_id', termId).maybeSingle();
   if (e == null) return null;
   final m = Map<String, dynamic>.from(e);
-  if (m['status'] != 'draft') {
-    try { m['results'] = Map<String, dynamic>.from(await db.rpc('council_results', params: {'p_election': m['id']}) as Map); } catch (_) {}
-  }
+  // totals (and the voting link) for IT / the Principal; other staff simply do not get them
+  try { m['results'] = Map<String, dynamic>.from(await db.rpc('council_results', params: {'p_election': m['id']}) as Map); } catch (_) {}
   return m;
 });
 
@@ -342,6 +342,7 @@ class _ElectionTabState extends ConsumerState<_ElectionTab> {
               if (status != 'draft') OutlinedButton.icon(onPressed: busy ? null : _refresh, icon: const Icon(Icons.refresh_rounded, size: 18), label: const Text('Refresh totals')),
             ]),
           ])),
+          if (res != null && status != 'published') VoteLinkPanel(electionId: '${e['id']}', linkKey: res['link_key'] as String?, byLink: ((res['by_link'] ?? 0) as num).toInt(), open: status == 'open', onChanged: _refresh),
           for (final p in posts) Builder(builder: (_) {
             final list = cands.where((k) => k['post_id'] == p['id']).toList()..sort((a, b) => (votes[b['id']] ?? 0).compareTo(votes[a['id']] ?? 0));
             final total = list.fold<int>(0, (a, k) => a + (votes[k['id']] ?? 0));
