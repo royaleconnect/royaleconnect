@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
@@ -79,7 +80,7 @@ Future<_Kit> _kit() async {
   return _Kit(base, bold, serif, rupee, logo, await loadSchoolInfo());
 }
 
-pw.Widget _header(_Kit k, {bool contact = true}) {
+pw.Widget _header(_Kit k, {bool contact = true, pw.MemoryImage? badge}) {
   final s = k.school;
   final reach = [if (contact && s.email.isNotEmpty) s.email, if (contact && s.phone.isNotEmpty) s.phone].join(' · ');
   return pw.Container(
@@ -94,6 +95,7 @@ pw.Widget _header(_Kit k, {bool contact = true}) {
         pw.Text(s.address, style: const pw.TextStyle(fontSize: 8.5, color: _muted)),
         if (reach.isNotEmpty) pw.Text(reach, style: const pw.TextStyle(fontSize: 8.5, color: _muted)),
       ])),
+      if (badge != null) pw.Padding(padding: const pw.EdgeInsets.only(right: 8), child: pw.Image(badge, height: 44)),
       if (s.affiliation.isNotEmpty) pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
         pw.Text('Affiliated to CBSE', style: const pw.TextStyle(fontSize: 7.5, color: _muted)),
         pw.Text('Affiliation No. ${s.affiliation}', style: pw.TextStyle(font: k.bold, fontSize: 8)),
@@ -288,39 +290,78 @@ class _Grades {
   final List<Map<String, dynamic>> scale;
   _Grades(this.scale);
   String of(num pct) {
+    // highest first: the first grade whose "from" the mark reaches (no gaps between two grades)
     for (final g in scale) {
-      if (pct >= (g['min_pct'] as num) && pct <= (g['max_pct'] as num) + .0001) return g['grade_label'];
+      if (pct >= (g['min_pct'] as num)) return g['grade_label'];
     }
-    if (scale.isNotEmpty) return pct > 100 ? scale.first['grade_label'] : scale.last['grade_label'];
-    return pct >= 91 ? 'A1' : pct >= 81 ? 'A2' : pct >= 71 ? 'B1' : pct >= 61 ? 'B2' : pct >= 51 ? 'C1' : pct >= 41 ? 'C2' : pct >= 33 ? 'D' : 'E';
+    if (scale.isNotEmpty) return scale.last['grade_label'];
+    return cbseGrade(pct);
   }
   String legend() {
     if (scale.isEmpty) return '91–100 A1 · 81–90 A2 · 71–80 B1 · 61–70 B2 · 51–60 C1 · 41–50 C2 · 33–40 D · below 33 E';
-    return scale.map((g) => (g['min_pct'] as num) <= 0 ? 'below ${_n(g['max_pct'] as num, up: true)} ${g['grade_label']}' : '${_n(g['min_pct'] as num)}–${_n(g['max_pct'] as num)} ${g['grade_label']}').join(' · ');
+    return scale.map((g) => (g['min_pct'] as num) <= 0 ? 'below ${(g['max_pct'] as num).ceil()} ${g['grade_label']}' : '${(g['min_pct'] as num).ceil()}–${(g['max_pct'] as num).floor()} ${g['grade_label']}').join(' · ');
   }
-  static String _n(num v, {bool up = false}) => (up ? v.ceil() : v.floor()).toString();
 }
 
 String _fmt(num? v) => v == null ? '—' : (v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(1));
 
-Future<Uint8List> buildReportCardPdf(String reportCardId) async {
+/// Everything one report card needs (read once, so a whole class can be loaded side by side).
+class _CardData {
+  final Map<String, dynamic> rc, st, data; final Map<String, dynamic>? en; final _Grades grades;
+  _CardData(this.rc, this.st, this.en, this.grades, this.data);
+}
+
+Future<_CardData> _loadCard(String reportCardId) async {
   final rc = await db.from('report_card')
       .select('id,student_id,academic_year_id,term,status,working_days,days_present,height_cm,weight_kg,remarks,co_scholastic,published_at,academic_year:academic_year_id(label)')
       .eq('id', reportCardId).single();
   final sid = rc['student_id'] as String;
   final yearId = rc['academic_year_id'] as String;
-  final term = rc['term'] as String;
+  final r = await Future.wait<dynamic>([
+    _student(sid), _enrolment(sid, yearId),
+    db.from('grading_scale').select('min_pct,max_pct,grade_label').eq('academic_year_id', yearId).order('min_pct', ascending: false),
+    // families cannot read raw marks, so everything comes through report_card_data (only for a card the viewer may see)
+    db.rpc('report_card_data', params: {'rc_id': reportCardId}),
+  ]);
+  return _CardData(rc, Map<String, dynamic>.from(r[0] as Map), r[1] == null ? null : Map<String, dynamic>.from(r[1] as Map),
+      _Grades(List<Map<String, dynamic>>.from(r[2] as List)), Map<String, dynamic>.from(r[3] as Map));
+}
+
+/// The CBSE logo the school uploaded in School rules (null when there is none).
+Future<pw.MemoryImage?> _cbseLogo() async {
+  try {
+    final r = await db.from('school_picture').select('data').eq('key', 'cbse_logo').maybeSingle();
+    final d = (r?['data'] ?? '').toString();
+    return d.isEmpty ? null : pw.MemoryImage(base64Decode(d));
+  } catch (_) { return null; }
+}
+
+/// One report card. [header] false leaves the top empty for the school's pre-printed paper.
+Future<Uint8List> buildReportCardPdf(String reportCardId, {bool? header}) => buildReportCardsPdf([reportCardId], header: header);
+
+/// Many report cards in one file (Print the whole class), in the order given.
+Future<Uint8List> buildReportCardsPdf(List<String> ids, {bool? header}) async {
   final k = await _kit();
-  final st = await _student(sid);
-  final en = await _enrolment(sid, yearId);
-  final grades = _Grades(List<Map<String, dynamic>>.from(await db.from('grading_scale').select('min_pct,max_pct,grade_label').eq('academic_year_id', yearId).order('min_pct', ascending: false)));
-  // families cannot read raw marks, so everything comes through report_card_data (only for a card the viewer may see)
-  final data = Map<String, dynamic>.from(await db.rpc('report_card_data', params: {'rc_id': reportCardId}) as Map);
+  final cbse = await _cbseLogo();
+  final cards = <_CardData>[];
+  for (var i = 0; i < ids.length; i += 6) {
+    cards.addAll(await Future.wait([for (final id in ids.skip(i).take(6)) _loadCard(id)]));
+  }
+  final doc = pw.Document(title: cards.length == 1 ? 'Report card – ${cards.first.st['full_name']}' : 'Report cards', author: k.school.name, theme: _theme(k));
+  for (final c in cards) { _addCard(doc, k, c, header: header, cbse: cbse); }
+  return doc.save();
+}
+
+void _addCard(pw.Document doc, _Kit k, _CardData c, {bool? header, pw.MemoryImage? cbse}) {
+  final rc = c.rc, st = c.st, en = c.en, grades = c.grades, data = c.data;
+  final term = rc['term'] as String;
   final exams = List<Map<String, dynamic>>.from(data['exams'] ?? const []);
   final exam = exams.where((e) => e['id'] == data['main_exam']).firstOrNull ?? exams.firstOrNull;
   final gno = (data['grade_no'] ?? 0) as int;
   final l2 = data['l2'] as String?, l3 = data['l3'] as String?;
   final isTest = exam?['kind'] == 'test';
+  final withHeader = header ?? ('${data['header'] ?? 'on'}' != 'off');
+  final showCbse = '${data['cbse'] ?? 'on'}' != 'off' ? cbse : null;
   final marks = {for (final m in List<Map<String, dynamic>>.from(data['marks'] ?? const [])) if (m['exam_id'] == exam?['id']) m['subject_id'] as String: m};
   final papers = [for (final p in List<Map<String, dynamic>>.from(data['papers'] ?? const [])) if (p['exam_id'] == exam?['id'] && takesSubject(l2, l3, '${p['subject']}', grp: data['grp'] as String?, el: data['el'] as String?)) p];
   // old papers without their own maximum: the exam's (internal 20 for a term exam)
@@ -332,13 +373,46 @@ Future<Uint8List> buildReportCardPdf(String reportCardId) async {
   String subjectName(String s) {
     final n = s.toUpperCase();
     if (gno < 1 || gno > 10) return n;
-    if (s.toLowerCase() == 'english') return 'I LANG ENGLISH';
+    if (s.toLowerCase() == 'english') return 'ENGLISH';
     if ((l2 ?? '').toLowerCase() == s.toLowerCase()) return 'II LANG $n';
-    if ((l3 ?? '').toLowerCase() == s.toLowerCase()) return 'III LANG $n';
+    if ((l3 ?? '').toLowerCase() == s.toLowerCase()) return gno <= 5 ? 'ADD. LANG $n' : 'III LANG $n';
     return n;
   }
 
-  // one table: Internals + Written (or Theory + Practical), Total and Grade; tests and I – V: one mark
+  // Part 1 with the internal assessment in its parts: SUBJECT | PA | MA | … | TOTAL | WRITTEN | TOTAL | GRADE
+  pw.Widget partsTable(List<Map<String, dynamic>> list) {
+    final cols = <(String, num)>[];
+    for (final p in list) { for (final c in partsOf(p)) { if (!cols.any((x) => x.$1 == c.$1)) cols.add(c); } }
+    final sameW = list.every((p) => me(p) == me(list.first)), sameI = list.every((p) => mi(p) == mi(list.first));
+    final head = <String>['Subject', for (final c in cols) c.$1, sameI ? 'Internal (${fmtMark(mi(list.first))})' : 'Internal',
+      sameW ? 'Written (${fmtMark(me(list.first))})' : 'Written', 'Total (100)', 'Grade'];
+    num got = 0, max = 0; var counted = 0;
+    final rows = <List<String>>[];
+    for (final p in list) {
+      final m = marks[p['subject_id']];
+      final ab = m?['absent'] == true;
+      final i = m?['internal'] as num?, e = ab ? null : m?['external'] as num?;
+      final pv = m?['parts'] is Map ? Map<String, dynamic>.from(m!['parts'] as Map) : const <String, dynamic>{};
+      final mine = {for (final c in partsOf(p)) c.$1};
+      final has = i != null || e != null || ab;
+      final t = (i ?? 0) + (e ?? 0), mx = mi(p) + me(p);
+      if (has) { got += t; max += mx; counted++; }
+      rows.add([subjectName('${p['subject']}'),
+        for (final c in cols) !mine.contains(c.$1) ? '' : pv[c.$1] == null ? '—' : fmtMark(pv[c.$1] as num),
+        i == null ? '—' : fmtMark(i), ab ? 'AB' : e == null ? '—' : fmtMark(e),
+        has ? fmtMark(t) : '—', ab ? 'Absent' : has && mx > 0 ? grades.of(t * 100 / mx) : 'Not assessed']);
+    }
+    final widths = <int, pw.TableColumnWidth>{0: const pw.FlexColumnWidth(3.4)};
+    for (var i = 1; i <= cols.length; i++) { widths[i] = const pw.FlexColumnWidth(.8); }
+    for (var i = cols.length + 1; i < head.length; i++) { widths[i] = const pw.FlexColumnWidth(1.35); }
+    return pw.Table(columnWidths: widths, children: [
+      _headRow(k, head),
+      for (final r in rows) _row(k, r, boldCol: head.length - 2),
+      if (counted > 0) _row(k, ['Total', for (final _ in cols) '', '', '', '${fmtMark(got)} / ${fmtMark(max)}', grades.of(got * 100 / max)], total: true),
+    ]);
+  }
+
+  // one table: Internals + Written (or Theory + Practical), Total and Grade; tests: one mark
   pw.Widget table(List<Map<String, dynamic>> list, {bool withTotal = true, bool result = false}) {
     final two = list.any((p) => mi(p) > 0);
     final (li, le) = markLabels(gno, '${list.first['part'] ?? 'main'}');
@@ -353,15 +427,15 @@ Future<Uint8List> buildReportCardPdf(String reportCardId) async {
     for (final p in list) {
       final m = marks[p['subject_id']];
       final ab = m?['absent'] == true;
-      final i = m?['internal'] as num?, e = m?['external'] as num?;
-      final has = i != null || e != null;
+      final i = m?['internal'] as num?, e = ab ? null : m?['external'] as num?;
+      final has = i != null || e != null || ab;
       final t = (i ?? 0) + (e ?? 0), mx = mi(p) + me(p);
       String c(num? v, num m) => v == null ? '—' : same ? fmtMark(v) : '${fmtMark(v)} / ${fmtMark(m)}';
       if (has) { got += t; max += mx; counted++; }
       rows.add([subjectName('${p['subject']}'),
         if (two) ...(theoryFirst ? [ab ? 'AB' : c(e, me(p)), c(i, mi(p))] : [c(i, mi(p)), ab ? 'AB' : c(e, me(p))]) else (ab ? 'AB' : c(e, me(p))),
-        if (two) has ? fmtMark(t) : '—', has && mx > 0 ? grades.of(t * 100 / mx) : (ab ? '—' : 'Not assessed'),
-        if (result) has && mx > 0 ? (t * 100 / mx >= 33 ? 'QUALIFIED' : 'RE-ASSESSMENT') : '—']);
+        if (two) has ? fmtMark(t) : '—', ab ? 'Absent' : has && mx > 0 ? grades.of(t * 100 / mx) : 'Not assessed',
+        if (result) ab ? '—' : has && mx > 0 ? (t * 100 / mx >= 33 ? 'QUALIFIED' : 'RE-ASSESSMENT') : '—']);
     }
     final widths = <int, pw.TableColumnWidth>{0: const pw.FlexColumnWidth(3)};
     for (var i = 1; i < head.length; i++) { widths[i] = const pw.FlexColumnWidth(1.3); }
@@ -374,40 +448,52 @@ Future<Uint8List> buildReportCardPdf(String reportCardId) async {
 
   final co = rc['co_scholastic'] is Map ? Map<String, dynamic>.from(rc['co_scholastic']) : <String, dynamic>{};
   co.remove('Work Education');   // not part of RCIS's co-scholastic areas
+  String coOf(String area) { for (final e in co.entries) { if (e.key.trim().toLowerCase() == area.trim().toLowerCase()) return '${e.value}'; } return '—'; }
+  final areas = [for (final a in '${data['co_areas'] ?? ''}'.split(',')) if (a.trim().isNotEmpty) a.trim()];
+  final life = [for (final a in '${data['life'] ?? ''}'.split('|')) if (a.trim().isNotEmpty) a.trim()];
+  final known = {for (final a in [...areas, ...life]) a.toLowerCase()};
+  final extra = [for (final e in co.keys) if (!known.contains(e.trim().toLowerCase())) e];   // areas filled in before the list changed
+  final three = (data['scale'] ?? 5) == 3;
   final wd = rc['working_days'] as num?, dp = rc['days_present'] as num?;
   final year = '${rc['academic_year']?['label'] ?? AppConfig.academicYearLabel}';
-  final title = '${(exam?['name'] ?? term).toString().toUpperCase()} PERFORMANCE RECORD';
+  final title = isTest ? '${(exam?['name'] ?? term).toString().toUpperCase()} · MARKS' : 'PERFORMANCE RECORD';
   final part = (data['participation'] ?? '').toString().trim();
-  final doc = pw.Document(title: 'Report card – ${st['full_name']} – ${exam?['name'] ?? term}', author: k.school.name, theme: _theme(k));
+  final coaching = '${data['coaching'] ?? ''}'.trim();
+  final stream = '${data['stream'] ?? ''}'.split('·').first.trim().replaceAll('Two-day ', '');
+  final gcode = '${en?['section']?['grade']?['code'] ?? ''}', sname = '${en?['section']?['name'] ?? ''}';
+  final cls = gno >= 11 ? '$gcode${stream.isEmpty ? '' : '-$stream'} / $sname${coaching.isEmpty ? '' : ' $coaching'}' : _cls(en);
+  final mainHasParts = !isTest && groups['main']!.any((p) => partsOf(p).isNotEmpty);
   doc.addPage(pw.MultiPage(
     pageFormat: PdfPageFormat.a4,
-    margin: const pw.EdgeInsets.fromLTRB(40, 34, 40, 30),
+    margin: const pw.EdgeInsets.fromLTRB(36, 30, 36, 26),
     footer: (_) => _verifyFoot(k, verifyUrl('c', rc['id']), [
       'Scan to check this report card on the school’s system.',
       'Issued through Royale Connect${rc['published_at'] == null ? '' : ' on ${_dmy(rc['published_at'])}'}.',
     ]),
     build: (_) => [
-      _header(k),
-      _title(k, title, year),
+      if (withHeader) _header(k, badge: showCbse) else pw.SizedBox(height: 78),   // pre-printed paper: the top stays empty
+      _title(k, title, isTest ? year : '${(exam?['name'] ?? term).toString().toUpperCase()} · $year'),
       _infoBox(k, [
         ('Name', (st['full_name'] as String).toUpperCase()), ('Admission No.', '${st['admission_no'] ?? ''}'),
-        ('Class / Section', _cls(en)), ('Date of birth', st['dob'] == null ? '' : DateFormat('d MMM yyyy').format(DateTime.parse(st['dob']))),
+        ('Class / Section', cls), ('Date of birth', st['dob'] == null ? '' : DateFormat('d MMM yyyy').format(DateTime.parse(st['dob']))),
         ('Father', '${st['father_name'] ?? ''}'), ('Mother', '${st['mother_name'] ?? ''}'),
       ]),
       _section(k, isTest ? 'Scholastic' : 'Part 1 · Scholastic'),
       if (groups['main']!.isEmpty) pw.Text('Marks for this ${isTest ? 'test' : 'exam'} have not been entered yet.', style: const pw.TextStyle(fontSize: 9, color: _muted))
+      else if (mainHasParts) partsTable(groups['main']!)
       else table(groups['main']!, withTotal: !isTest),   // periodic tests: marks and grade per subject, no total
-      if (groups['r3']!.isNotEmpty) ...[pw.SizedBox(height: 6), _section(k, 'Third language · school-assessed'), table(groups['r3']!, withTotal: false, result: true)],
+      if (groups['r3']!.isNotEmpty) ...[pw.SizedBox(height: 6), _section(k, 'Third language · school-assessed, not in the total'), table(groups['r3']!, withTotal: false, result: true)],
       if (groups['skill']!.isNotEmpty) ...[pw.SizedBox(height: 6), table(groups['skill']!, withTotal: false)],
       if (!isTest) ...[
         pw.SizedBox(height: 6),
         pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
           pw.Expanded(child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
-            _section(k, 'Part 2 · Co-scholastic (A – E)'),
-            if (co.isEmpty) pw.Text('—', style: const pw.TextStyle(fontSize: 9, color: _muted))
+            _section(k, life.isNotEmpty ? 'Part 2A · Arts, sports & GK' : 'Part 2 · Co-scholastic${three ? ' (A – C)' : ' (A – E)'}'),
+            if (areas.isEmpty && extra.isEmpty) pw.Text('—', style: const pw.TextStyle(fontSize: 9, color: _muted))
             else pw.Table(columnWidths: const {0: pw.FlexColumnWidth(3), 1: pw.FlexColumnWidth(1)}, children: [
               _headRow(k, ['Area', 'Grade']),
-              for (final e in co.entries) _row(k, [e.key, '${e.value}']),
+              for (final a in areas) _row(k, [a, coOf(a)]),
+              for (final a in extra) _row(k, [a, '${co[a]}']),
             ]),
           ])),
           pw.SizedBox(width: 14),
@@ -417,15 +503,23 @@ Future<Uint8List> buildReportCardPdf(String reportCardId) async {
               _headRow(k, ['Item', 'Value']),
               _row(k, ['Working days', _fmt(wd)]),
               _row(k, ['Days present', _fmt(dp)]),
+              _row(k, ['Attendance', wd == null || dp == null || wd == 0 ? '—' : '${(dp * 100 / wd).round()}%']),
               _row(k, ['Height', rc['height_cm'] == null ? '—' : '${_fmt(rc['height_cm'] as num)} cm']),
               _row(k, ['Weight', rc['weight_kg'] == null ? '—' : '${_fmt(rc['weight_kg'] as num)} kg']),
             ]),
           ])),
         ]),
+        if (life.isNotEmpty) ...[
+          _section(k, 'Part 2B · Thinking, social and emotional skills'),
+          pw.Table(columnWidths: const {0: pw.FlexColumnWidth(6), 1: pw.FlexColumnWidth(1)}, children: [
+            _headRow(k, ['Skill', 'Grade']),
+            for (final a in life) _row(k, [a, coOf(a)]),
+          ]),
+        ],
       ],
       if ((rc['remarks'] ?? '').toString().trim().isNotEmpty) ...[_section(k, 'Remarks'), _note(k, '${rc['remarks']}'.trim())],
       if (part.isNotEmpty) ...[_section(k, 'Specific participation'), _note(k, part)],
-      pw.SizedBox(height: 34),
+      pw.SizedBox(height: 30),
       pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
         for (final s in ['Class Teacher', 'Principal', 'Parent']) pw.Container(
           width: 130, padding: const pw.EdgeInsets.only(top: 4),
@@ -433,11 +527,82 @@ Future<Uint8List> buildReportCardPdf(String reportCardId) async {
           child: pw.Text(s, textAlign: pw.TextAlign.center, style: const pw.TextStyle(fontSize: 8.5, color: _muted)),
         ),
       ]),
-      pw.SizedBox(height: 12),
+      pw.SizedBox(height: 10),
       pw.Text('Scholastic grading: ${grades.legend()}', style: const pw.TextStyle(fontSize: 7.5, color: _muted)),
-      if (!isTest) pw.Text('Co-scholastic (5-point): A Outstanding · B Very good · C Good · D Fair · E Needs improvement', style: const pw.TextStyle(fontSize: 7.5, color: _muted)),
+      if (mainHasParts) pw.Text('AB: absent for the written paper; the total then shows the internal marks alone.', style: const pw.TextStyle(fontSize: 7.5, color: _muted)),
+      if (!isTest) pw.Text(three ? 'Co-scholastic (3-point): A Excellent · B Good · C Fair' : 'Co-scholastic (5-point): A Outstanding · B Very good · C Good · D Fair · E Needs improvement', style: const pw.TextStyle(fontSize: 7.5, color: _muted)),
     ],
   ));
+}
+
+/// Any list as a printable page with the school's header: registers, the fee day sheet, marks sheets, reminder slips.
+Future<Uint8List> buildTablePdf({required String title, String? sub, required List<String> head, required List<List<String>> rows,
+    List<double>? flex, bool landscape = false, List<String>? total, String? note, int leftAligned = 1, double size = 8.5}) async {
+  final k = await _kit();
+  final doc = pw.Document(title: title, author: k.school.name, theme: _theme(k));
+  final widths = <int, pw.TableColumnWidth>{for (var i = 0; i < head.length; i++) i: pw.FlexColumnWidth(flex != null && i < flex.length ? flex[i] : (i < leftAligned ? 3 : 1))};
+  pw.Widget cell(String t, {bool bold = false, PdfColor? color, required int i}) => pw.Padding(padding: const pw.EdgeInsets.symmetric(horizontal: 3, vertical: 3.2),
+      child: pw.Text(t, textAlign: i < leftAligned ? pw.TextAlign.left : pw.TextAlign.center, style: pw.TextStyle(font: bold ? k.bold : k.base, fontSize: size, color: color ?? _ink)));
+  doc.addPage(pw.MultiPage(
+    pageFormat: landscape ? PdfPageFormat.a4.landscape : PdfPageFormat.a4,
+    margin: const pw.EdgeInsets.fromLTRB(28, 26, 28, 24),
+    footer: (c) => pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+      pw.Text('Royale Connect · printed ${DateFormat('d MMM yyyy, h:mm a').format(DateTime.now())}', style: const pw.TextStyle(fontSize: 7, color: _muted)),
+      pw.Text('Page ${c.pageNumber} of ${c.pagesCount}', style: const pw.TextStyle(fontSize: 7, color: _muted)),
+    ]),
+    build: (_) => [
+      _header(k, contact: false),
+      _title(k, title.toUpperCase(), sub ?? ''),
+      pw.Table(columnWidths: widths, border: pw.TableBorder.all(color: _line, width: .5), children: [
+        pw.TableRow(decoration: const pw.BoxDecoration(color: _crimson), repeat: true,
+            children: [for (final (i, h) in head.indexed) cell(h, bold: true, color: PdfColors.white, i: i)]),
+        for (final r in rows) pw.TableRow(children: [for (final (i, c) in r.indexed) cell(c, i: i)]),
+        if (total != null) pw.TableRow(decoration: const pw.BoxDecoration(color: _goldTint), children: [for (final (i, c) in total.indexed) cell(c, bold: true, i: i)]),
+      ]),
+      if (note != null) pw.Padding(padding: const pw.EdgeInsets.only(top: 8), child: pw.Text(note, style: const pw.TextStyle(fontSize: 7.5, color: _muted))),
+    ],
+  ));
+  return doc.save();
+}
+
+void openTablePdf(BuildContext context, {required String title, String? sub, required List<String> head, required List<List<String>> rows,
+    List<double>? flex, bool landscape = false, List<String>? total, String? note, int leftAligned = 1, double size = 8.5}) => Navigator.of(context).push(MaterialPageRoute(
+  builder: (_) => PdfDocScreen(title: title, fileName: 'RCIS-${_safe(title)}.pdf',
+      make: () => buildTablePdf(title: title, sub: sub, head: head, rows: rows, flex: flex, landscape: landscape, total: total, note: note, leftAligned: leftAligned, size: size)),
+));
+
+/// Fee reminder slips, eight to a page, to cut and send home. Each: (student, class, admission no., what is due, amount).
+Future<Uint8List> buildFeeSlipsPdf(List<({String student, String cls, String adm, String items, num amount})> slips) async {
+  final k = await _kit();
+  final doc = pw.Document(title: 'Fee reminder slips', author: k.school.name, theme: _theme(k));
+  pw.Widget slip(({String student, String cls, String adm, String items, num amount}) s) => pw.Container(
+    padding: const pw.EdgeInsets.all(10), margin: const pw.EdgeInsets.all(4),
+    decoration: pw.BoxDecoration(border: pw.Border.all(color: _gold, width: .8), borderRadius: pw.BorderRadius.circular(6)),
+    child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+      pw.Text(k.school.name, style: pw.TextStyle(font: k.serif, fontSize: 9.5, color: _crimson)),
+      pw.SizedBox(height: 2),
+      pw.Text('FEE REMINDER · ${DateFormat('d MMM yyyy').format(DateTime.now())}', style: pw.TextStyle(font: k.bold, fontSize: 7, letterSpacing: 1, color: _muted)),
+      pw.SizedBox(height: 6),
+      pw.Text(s.student, style: pw.TextStyle(font: k.bold, fontSize: 10.5)),
+      pw.Text('${s.cls} · ${s.adm}', style: const pw.TextStyle(fontSize: 8, color: _muted)),
+      pw.SizedBox(height: 5),
+      pw.Text(s.items, maxLines: 3, style: const pw.TextStyle(fontSize: 8)),
+      pw.Spacer(),
+      pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+        pw.Text('Amount due', style: const pw.TextStyle(fontSize: 8, color: _muted)),
+        pw.Text(k.money(s.amount), style: pw.TextStyle(font: k.bold, fontSize: 11, color: _crimson)),
+      ]),
+      pw.SizedBox(height: 3),
+      pw.Text('Please pay in the Royale Connect app (Fees). If already paid, kindly ignore this slip.', style: const pw.TextStyle(fontSize: 6.8, color: _muted)),
+    ]));
+  for (var i = 0; i < slips.length; i += 8) {
+    final page = slips.skip(i).take(8).toList();
+    doc.addPage(pw.Page(pageFormat: PdfPageFormat.a4, margin: const pw.EdgeInsets.all(22), build: (_) => pw.Column(children: [
+      for (var r = 0; r < 4; r++) pw.Expanded(child: pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.stretch, children: [
+        for (var c = 0; c < 2; c++) pw.Expanded(child: r * 2 + c < page.length ? slip(page[r * 2 + c]) : pw.SizedBox()),
+      ])),
+    ])));
+  }
   return doc.save();
 }
 
@@ -508,8 +673,16 @@ Future<({String term, String year, List<(String, String)> grades, String? overal
   return (term: term, year: year, grades: out, overall: counted == 0 ? null : grades.of(sum * 100 / (counted * maxMarks)));
 }
 
-void openReportCardPdf(BuildContext context, String reportCardId, {String? name}) => Navigator.of(context).push(MaterialPageRoute(
-  builder: (_) => PdfDocScreen(title: 'Report card', fileName: 'RCIS-report-card-${_safe(name ?? reportCardId)}.pdf', make: () => buildReportCardPdf(reportCardId)),
+void openReportCardPdf(BuildContext context, String reportCardId, {String? name, bool? header}) {
+  db.rpc('report_card_opened', params: {'rc_id': reportCardId}).then((_) {}, onError: (_) {});   // counts only a family's own published card
+  Navigator.of(context).push(MaterialPageRoute(
+  builder: (_) => PdfDocScreen(title: 'Report card', fileName: 'RCIS-report-card-${_safe(name ?? reportCardId)}.pdf', make: () => buildReportCardPdf(reportCardId, header: header)),
+  ));
+}
+
+/// The whole class in one file, ready for the printer.
+void openReportCardsPdf(BuildContext context, List<String> ids, {required String label, bool? header}) => Navigator.of(context).push(MaterialPageRoute(
+  builder: (_) => PdfDocScreen(title: 'Report cards · $label', fileName: 'RCIS-report-cards-${_safe(label)}.pdf', make: () => buildReportCardsPdf(ids, header: header)),
 ));
 
 // ---------------------------------------------------------------- MONTHLY REPORT (for the Principal / management)
