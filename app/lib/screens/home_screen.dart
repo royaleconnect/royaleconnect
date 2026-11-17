@@ -231,10 +231,8 @@ class _Tiles extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     bool on(String k) => featureOn(settings, k);
     final onBus = ref.watch(transportProvider).value != null && on('bus');
-    final unreadNotices = unreadFamilyNotices(ref);
     final list = <Widget>[
-      TourTarget('f-diary', child: _Tile('Diary', Icons.menu_book_outlined, Brand.blue, Brand.blueTint, () { ref.read(diaryTabProvider.notifier).state = 0; context.go('/diary'); })),
-      TourTarget('f-notices', child: _Tile('Notices', Icons.campaign_outlined, Brand.crimsonDeep, Brand.crimsonTint, () => context.go('/announcements'), badge: unreadNotices)),
+      // Diary and Notices have their own cards on Home and their own tabs at the bottom, so they are not repeated here
       TourTarget('f-fees', child: _Tile('Fees', Icons.account_balance_wallet_outlined, Brand.green, Brand.greenTint, () => context.go('/fees'))),
       if (onBus) _Tile('Transport', Icons.directions_bus_outlined, Brand.blue, Brand.blueTint, () => context.go('/bus')),
       _Tile('Calendar', Icons.calendar_month_outlined, Brand.green, Brand.greenTint, () => context.push('/calendar')),
@@ -254,8 +252,8 @@ class _Tiles extends ConsumerWidget {
 }
 
 class _Tile extends StatelessWidget {
-  final String label; final IconData icon; final Color fg, bg; final VoidCallback onTap; final int badge;
-  const _Tile(this.label, this.icon, this.fg, this.bg, this.onTap, {this.badge = 0});
+  final String label; final IconData icon; final Color fg, bg; final VoidCallback onTap;
+  const _Tile(this.label, this.icon, this.fg, this.bg, this.onTap);
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
@@ -266,9 +264,6 @@ class _Tile extends StatelessWidget {
           const SizedBox(height: 7),
           FittedBox(fit: BoxFit.scaleDown, child: Text(label, maxLines: 1, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, height: 1.15))),
         ]))),
-        if (badge > 0) Positioned(top: 6, right: 6, child: Container(height: 18, constraints: const BoxConstraints(minWidth: 18), alignment: Alignment.center, padding: const EdgeInsets.symmetric(horizontal: 5),
-            decoration: BoxDecoration(color: Brand.gold, borderRadius: BorderRadius.circular(9)),
-            child: MediaQuery.withNoTextScaling(child: Text(badge > 99 ? '99+' : '$badge', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Brand.ink))))),
       ])));
   }
 }
