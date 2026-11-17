@@ -1,3 +1,4 @@
+import 'part8_extras.dart' show TodayExtras;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -132,6 +133,7 @@ class TodayScreen extends ConsumerWidget {
         const FestiveBanner(slim: true),
         const MorningBrief(),
         if (t.hasError) Panel(child: Text(friendlyError(t.error!), style: const TextStyle(color: Brand.crimsonDeep))) else FadeRise(child: needs),
+        if (s.isOffice || s.hasRole('accounts')) TodayExtras(fees: can('/staff/fees'), diary: can('/staff/diary-check')),
         if (s.isOffice || s.hasRole('accounts')) const FadeRise(delayMs: 80, child: SchoolHome()),
         const TodayPeriods(),
         // password help: the class teacher handles it here; the office sees it in Approvals (the line above)
