@@ -19,8 +19,7 @@ import 'staff_data.dart';
 import 'staff_shell.dart';
 
 /// Part 8 pages for the class and exams side (what RCIS uses in MyClassBoard, made simpler):
-///   • Marks status — subject × section, who has entered marks, the last date, one button to remind
-///   • Exam reports — class marks sheet, grade-wise, overall result, absentees, who opened the report card
+///   • Exam reports — who has entered marks (with the last date and one button to remind), class marks sheet, grade-wise, overall result, absentees, who opened the report card
 ///   • Promotion — everyone passes unless marked detained
 ///   • Attendance register — one class, one month, like the paper register
 ///   • Diary check — today's timetable subjects with no diary post yet
@@ -57,19 +56,23 @@ String? _firstExam(List<Map<String, dynamic>> exams) {
 final _statusProvider = FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, exam) async =>
     Map<String, dynamic>.from(await db.rpc('marks_status', params: {'p_exam': exam}) as Map));
 
-class MarksStatusPage extends ConsumerStatefulWidget {
-  const MarksStatusPage({super.key});
+/// Who has entered marks for one exam: subject × section, the last date, and one button to remind. Shown inside Exam reports.
+class MarksEntered extends ConsumerStatefulWidget {
+  final Map<String, dynamic> exam;
+  const MarksEntered({super.key, required this.exam});
   @override
-  ConsumerState<MarksStatusPage> createState() => _MarksStatusPageState();
+  ConsumerState<MarksEntered> createState() => _MarksEnteredState();
 }
 
-class _MarksStatusPageState extends ConsumerState<MarksStatusPage> {
-  String? examId; bool busy = false;
+class _MarksEnteredState extends ConsumerState<MarksEntered> {
+  bool busy = false;
+  String get examId => widget.exam['id'] as String;
 
-  Future<void> _due(Map<String, dynamic> e, DateTime? d) async {
+  Future<void> _due(DateTime? d) async {
+    final e = widget.exam;
     try {
       await db.rpc('exam_save', params: {'p_exam': e['id'], 'p_name': e['name'], 'p_starts': e['starts_on'], 'p_ends': e['ends_on'], 'p_due': d == null ? null : _iso(d)});
-      ref.invalidate(examsYearProvider); ref.invalidate(_statusProvider(e['id'] as String));
+      ref.invalidate(examsYearProvider); ref.invalidate(_statusProvider(examId));
       if (mounted) toast(context, d == null ? 'Last date removed' : 'Last date set: ${DateFormat('d MMM').format(d)} ✓');
     } catch (x) { if (mounted) toast(context, friendlyError(x)); }
   }
@@ -87,63 +90,50 @@ class _MarksStatusPageState extends ConsumerState<MarksStatusPage> {
   Widget build(BuildContext context) {
     final s = ref.watch(sessionProvider).value!;
     final cs = Theme.of(context).colorScheme;
-    final exams = _myExams(ref);
-    examId ??= _firstExam(exams);
-    final exam = exams.where((e) => e['id'] == examId).firstOrNull;
+    final exam = widget.exam;
     final canSet = (s.isOffice || s.hasRole('coordinator')) && !s.viewOnly;
-    final data = exam == null ? null : ref.watch(_statusProvider(examId!));
-    final due = exam?['marks_due'] == null ? null : DateTime.parse(exam!['marks_due']);
-    return StaffPage(title: 'Marks status', hub: Hub.staffExams,
-      subtitle: 'Who has entered marks, subject by subject and section by section.',
-      body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Panel(padding: const EdgeInsets.all(14), child: PickRow(children: [
-          Expanded(flex: 3, child: _examPick(exams, examId, (v) => setState(() => examId = v))),
-          const SizedBox(width: 12),
-          if (exam != null) Expanded(flex: 2, child: OutlinedButton.icon(
+    final due = exam['marks_due'] == null ? null : DateTime.parse(exam['marks_due']);
+    return ref.watch(_statusProvider(examId)).when(loading: _loading, error: (e, _) => _err(e), data: (d) {
+      final secs = List<Map<String, dynamic>>.from(d['sections'] ?? const []);
+      final rows = List<Map<String, dynamic>>.from(d['rows'] ?? const []);
+      if (secs.isEmpty || rows.isEmpty) return Panel(child: Text('This class has no sections or subjects yet.', style: TextStyle(color: cs.onSurfaceVariant)));
+      var done = 0, total = 0;
+      for (final r in rows) { for (final c in Map<String, dynamic>.from(r['cells'] ?? const {}).values) { done += ((c as Map)['done'] ?? 0) as int; total += (c['total'] ?? 0) as int; } }
+      Widget cell(Map<String, dynamic> r, String sec) {
+        final c = Map<String, dynamic>.from(r['cells'] ?? const {})[sec];
+        if (c == null) return Text('—', style: TextStyle(color: cs.onSurfaceVariant));
+        final dn = (c['done'] ?? 0) as int, tt = (c['total'] ?? 0) as int;
+        if (tt == 0) return Text('—', style: TextStyle(color: cs.onSurfaceVariant));
+        final (fg, bg) = dn >= tt ? (Brand.green, Brand.greenTint) : dn == 0 ? (Brand.crimsonDeep, Brand.crimsonTint) : (Brand.amber, Brand.amberTint);
+        return Tooltip(message: '${c['teachers'] ?? 'No teacher set'}', child: Pill('$dn/$tt', fg: fg, bg: bg));
+      }
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        statGrid(context, [
+          StatCard('Marks entered', done, sub: 'of $total', tone: done >= total ? Brand.green : null),
+          StatCard('Still to enter', total - done, tone: total - done > 0 ? Brand.amber : Brand.green),
+          StatCard('Done', total == 0 ? 0 : (done * 100 / total).round(), sub: 'per cent'),
+        ]),
+        Panel(padding: const EdgeInsets.all(12), child: Wrap(spacing: 10, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          OutlinedButton.icon(
             onPressed: !canSet ? null : () async {
-              final d = await showDatePicker(context: context, initialDate: due ?? DateTime.now(), firstDate: DateTime.now().subtract(const Duration(days: 200)), lastDate: DateTime.now().add(const Duration(days: 300)));
-              if (d != null) _due(exam, d);
+              final x = await showDatePicker(context: context, initialDate: due ?? DateTime.now(), firstDate: DateTime.now().subtract(const Duration(days: 200)), lastDate: DateTime.now().add(const Duration(days: 300)));
+              if (x != null) _due(x);
             },
             icon: const Icon(Icons.event_available_rounded, size: 18),
-            label: Text(due == null ? 'Set the last date for marks' : 'Last date: ${DateFormat('EEE, d MMM').format(due)}'))),
-          const SizedBox(width: 12),
-          if (exam != null && canSet) Expanded(flex: 2, child: FilledButton.icon(onPressed: busy ? null : _remind, icon: const Icon(Icons.notifications_active_rounded, size: 18),
-              label: Text(busy ? 'Sending…' : 'Remind teachers not done'))),
+            label: Text(due == null ? 'Set the last date for marks' : 'Last date for marks: ${DateFormat('EEE, d MMM').format(due)}')),
+          if (canSet && done < total) FilledButton.icon(onPressed: busy ? null : _remind, icon: const Icon(Icons.notifications_active_rounded, size: 18), label: Text(busy ? 'Sending…' : 'Remind teachers not done')),
         ])),
-        if (exam == null) Panel(child: Text(exams.isEmpty ? 'No exams for your classes yet.' : 'Pick an exam.', style: TextStyle(color: cs.onSurfaceVariant)))
-        else data!.when(loading: _loading, error: (e, _) => _err(e), data: (d) {
-          final secs = List<Map<String, dynamic>>.from(d['sections'] ?? const []);
-          final rows = List<Map<String, dynamic>>.from(d['rows'] ?? const []);
-          if (secs.isEmpty || rows.isEmpty) return Panel(child: Text('This class has no sections or subjects yet.', style: TextStyle(color: cs.onSurfaceVariant)));
-          var done = 0, total = 0;
-          for (final r in rows) { for (final c in Map<String, dynamic>.from(r['cells'] ?? const {}).values) { done += ((c as Map)['done'] ?? 0) as int; total += (c['total'] ?? 0) as int; } }
-          Widget cell(Map<String, dynamic> r, String sec) {
-            final c = Map<String, dynamic>.from(r['cells'] ?? const {})[sec];
-            if (c == null) return Text('—', style: TextStyle(color: cs.onSurfaceVariant));
-            final dn = (c['done'] ?? 0) as int, tt = (c['total'] ?? 0) as int;
-            if (tt == 0) return Text('—', style: TextStyle(color: cs.onSurfaceVariant));
-            final (fg, bg) = dn >= tt ? (Brand.green, Brand.greenTint) : dn == 0 ? (Brand.crimsonDeep, Brand.crimsonTint) : (Brand.amber, Brand.amberTint);
-            return Tooltip(message: '${c['teachers'] ?? 'No teacher set'}', child: Pill('$dn/$tt', fg: fg, bg: bg));
-          }
-          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            statGrid(context, [
-              StatCard('Marks entered', done, sub: 'of $total', tone: done >= total ? Brand.green : null),
-              StatCard('Still to enter', total - done, tone: total - done > 0 ? Brand.amber : Brand.green),
-              StatCard('Done', total == 0 ? 0 : (done * 100 / total).round(), sub: 'per cent'),
-            ]),
-            Panel(padding: const EdgeInsets.all(10), child: wideTable(context, ReportTable(
-              cols: [('Subject', 4, false), ('Teachers', 5, false), for (final x in secs) ('${x['label']}', 2, true)],
-              rows: [for (final r in rows) [
-                Text('${r['subject']}', style: const TextStyle(fontWeight: FontWeight.w800)),
-                Text({for (final c in Map<String, dynamic>.from(r['cells'] ?? const {}).values) if ((c as Map)['teachers'] != null) ...'${c['teachers']}'.split(', ')}.join(', '),
-                    maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
-                for (final x in secs) cell(r, x['id'] as String),
-              ]]), min: 420.0 + secs.length * 90)),
-            _muted(context, 'Green = done · amber = partly · red = not started. A mark counts once the written paper is in (or AB). Only students who take the subject are counted.'),
-          ]);
-        }),
-      ]),
-    );
+        Panel(padding: const EdgeInsets.all(10), child: wideTable(context, ReportTable(
+          cols: [('Subject', 4, false), ('Teachers', 5, false), for (final x in secs) ('${x['label']}', 2, true)],
+          rows: [for (final r in rows) [
+            Text('${r['subject']}', style: const TextStyle(fontWeight: FontWeight.w800)),
+            Text({for (final c in Map<String, dynamic>.from(r['cells'] ?? const {}).values) if ((c as Map)['teachers'] != null) ...'${c['teachers']}'.split(', ')}.join(', '),
+                maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+            for (final x in secs) cell(r, x['id'] as String),
+          ]]), min: 420.0 + secs.length * 90)),
+        _muted(context, 'Green = done · amber = partly · red = not started. A mark counts once the written paper is in (or AB). Only students who take the subject are counted.'),
+      ]);
+    });
   }
 }
 
@@ -156,14 +146,16 @@ final _viewsProvider = FutureProvider.autoDispose.family<List<Map<String, dynami
     [for (final x in (await db.rpc('report_views', params: {'p_exam': exam})) as List? ?? const []) Map<String, dynamic>.from(x as Map)]);
 
 class ExamReportsPage extends ConsumerStatefulWidget {
-  const ExamReportsPage({super.key});
+  /// The tab to open on: 'status' (Marks entered) · 'sheet' · 'grades' · 'result' · 'absent' · 'views'
+  final String tab;
+  const ExamReportsPage({super.key, this.tab = 'status'});
   @override
   ConsumerState<ExamReportsPage> createState() => _ExamReportsPageState();
 }
 
 class _ExamReportsPageState extends ConsumerState<ExamReportsPage> {
-  String? examId; String tab = 'sheet'; String section = ''; String subject = '';
-  static const _tabs = [('sheet', 'Class marks sheet'), ('grades', 'Grade-wise'), ('result', 'Overall result'), ('absent', 'Absent'), ('views', 'Report card opened')];
+  String? examId; late String tab = widget.tab; String section = ''; String subject = '';
+  static const _tabs = [('status', 'Marks entered'), ('sheet', 'Class marks sheet'), ('grades', 'Grade-wise'), ('result', 'Overall result'), ('absent', 'Absent'), ('views', 'Report card opened')];
 
   bool _takes(Map st, Map p) => takesSubject(st['l2'], st['l3'], '${p['name']}', grp: st['grp'], el: st['el']);
   Map? _m(Map st, Map p) { final m = st['marks'] is Map ? (st['marks'] as Map)[p['subject_id']] : null; return m is Map ? m : null; }
@@ -188,8 +180,8 @@ class _ExamReportsPageState extends ConsumerState<ExamReportsPage> {
     examId ??= _firstExam(exams);
     final exam = exams.where((e) => e['id'] == examId).firstOrNull;
     final data = exam == null ? null : ref.watch(_resultsProvider(examId!));
-    return StaffPage(title: 'Exam reports', hub: Hub.staffExams,
-      subtitle: 'Everything opens straight away, with Excel and Print where it helps.',
+    return StaffPage(title: 'Exams & marks · Reports', hub: Hub.staffExams,
+      subtitle: 'Who has entered marks, then the reports. Everything opens straight away, with Excel and Print where it helps.',
       body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Panel(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           _examPick(exams, examId, (v) => setState(() { examId = v; section = ''; subject = ''; })),
@@ -200,6 +192,7 @@ class _ExamReportsPageState extends ConsumerState<ExamReportsPage> {
           ])),
         ])),
         if (exam == null) Panel(child: Text(exams.isEmpty ? 'No exams for your classes yet.' : 'Pick an exam.', style: TextStyle(color: cs.onSurfaceVariant)))
+        else if (tab == 'status') MarksEntered(key: ValueKey(examId), exam: exam)
         else if (tab == 'views') _views(context, cs)
         else data!.when(loading: _loading, error: (e, _) => _err(e), data: (d) {
           final secs = List<Map<String, dynamic>>.from(d['sections'] ?? const []);
