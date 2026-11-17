@@ -1,3 +1,4 @@
+import '../widgets/hub_tabs.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -307,8 +308,9 @@ class _StaffFeeReportsScreenState extends ConsumerState<StaffFeeReportsScreen> {
     final dated = tab == 0 || tab == 2;
     final can = !(busy || data.isLoading || rows.isEmpty);
 
-    return StaffPage(title: 'Fee reports', subtitle: 'School year $_yearLabel · every receipt, month by month, cancelled receipts and concessions.',
+    return StaffPage(title: 'Fees · Reports', hub: Hub.staffFees, subtitle: 'School year $_yearLabel · every receipt, month by month, cancelled receipts and concessions. One day for the cash book: Day sheet.',
       actions: [
+        OutlinedButton.icon(onPressed: () => context.go('/staff/fees/day'), icon: const Icon(Icons.today_rounded, size: 18), label: const Text('Day sheet')),
         OutlinedButton.icon(onPressed: can ? () => _print(rows) : null, icon: const Icon(Icons.print_rounded, size: 18), label: const Text('Print')),
         FilledButton.icon(onPressed: can ? () => _download(rows) : null, icon: const Icon(Icons.download_rounded, size: 18), label: Text(busy ? 'Please wait…' : 'Excel')),
       ],
