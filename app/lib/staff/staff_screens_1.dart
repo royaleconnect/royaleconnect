@@ -1,3 +1,4 @@
+import 'part8_extras.dart' show pickNoticeStudents;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -230,6 +231,7 @@ class StaffAnnouncementsScreen extends ConsumerWidget {
     final who = _NoticeRule.of(s);
     String cat = 'general', title = '', body = ''; bool all = who.whole || who.busOnly; final grades = <String>{}, sections = <String>{}; DateTime? when; bool busy = false, uploading = false; final files = <Map<String, dynamic>>[];
     DateTime? pinUntil; String bus = who.busOnly ? 'bus' : '';   // bus: '' = everyone chosen · 'bus' = only bus students · otherwise one route id
+    final only = <String>{};   // rarely used: only these students of the classes chosen (empty = everyone in them)
     final me = s.staff?['id'];
     showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, set) => AlertDialog(insetPadding: EdgeInsets.symmetric(horizontal: isNarrow(context) ? 12 : 40, vertical: 24), title: const Text('New notice'), content: SizedBox(width: 560, child: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
       Wrap(spacing: 8, children: [for (final e in cats.entries) if (e.key != 'urgent' || who.urgent) ChoiceChip(label: Text(e.value), selected: cat == e.key, onSelected: (_) => set(() => cat = e.key))]),
@@ -258,6 +260,14 @@ class StaffAnnouncementsScreen extends ConsumerWidget {
         Consumer(builder: (_, r, __) => r.watch(mySectionsProvider).when(loading: () => const SizedBox(), error: (e, _) => _err(e), data: (ss) => Wrap(spacing: 6, children: [
           for (final sec in ss) if (who.whole || who.grades || sec['class_teacher_id'] == me) FilterChip(label: Text(sectionLabel(sec)), selected: sections.contains(sec['id']), onSelected: (v) => set(() => v ? sections.add(sec['id']) : sections.remove(sec['id'])))]))),
       ],
+      // rarely used, so it is one quiet line: a notice for only some students of the classes chosen (only Science, only AI …)
+      if (!all && !who.busOnly && (grades.isNotEmpty || sections.isNotEmpty)) Align(alignment: Alignment.centerLeft, child: Padding(padding: const EdgeInsets.only(top: 4), child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
+        TextButton.icon(onPressed: () async {
+          final r = await pickNoticeStudents(ctx, office: who.whole, gradeIds: grades.toList(), sectionIds: sections.toList(), initial: only);
+          if (r != null) set(() { only..clear()..addAll(r); });
+        }, icon: const Icon(Icons.person_search_rounded, size: 18), label: Text(only.isEmpty ? 'Only some students' : 'Only ${only.length} chosen ${only.length == 1 ? 'student' : 'students'}')),
+        if (only.isNotEmpty) IconButton(tooltip: 'Everyone in the classes chosen', onPressed: () => set(only.clear), icon: const Icon(Icons.close_rounded, size: 18)),
+      ]))),
       // office / transport: send only to bus families (all routes, or one route)
       if (who.bus) Consumer(builder: (_, r, __) {
         final routes = [for (final x in r.watch(routesProvider).value ?? const <Map<String, dynamic>>[]) if (x['active'] != false) x];
@@ -289,7 +299,7 @@ class StaffAnnouncementsScreen extends ConsumerWidget {
         if (!all && grades.isEmpty && sections.isEmpty) { toast(ctx, 'Choose who should receive it.'); return; }
         if (cat == 'urgent' && !who.urgent) cat = 'general';
         set(() => busy = true);
-        try { await postAnnouncement(ref, category: cat, title: title.trim(), body: body.trim(), all: all, gradeIds: grades.toList(), sectionIds: sections.toList(), scheduledFor: when, attachments: List.of(files), pinnedUntil: pinUntil, busOnly: bus == 'bus', routeIds: bus.isEmpty || bus == 'bus' ? const [] : [bus]); ref.invalidate(staffAnnouncementsProvider); if (ctx.mounted) { Navigator.pop(ctx); toast(context, when == null ? 'Sent ✓' : 'Scheduled ✓'); if (when == null && context.mounted) showPaperPlane(context); } }
+        try { await postAnnouncement(ref, category: cat, title: title.trim(), body: body.trim(), all: all, gradeIds: grades.toList(), sectionIds: sections.toList(), scheduledFor: when, attachments: List.of(files), pinnedUntil: pinUntil, busOnly: bus == 'bus', routeIds: bus.isEmpty || bus == 'bus' ? const [] : [bus], studentIds: all ? const [] : only.toList()); ref.invalidate(staffAnnouncementsProvider); if (ctx.mounted) { Navigator.pop(ctx); toast(context, when == null ? 'Sent ✓' : 'Scheduled ✓'); if (when == null && context.mounted) showPaperPlane(context); } }
         catch (e) { set(() => busy = false); if (ctx.mounted) toast(ctx, friendlyError(e)); }
       }, child: Text(when == null ? 'Send' : 'Schedule')),
     ])));
