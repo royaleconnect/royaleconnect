@@ -35,6 +35,8 @@ int _gradeNo(String? code) => const {'I': 1, 'II': 2, 'III': 3, 'IV': 4, 'V': 5,
 String outOf(int gno, Map p) {
   final mi = p['mi'] ?? p['max_internal'], me = p['me'] ?? p['max_external'];
   if (mi == null) return fmtMark(me as num?);
+  final ps = partsOf(p);
+  if (ps.isNotEmpty) return 'Internal ${fmtMark(mi as num?)} (${ps.map((c) => '${c.$1} ${fmtMark(c.$2)}').join(' · ')}) + Written ${fmtMark(me as num?)}';
   final (li, le) = markLabels(gno, '${p['part'] ?? 'main'}');
   return li == 'Practical' ? '$le ${fmtMark(me as num?)} + $li ${fmtMark(mi as num?)}' : '$li ${fmtMark(mi as num?)} + $le ${fmtMark(me as num?)}';
 }
@@ -45,8 +47,8 @@ final examsYearProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>
   try { await db.rpc('exams_refresh'); } catch (_) {}
   final years = await ref.watch(liveYearIdsProvider.future);
   final data = await db.from('exam')
-      .select('id,name,term,kind,sort,starts_on,ends_on,max_marks,note,published_at,grade:grade_id(id,code,name,sort_order),'
-          'exam_paper(id,on_date,portions,max_internal,max_external,part,subject:subject_id(id,name))')
+      .select('id,name,term,kind,sort,auto,marks_due,starts_on,ends_on,max_marks,note,published_at,grade:grade_id(id,code,name,sort_order),'
+          'exam_paper(id,on_date,portions,max_internal,max_external,part,parts,subject:subject_id(id,name))')
       .inFilter('academic_year_id', years).order('sort', ascending: true);
   final rows = List<Map<String, dynamic>>.from(data);
   rows.sort((a, b) {
@@ -77,7 +79,7 @@ class _StaffExamsScreenState extends ConsumerState<StaffExamsScreen> {
     final exams = ref.watch(examsYearProvider);
     final mine = ref.watch(mySectionsProvider).value ?? const <Map<String, dynamic>>[];
     return StaffPage(title: 'Exams & marks', hub: Hub.staffExams,
-      subtitle: 'Every class gets PT 1, Half Yearly, PT 2 and Annual by itself (X and XII: Pre-board 1 and 2). Add dates and portions; publish the timetable when it is ready.',
+      subtitle: 'Every class gets PT 1, Half Yearly, PT 2 and Annual by itself (X and XII: Pre-board 1 and 2). Add an exam, change its dates, set the last date for marks, and publish the timetable when it is ready.',
       actions: [if (canCreate) FilledButton.icon(onPressed: () => _add(context), icon: const Icon(Icons.add_rounded), label: const Text('Add exam'))],
       body: exams.when(loading: _loading, error: (e, _) => _err(e), data: (rows) {
         final grades = <String, Map<String, dynamic>>{};
@@ -126,10 +128,14 @@ class _ExamCard extends ConsumerWidget {
           try { await db.from('exam').update({'published_at': pub ? null : nowIso()}).eq('id', e['id']); ref.invalidate(examsYearProvider); }
           catch (x) { if (context.mounted) toast(context, friendlyError(x)); }
         }, child: Text(pub ? 'Unpublish' : 'Publish')),
+        if (canCreate) IconButton(tooltip: 'Change dates or name', visualDensity: VisualDensity.compact, icon: const Icon(Icons.edit_calendar_rounded, size: 20), onPressed: () async {
+          final changed = await showDialog<bool>(context: context, builder: (_) => _EditExamDialog(e: e));
+          if (changed == true) ref.invalidate(examsYearProvider);
+        }),
       ]),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Row(children: [
-          Expanded(child: Text(dates, style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13))),
+          Expanded(child: Text('$dates${e['marks_due'] != null ? '  ·  marks by ${_dm(e['marks_due'])}' : ''}', style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13))),
           TextButton.icon(onPressed: () => context.go('/staff/marks?exam=${e['id']}'), icon: const Icon(Icons.edit_note_rounded, size: 18), label: const Text('Enter marks')),
         ]),
         const SizedBox(height: 6),
@@ -212,7 +218,7 @@ class _AddExamDialogState extends ConsumerState<_AddExamDialog> {
       content: SizedBox(width: 560, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         TextField(controller: name, autofocus: true, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Name', hintText: 'e.g. Pre-board 3')),
         const SizedBox(height: 8),
-        kindTile('term', 'Term exam — like Half Yearly', 'VI–X: Internals 20 + Written 80 · I–V: 50 · XI–XII: each subject’s Theory + Practical'),
+        kindTile('term', 'Term exam — like Half Yearly', 'VI–X: Internal 20 + Written 80 · I–V: Internal 50 + Written 50 · XI–XII: each subject’s Theory + Practical'),
         kindTile('test', 'Test — like PT 1', 'Out of 30, every subject'),
         kindTile('own', 'Our own maximum', 'One mark per subject, out of the number you type'),
         if (kind == 'own') TextField(controller: max, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Maximum marks')),
@@ -249,6 +255,72 @@ class _AddExamDialogState extends ConsumerState<_AddExamDialog> {
         'p_starts': a == null ? null : _d(a!), 'p_ends': b == null ? null : _d(b!), 'p_max': kind == 'own' ? int.tryParse(max.text.trim()) : null});
       if (mounted) { toast(context, 'Added for $n ${n == 1 ? 'class' : 'classes'} ✓'); Navigator.pop(context, true); }
     } catch (e) { if (mounted) { setState(() => busy = false); toast(context, friendlyError(e)); } }
+  }
+}
+
+/// Change an exam: its dates, the last date for marks, its name (not for the school's standard exams), or remove it.
+class _EditExamDialog extends StatefulWidget {
+  final Map<String, dynamic> e;
+  const _EditExamDialog({required this.e});
+  @override
+  State<_EditExamDialog> createState() => _EditExamDialogState();
+}
+
+class _EditExamDialogState extends State<_EditExamDialog> {
+  late final name = TextEditingController(text: '${widget.e['name']}');
+  late DateTime? a = widget.e['starts_on'] == null ? null : DateTime.parse(widget.e['starts_on']);
+  late DateTime? b = widget.e['ends_on'] == null ? null : DateTime.parse(widget.e['ends_on']);
+  late DateTime? due = widget.e['marks_due'] == null ? null : DateTime.parse(widget.e['marks_due']);
+  bool busy = false;
+  @override
+  void dispose() { name.dispose(); super.dispose(); }
+
+  Future<DateTime?> _pick(DateTime? init) => showDatePicker(context: context, initialDate: init ?? DateTime.now(),
+      firstDate: DateTime.now().subtract(const Duration(days: 400)), lastDate: DateTime.now().add(const Duration(days: 400)));
+
+  Future<void> _save() async {
+    setState(() => busy = true);
+    try {
+      await db.rpc('exam_save', params: {'p_exam': widget.e['id'], 'p_name': name.text.trim(), 'p_starts': a == null ? null : _d(a!), 'p_ends': b == null ? null : _d(b!), 'p_due': due == null ? null : _d(due!)});
+      if (mounted) { toast(context, 'Saved ✓'); Navigator.pop(context, true); }
+    } catch (x) { if (mounted) { setState(() => busy = false); toast(context, friendlyError(x)); } }
+  }
+
+  Future<void> _remove() async {
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: Text('Remove ${widget.e['name']}?'),
+      content: const Text('The exam leaves this class. An exam that already has marks cannot be removed.'),
+      actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Keep it')), FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Remove'))]));
+    if (ok != true) return;
+    try { await db.rpc('exam_remove', params: {'p_exam': widget.e['id']}); if (mounted) { toast(context, 'Removed'); Navigator.pop(context, true); } }
+    catch (x) { if (mounted) toast(context, friendlyError(x)); }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final auto = widget.e['auto'] == true;
+    Widget day(String label, DateTime? v, ValueChanged<DateTime?> set) => Padding(padding: const EdgeInsets.only(top: 10), child: Row(children: [
+      Expanded(child: OutlinedButton.icon(onPressed: () async { final d = await _pick(v); if (d != null) setState(() => set(d)); },
+          icon: const Icon(Icons.event_rounded, size: 18), label: Text(v == null ? label : '$label: ${DateFormat('EEE, d MMM yyyy').format(v)}'))),
+      if (v != null) IconButton(tooltip: 'Clear', onPressed: () => setState(() => set(null)), icon: const Icon(Icons.close_rounded, size: 18)),
+    ]));
+    return AlertDialog(
+      title: Text('${widget.e['grade']?['code'] ?? ''} · ${widget.e['name']}'),
+      content: SizedBox(width: 480, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        TextField(controller: name, enabled: !auto, decoration: InputDecoration(labelText: 'Name', helperText: auto ? 'A standard exam of the school: its name stays.' : null)),
+        day('First day', a, (d) => a = d),
+        day('Last day', b, (d) => b = d),
+        day('Last date for marks', due, (d) => due = d),
+        const SizedBox(height: 8),
+        Text('Teachers see the last date in Marks entry. Marks status shows who is done.', style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant)),
+      ]))),
+      actions: [
+        if (!auto) TextButton(onPressed: busy ? null : _remove, child: Text('Remove this exam', style: TextStyle(color: context.tone(Brand.crimsonDeep)))),
+        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+        FilledButton(onPressed: busy ? null : _save, child: Text(busy ? 'Saving…' : 'Save')),
+      ],
+    );
   }
 }
 
@@ -313,11 +385,35 @@ class _StaffMarksScreenState extends ConsumerState<StaffMarksScreen> {
         final mm = Map<String, dynamic>.from(m as Map);
         saved[_key(st['id'], sub, 'i')] = fmtMark(mm['i'] as num?);
         saved[_key(st['id'], sub, 'e')] = mm['ab'] == true ? 'AB' : fmtMark(mm['e'] as num?);
+        if (mm['p'] is Map) { (mm['p'] as Map).forEach((k, v) => saved[_key(st['id'], sub, 'p:$k')] = fmtMark(v as num?)); }
       });
     }
   }
 
   String _text(String k) => pending[k] ?? saved[k] ?? '';
+
+  /// The boxes of one paper, in order: the internal parts (PA, MA …) then Written; or Internals → Written; or Theory → Practical.
+  List<String> _fields(Map p, int gno) {
+    final ps = partsOf(p);
+    if (ps.isNotEmpty) return [for (final c in ps) 'p:${c.$1}', 'e'];
+    if (p['mi'] == null) return ['e'];
+    final (li, _) = markLabels(gno, '${p['part']}');
+    return li == 'Practical' ? ['e', 'i'] : ['i', 'e'];
+  }
+  num? _maxOf(Map p, String f) => f == 'e' ? p['me'] as num? : f == 'i' ? p['mi'] as num? : partsOf(p).where((c) => 'p:${c.$1}' == f).firstOrNull?.$2;
+  /// PA that came from the periodic test by itself (null = the teacher types it: no test mark, or absent for the test).
+  num? _autoPa(Map st, Map p) => (st['pa'] is Map ? (st['pa'] as Map)[p['subject_id']] : null) as num?;
+  /// The internal total as it stands on the screen.
+  num? _internal(Map st, Map p) {
+    final ps = partsOf(p);
+    if (ps.isEmpty) return readMark(_text(_key(st['id'], p['subject_id'], 'i'))).value;
+    num sum = 0; var any = false;
+    for (final c in ps) {
+      final v = c.$1 == 'PA' && _autoPa(st, p) != null ? _autoPa(st, p) : readMark(_text(_key(st['id'], p['subject_id'], 'p:${c.$1}'))).value;
+      if (v != null) { sum += v; any = true; }
+    }
+    return any ? sum : (saved[_key(st['id'], p['subject_id'], 'i')] ?? '').isEmpty ? null : num.tryParse(saved[_key(st['id'], p['subject_id'], 'i')]!);
+  }
 
   /// a box is wrong when it is not a number / AB, or above its maximum
   bool _bad(String text, num? max) {
@@ -341,21 +437,28 @@ class _StaffMarksScreenState extends ConsumerState<StaffMarksScreen> {
     final sheet = ref.read(_sheetProvider((examId!, sectionId!, subjectId))).value;
     if (sheet == null) return false;
     final papers = {for (final p in List<Map<String, dynamic>>.from(sheet['papers'] ?? const [])) p['subject_id'] as String: p};
-    final cells = <String, (String, String)>{};   // student|subject → (internal text, external text)
-    for (final k in pending.keys) {
-      final parts = k.split('|');
-      cells['${parts[0]}|${parts[1]}'] = (_text('${parts[0]}|${parts[1]}|i'), _text('${parts[0]}|${parts[1]}|e'));
-    }
+    final gno = (sheet['exam']?['grade_no'] ?? 0) as int;
+    final students = {for (final st in List<Map<String, dynamic>>.from(sheet['students'] ?? const [])) st['id'] as String: st};
+    final cells = <String>{};   // student|subject
+    for (final k in pending.keys) { final a = k.split('|'); cells.add('${a[0]}|${a[1]}'); }
     final rows = <Map<String, dynamic>>[]; final done = <String>[]; var bad = 0;
-    cells.forEach((k, v) {
-      final parts = k.split('|'); final p = papers[parts[1]];
-      if (p == null) return;
-      final (ti, te) = v;
-      if (_bad(ti, p['mi'] as num?) || _bad(te, p['me'] as num?) || (p['mi'] == null && ti.trim().isNotEmpty)) { bad++; return; }
-      final ri = readMark(ti), re = readMark(te);
-      rows.add({'student': parts[0], 'subject': parts[1], 'i': ri.value, 'e': re.value, 'ab': re.absent || ri.absent});
-      done..add('$k|i')..add('$k|e');
-    });
+    for (final k in cells) {
+      final a = k.split('|'); final p = papers[a[1]]; final st = students[a[0]];
+      if (p == null || st == null) continue;
+      final fs = _fields(p, gno);
+      // AB is only for the written paper; a part can never be more than its maximum
+      if (fs.any((f) => _bad(_text('$k|$f'), _maxOf(p, f)) || (f != 'e' && readMark(_text('$k|$f')).absent))) { bad++; continue; }
+      final re = readMark(_text('$k|e'));
+      final ps = partsOf(p);
+      if (ps.isNotEmpty) {
+        rows.add({'student': a[0], 'subject': a[1], 'e': re.value, 'ab': re.absent,
+          'parts': {for (final c in ps) if (!(c.$1 == 'PA' && _autoPa(st, p) != null)) c.$1: readMark(_text('$k|p:${c.$1}')).value}});
+      } else {
+        final ri = readMark(_text('$k|i'));
+        rows.add({'student': a[0], 'subject': a[1], 'i': ri.value, 'e': re.value, 'ab': re.absent});
+      }
+      for (final f in fs) { done.add('$k|$f'); }
+    }
     if (rows.isEmpty) { if (bad > 0) setState(() => problem = 'Fix the boxes in red — they are not saved.'); return false; }
     setState(() => saving = true);
     try {
@@ -388,7 +491,7 @@ class _StaffMarksScreenState extends ConsumerState<StaffMarksScreen> {
     final canAll = sheet?['can_all'] == true || s.hasRole('office') || s.hasRole('it_admin') || secs.any((x) => x['id'] == sectionId && x['class_teacher_id'] == s.staff?['id']);
 
     return StaffPage(title: 'Marks entry', hub: Hub.staffExams,
-      subtitle: 'Type the marks and press Tab for the next box. They save by themselves. Type AB for absent.',
+      subtitle: 'Type the marks and press Tab for the next box. They save by themselves. PA fills in by itself from the periodic test. Type AB in Written for a student who was absent.',
       actions: [
         if (sheet != null) OutlinedButton.icon(onPressed: () => _excelOut(sheet, exam!), icon: const Icon(Icons.download_rounded, size: 18), label: const Text('Excel')),
         if (sheet != null) OutlinedButton.icon(onPressed: () => _excelIn(sheet), icon: const Icon(Icons.upload_file_rounded, size: 18), label: const Text('Fill from Excel')),
@@ -426,25 +529,22 @@ class _StaffMarksScreenState extends ConsumerState<StaffMarksScreen> {
     if (students.isEmpty) return Panel(child: Text('No students in this class.', style: TextStyle(color: cs.onSurfaceVariant)));
     final single = papers.length == 1;
     const boxW = 64.0, gap = 6.0;
-    // the order of boxes in one subject: Internals → Written, or Theory → Practical
-    List<String> fields(Map p) {
-      if (p['mi'] == null) return ['e'];
-      final (li, _) = markLabels(gno, '${p['part']}');
-      return li == 'Practical' ? ['e', 'i'] : ['i', 'e'];
-    }
+    List<String> fields(Map p) => _fields(p, gno);
     String label(Map p, String f) {
+      if (f.startsWith('p:')) return '${f.substring(2)} /${fmtMark(_maxOf(p, f))}';
       if (p['mi'] == null) return 'Marks /${fmtMark(p['me'] as num?)}';
-      final (li, le) = markLabels(gno, '${p['part']}');
+      final (li, le) = partsOf(p).isNotEmpty ? ('Internal', 'Written') : markLabels(gno, '${p['part']}');
       return f == 'i' ? '$li /${fmtMark(p['mi'] as num?)}' : '$le /${fmtMark(p['me'] as num?)}';
     }
+    final sumW = single ? (partsOf(papers.first).isNotEmpty ? 216.0 : 150.0) : 0.0;
     double groupW(Map p) => fields(p).length * (boxW + gap) + (single ? 0 : 10);
-    final width = 44 + 220 + papers.fold<double>(0, (a, p) => a + groupW(p)) + (single ? 150 : 0) + 24;
+    final width = 44 + 220 + papers.fold<double>(0, (a, p) => a + groupW(p)) + sumW + 24;
     var missing = 0;
     for (final st in students) {
       for (final p in papers) {
         if (!takesSubject(st['l2'], st['l3'], '${p['name']}', grp: st['grp'], el: st['el'])) continue;
         final e = _text(_key(st['id'], p['subject_id'], 'e')), i = _text(_key(st['id'], p['subject_id'], 'i'));
-        if (e.trim().isEmpty && (p['mi'] == null || i.trim().isEmpty)) missing++;
+        if (e.trim().isEmpty && (p['mi'] == null || partsOf(p).isNotEmpty || i.trim().isEmpty)) missing++;
       }
     }
     final head = TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .6, color: cs.onSurfaceVariant);
@@ -455,7 +555,9 @@ class _StaffMarksScreenState extends ConsumerState<StaffMarksScreen> {
           if (!single) Text('${p['name']}'.toUpperCase(), maxLines: 1, overflow: TextOverflow.ellipsis, style: head.copyWith(color: cs.onSurface)),
           Row(children: [for (final f in fields(p)) SizedBox(width: boxW + gap, child: Text(label(p, f).replaceFirst(' /', '\n/'), textAlign: TextAlign.center, style: head.copyWith(fontSize: 10.5)))]),
         ])),
-        if (single) SizedBox(width: 150, child: Row(children: [Expanded(child: Text('TOTAL', textAlign: TextAlign.center, style: head)), Expanded(child: Text('GRADE', textAlign: TextAlign.center, style: head))])),
+        if (single) SizedBox(width: sumW, child: Row(children: [
+          if (sumW > 150) Expanded(child: Text('INTERNAL\n/${fmtMark(papers.first['mi'] as num?)}', textAlign: TextAlign.center, style: head)),
+          Expanded(child: Text('TOTAL', textAlign: TextAlign.center, style: head)), Expanded(child: Text('GRADE', textAlign: TextAlign.center, style: head))])),
       ])),
       for (final st in students) Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -465,20 +567,26 @@ class _StaffMarksScreenState extends ConsumerState<StaffMarksScreen> {
           SizedBox(width: 220, child: Text('${st['name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700))),
           for (final p in papers) SizedBox(width: groupW(p), child: Row(children: [
             for (final f in fields(p)) Padding(padding: const EdgeInsets.only(right: gap), child: SizedBox(width: boxW, child: !takesSubject(st['l2'], st['l3'], '${p['name']}', grp: st['grp'], el: st['el'])
-              ? Center(child: Tooltip(message: 'Not this student’s language', child: Text('—', style: TextStyle(color: cs.onSurfaceVariant))))
+              ? Center(child: Tooltip(message: 'Not this student’s subject', child: Text('—', style: TextStyle(color: cs.onSurfaceVariant))))
+              : f == 'p:PA' && _autoPa(st, p) != null
+              ? Tooltip(message: 'From the periodic test, by itself', child: Container(height: 40, alignment: Alignment.center,
+                  decoration: BoxDecoration(color: Brand.green.withValues(alpha: .09), borderRadius: BorderRadius.circular(9), border: Border.all(color: Brand.green.withValues(alpha: .35))),
+                  child: Text(fmtMark(_autoPa(st, p)), style: TextStyle(fontWeight: FontWeight.w900, color: context.tone(Brand.green)))))
               : _MarkBox(key: ValueKey('${_key(st['id'], p['subject_id'], f)}|$loadedFor'), initial: _text(_key(st['id'], p['subject_id'], f)),
-                  max: (f == 'i' ? p['mi'] : p['me']) as num?, pending: pending.containsKey(_key(st['id'], p['subject_id'], f)),
+                  max: _maxOf(p, f), allowAb: f == 'e', pending: pending.containsKey(_key(st['id'], p['subject_id'], f)),
                   onChanged: (v) => _changed(_key(st['id'], p['subject_id'], f), v)))),
           ])),
-          if (single) SizedBox(width: 150, child: Builder(builder: (_) {
+          if (single) SizedBox(width: sumW, child: Builder(builder: (_) {
             final p = papers.first;
-            final ri = readMark(_text(_key(st['id'], p['subject_id'], 'i'))), re = readMark(_text(_key(st['id'], p['subject_id'], 'e')));
+            if (!takesSubject(st['l2'], st['l3'], '${p['name']}', grp: st['grp'], el: st['el'])) return const SizedBox();
+            final ri = _internal(st, p); final re = readMark(_text(_key(st['id'], p['subject_id'], 'e')));
             final mx = ((p['mi'] ?? 0) as num) + ((p['me'] ?? 0) as num);
-            final any = ri.value != null || re.value != null;
-            final t = (ri.value ?? 0) + (re.value ?? 0);
+            final any = ri != null || re.value != null;
+            final t = (ri ?? 0) + (re.value ?? 0);
             return Row(children: [
-              Expanded(child: Text(re.absent ? 'AB' : any ? fmtMark(t) : '—', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900))),
-              Expanded(child: Text(any && !re.absent && mx > 0 ? cbseGrade(t * 100 / mx) : '', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurfaceVariant))),
+              if (sumW > 150) Expanded(child: Text(ri == null ? '—' : fmtMark(ri), textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w800))),
+              Expanded(child: Text(any || re.absent ? fmtMark(t) : '—', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w900))),
+              Expanded(child: Text(re.absent ? 'AB' : any && re.value != null && mx > 0 ? cbseGrade(t * 100 / mx) : '', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurfaceVariant))),
             ]);
           })),
         ])),
@@ -495,7 +603,8 @@ class _StaffMarksScreenState extends ConsumerState<StaffMarksScreen> {
         ])),
         LayoutBuilder(builder: (_, c) => c.maxWidth >= width ? table : SingleChildScrollView(scrollDirection: Axis.horizontal, child: table)),
       ])),
-      Text(missing == 0 ? 'Every mark is in ✓' : '$missing ${missing == 1 ? 'mark is' : 'marks are'} still to enter. A number above the maximum turns red and is not saved.',
+      if (sheet['exam']?['due'] != null) Padding(padding: const EdgeInsets.only(bottom: 4), child: Text('Last date for these marks: ${DateFormat('EEEE, d MMM').format(DateTime.parse(sheet['exam']['due']))}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800))),
+      Text(missing == 0 ? 'Every mark is in ✓' : '$missing ${missing == 1 ? 'mark is' : 'marks are'} still to enter. A number above the maximum turns red and is not saved. AB keeps the internal marks: only the written paper is marked absent.',
           style: TextStyle(fontSize: 12.5, color: missing == 0 ? context.tone(Brand.green) : cs.onSurfaceVariant, fontWeight: missing == 0 ? FontWeight.w800 : null)),
     ]);
   }
@@ -506,9 +615,12 @@ class _StaffMarksScreenState extends ConsumerState<StaffMarksScreen> {
     final out = <(Map<String, dynamic>, String, String)>[];
     for (final p in List<Map<String, dynamic>>.from(sheet['papers'] ?? const [])) {
       if (p['can'] != true) continue;
-      if (p['mi'] == null) { out.add((p, 'e', '${p['name']} (${fmtMark(p['me'] as num?)})')); continue; }
-      final (li, le) = markLabels(gno, '${p['part']}');
-      out..add((p, 'i', '${p['name']} $li (${fmtMark(p['mi'] as num?)})'))..add((p, 'e', '${p['name']} $le (${fmtMark(p['me'] as num?)})'));
+      final (li, le) = partsOf(p).isNotEmpty ? ('Internal', 'Written') : markLabels(gno, '${p['part']}');
+      for (final f in _fields(p, gno)) {
+        out.add((p, f, f.startsWith('p:') ? '${p['name']} ${f.substring(2)} (${fmtMark(_maxOf(p, f))})'
+            : p['mi'] == null ? '${p['name']} (${fmtMark(p['me'] as num?)})'
+            : f == 'i' ? '${p['name']} $li (${fmtMark(p['mi'] as num?)})' : '${p['name']} $le (${fmtMark(p['me'] as num?)})'));
+      }
     }
     return out;
   }
@@ -519,7 +631,7 @@ class _StaffMarksScreenState extends ConsumerState<StaffMarksScreen> {
     final sec = (ref.read(mySectionsProvider).value ?? const []).where((x) => x['id'] == sectionId).firstOrNull;
     try {
       await saveBytes(buildXlsx('Marks', ['Roll', 'Admission no', 'Student', for (final c in cols) c.$3], [
-        for (final st in students) [st['roll'], st['adm'], st['name'], for (final c in cols) _text(_key(st['id'], c.$1['subject_id'], c.$2))],
+        for (final st in students) [st['roll'], st['adm'], st['name'], for (final c in cols) c.$2 == 'p:PA' && _autoPa(st, c.$1) != null ? fmtMark(_autoPa(st, c.$1)) : _text(_key(st['id'], c.$1['subject_id'], c.$2))],
       ], widths: [7, 16, 26, for (final _ in cols) 16]), 'RCIS-marks-${exam['name']}-${sec == null ? '' : sectionLabel(sec)}.xlsx'.replaceAll(' ', '-'));
     } catch (e) { if (mounted) toast(context, 'Could not save the file: ${friendlyError(e)}'); }
   }
@@ -545,6 +657,7 @@ class _StaffMarksScreenState extends ConsumerState<StaffMarksScreen> {
           final i = at[c]!;
           if (i < 0 || i >= row.length) continue;
           final v = row[i].trim();
+          if (c.$2 == 'p:PA' && _autoPa(st, c.$1) != null) continue;   // PA from the periodic test is never typed over
           final k = _key(st['id'], c.$1['subject_id'], c.$2);
           if (v != (saved[k] ?? '')) { pending[k] = v; n++; }
         }
@@ -568,8 +681,8 @@ class _StaffMarksScreenState extends ConsumerState<StaffMarksScreen> {
 
 /// One mark box: red when the number is above the maximum (or not a number / AB).
 class _MarkBox extends StatefulWidget {
-  final String initial; final num? max; final bool pending; final ValueChanged<String> onChanged;
-  const _MarkBox({super.key, required this.initial, required this.max, required this.pending, required this.onChanged});
+  final String initial; final num? max; final bool pending, allowAb; final ValueChanged<String> onChanged;
+  const _MarkBox({super.key, required this.initial, required this.max, required this.pending, required this.onChanged, this.allowAb = true});
   @override
   State<_MarkBox> createState() => _MarkBoxState();
 }
@@ -581,7 +694,7 @@ class _MarkBoxState extends State<_MarkBox> {
   @override
   Widget build(BuildContext context) {
     final r = readMark(c.text);
-    final bad = r.bad || (!r.absent && r.value != null && widget.max != null && r.value! > widget.max!);
+    final bad = r.bad || (r.absent && !widget.allowAb) || (!r.absent && r.value != null && widget.max != null && r.value! > widget.max!);
     final cs = Theme.of(context).colorScheme;
     return TextField(
       controller: c, textAlign: TextAlign.center, textInputAction: TextInputAction.next,
