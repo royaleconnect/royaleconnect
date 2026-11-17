@@ -1,3 +1,8 @@
+import 'screens/part8_family.dart';
+import 'staff/part8_pages.dart';
+import 'staff/part8_fees.dart' show RecordPaymentPage, FeeDaySheetPage, ConcessionsPage;
+import 'staff/staff_id_cards.dart' show StaffIdCardsPage;
+import 'staff/school_rules.dart' show SchoolRulesPage;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -66,6 +71,7 @@ class _SessionListenable extends ChangeNotifier {
     ref.listen(splashDoneProvider, (_, __) => notifyListeners());
     ref.listen(childPickedProvider, (_, __) => notifyListeners());
     ref.listen(appSettingsProvider, (_, __) => notifyListeners());
+    ref.listen(lockProvider, (_, __) => notifyListeners());
   }
 }
 
@@ -84,8 +90,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         return '/splash';
       }
       // the public "scan to verify" page (QR on receipts and report cards) opens for anyone, signed in or not
-      if (pending != null && pending!.startsWith('/verify') && loc == '/splash') { final p = pending; pending = null; return p; }
+      if (pending != null && (pending!.startsWith('/verify') || pending!.startsWith('/vote')) && loc == '/splash') { final p = pending; pending = null; return p; }
       if (loc == '/verify') return null;
+      if (loc == '/vote') return null;      // the Student Council voting link opens for anyone who has it
       if (loc == '/privacy') return null;   // privacy policy opens for anyone (link on the sign-in page)
       if (pending != null && loc == '/splash' && s.value != null && s.value!.kind == 'student' && (s.value!.students.length < 2 || ref.read(childPickedProvider))) { final p = pending; pending = null; return p; }
       final open = loc == '/splash' || loc.startsWith('/login') || loc == '/staff-login';
@@ -101,10 +108,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (session.mustChangePassword) return loc == '/set-password' ? null : '/set-password';
       if (session.students.length > 1 && (!ref.read(childPickedProvider) || session.activeStudentId == null)) return loc == '/students' || loc == '/login/add' ? null : '/students';
       if (open) return '/';                                           // signed in, leave the public pages
-      return null;
+      // the school has locked the app for this child: fees pending (some pages stay open) or another reason (none do)
+      return lockRedirect(ref.read(lockProvider).value?[session.active?.id], loc);
     },
     routes: [
       GoRoute(path: '/splash', builder: (_, __) => const SplashScreen()),
+      GoRoute(path: '/vote', builder: (_, st) => VoteLinkScreen(linkKey: st.uri.queryParameters['k'] ?? '')),
+      GoRoute(path: '/locked', builder: (_, __) => const LockedScreen()),
       GoRoute(path: '/verify', builder: (_, st) => VerifyScreen(kind: st.uri.queryParameters.containsKey('p') ? 'p' : 'c', id: st.uri.queryParameters['p'] ?? st.uri.queryParameters['c'] ?? '')),
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen(), routes: [
         GoRoute(path: 'add', builder: (_, __) => const LoginScreen(addSibling: true)),
@@ -156,6 +166,17 @@ final routerProvider = Provider<GoRouter>((ref) {
         GoRoute(path: '/staff/help', builder: (_, st) => HelpScreen(staff: true, page: st.uri.queryParameters['page'])),
         GoRoute(path: '/staff/me', builder: (_, __) => const StaffMeScreen()),
         GoRoute(path: '/staff/desk', builder: (_, __) => const StaffDeskScreen()),
+        // Part 8
+        GoRoute(path: '/staff/marks-status', builder: (_, __) => const MarksStatusPage()),
+        GoRoute(path: '/staff/exam-reports', builder: (_, __) => const ExamReportsPage()),
+        GoRoute(path: '/staff/promotion', builder: (_, __) => const PromotionPage()),
+        GoRoute(path: '/staff/attendance/register', builder: (_, __) => const AttendanceRegisterPage()),
+        GoRoute(path: '/staff/diary-check', builder: (_, __) => const DiaryCheckPage()),
+        GoRoute(path: '/staff/fees/record', builder: (_, __) => const RecordPaymentPage()),
+        GoRoute(path: '/staff/fees/day', builder: (_, __) => const FeeDaySheetPage()),
+        GoRoute(path: '/staff/fees/concessions', builder: (_, __) => const ConcessionsPage()),
+        GoRoute(path: '/staff/staff-ids', builder: (_, __) => const StaffIdCardsPage()),
+        GoRoute(path: '/staff/rules', builder: (_, __) => const SchoolRulesPage()),
       ]),
       GoRoute(path: '/students', pageBuilder: (_, st) => _grow(st, const StudentsScreen())),
       GoRoute(path: '/settings', pageBuilder: (_, st) => _grow(st, const SettingsScreen())),
