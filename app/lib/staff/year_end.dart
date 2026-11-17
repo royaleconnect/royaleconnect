@@ -126,7 +126,11 @@ class _YearEndScreenState extends ConsumerState<YearEndScreen> {
     return StaffPage(
       title: 'Year-end checklist',
       subtitle: 'Getting the app ready for the new school year. Items tick themselves when the app can see they are done.',
-      actions: [OutlinedButton.icon(onPressed: () => ref.invalidate(yearEndProvider), icon: const Icon(Icons.refresh_rounded, size: 18), label: const Text('Check again'))],
+      actions: [
+        OutlinedButton.icon(onPressed: () => context.go('/staff/sections'), icon: const Icon(Icons.view_module_rounded, size: 18), label: const Text('New sections')),
+        OutlinedButton.icon(onPressed: () => context.go('/staff/promotion'), icon: const Icon(Icons.trending_up_rounded, size: 18), label: const Text('Promotion')),
+        OutlinedButton.icon(onPressed: () => ref.invalidate(yearEndProvider), icon: const Icon(Icons.refresh_rounded, size: 18), label: const Text('Check again')),
+      ],
       body: data.when(
         loading: () => const Padding(padding: EdgeInsets.all(32), child: GoldLoading()),
         error: (e, _) => Panel(child: Text('Could not load: $e')),
