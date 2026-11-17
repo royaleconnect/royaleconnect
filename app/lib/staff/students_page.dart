@@ -1,3 +1,4 @@
+import 'part8_extras.dart' show StudentCountCards, LockDialog;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -123,7 +124,8 @@ class _StudentsPageState extends ConsumerState<StudentsPage> {
 
     Widget tags(Map<String, dynamic> r) => Wrap(spacing: 6, runSpacing: 4, children: [
       if (r['is_new'] == true) const Pill('NEW', fg: Brand.amber, bg: Brand.amberTint),
-      if (r['suspended_till'] != null) Pill('SUSPENDED till ${DateFormat('d MMM').format(DateTime.parse(r['suspended_till']))}', fg: Brand.crimsonDeep, bg: Brand.crimsonTint),
+      if (r['suspended_till'] != null) Pill('LOCKED till ${DateFormat('d MMM').format(DateTime.parse(r['suspended_till']))}', fg: Brand.crimsonDeep, bg: Brand.crimsonTint)
+      else if (r['lock'] == 'fees') Pill('LOCKED · fees ${inr((r['due'] ?? 0) as num)}', fg: Brand.amber, bg: Brand.amberTint),
       if (r['leaving'] == true) const Pill('LEAVING · with the Principal', fg: Brand.violet, bg: Brand.violetTint),
     ]);
     TextStyle head = TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: .8, color: cs.onSurfaceVariant);
@@ -225,6 +227,7 @@ class _StudentsPageState extends ConsumerState<StudentsPage> {
         if (_editRoles.any(s.hasRole)) FilledButton.icon(onPressed: _admit, icon: const Icon(Icons.person_add_alt_1_rounded, size: 18), label: const Text('New admission')),
       ],
       body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (!past && q.trim().isEmpty) StudentCountCards(filter: filter),
         if (past) Builder(builder: (_) {
           final c = ref.watch(_certsProvider).value;
           final pending = List<Map<String, dynamic>>.from(c?['pending'] ?? const []);
@@ -277,7 +280,7 @@ class _StudentsPageState extends ConsumerState<StudentsPage> {
             ? 'Past students stay here for ever. Open one for their TC, marksheet, report cards and receipts.'
             : classOn && canEdit
                 ? 'Tick students to set their subjects together, or change one student on their line. Nothing is saved until you press Save. Open a student for the full page.'
-                : 'Choose a class to tick students and find them by subject. Open a student for the full page. Suspend is for a few days; Inactive is for a student who is leaving — the Principal approves it.'),
+                : 'Choose a class to tick students and find them by subject. Open a student for the full page. Lock app is for pending fees or for a few days; Inactive is for a student who is leaving — the Principal approves it.'),
         if (showBar) const SizedBox(height: 110),
       ]),
     );
@@ -565,7 +568,8 @@ class _DetailsTab extends ConsumerWidget {
           Text([r['admission_no'], if (classText != null) classText, if (cls?['roll_no'] != null) 'Roll ${cls!['roll_no']}'].join(' · '), style: TextStyle(color: cs.onSurfaceVariant)),
           const SizedBox(height: 8),
           Wrap(spacing: 6, runSpacing: 6, children: [
-            if (susp != null) Pill('SUSPENDED till ${_dmy(susp['till'])} · ${susp['reason']}', fg: Brand.crimsonDeep, bg: Brand.crimsonTint)
+            if (susp != null && susp['kind'] == 'fees') Pill('LOCKED · fees pending ${inr((susp['due'] ?? 0) as num)} · opens when paid', fg: Brand.amber, bg: Brand.amberTint)
+            else if (susp != null) Pill('LOCKED till ${_dmy(susp['till'])} · ${susp['reason']}', fg: Brand.crimsonDeep, bg: Brand.crimsonTint)
             else const Pill('STUDYING HERE', fg: Brand.green, bg: Brand.greenTint),
             if (leaving != null) Pill('LEAVING · waiting for the Principal (${leaving['reason']})', fg: Brand.violet, bg: Brand.violetTint),
             if (x['staff_child'] == true) const Pill('STAFF CHILD', fg: Brand.amber, bg: Brand.amberTint),
@@ -575,12 +579,17 @@ class _DetailsTab extends ConsumerWidget {
         OutlinedButton.icon(onPressed: () => openStudentIdCard(context, r['id'], sectionId: cls?['section_id']), icon: const Icon(Icons.badge_rounded, size: 18), label: const Text('ID card')),
         if (canEdit && susp == null && leaving == null) FilledButton.tonalIcon(
           style: FilledButton.styleFrom(backgroundColor: Brand.amberTint, foregroundColor: Brand.amber),
-          onPressed: () async { if (await showDialog<bool>(context: context, builder: (_) => _SuspendDialog(student: r)) == true) _reload(ref); },
-          icon: const Icon(Icons.pause_circle_rounded, size: 18), label: const Text('Suspend')),
+          onPressed: () async {
+            num due = 0;
+            try { due = (await db.rpc('_fee_due', params: {'p_student': r['id']}) as num?) ?? 0; } catch (_) {}
+            if (!context.mounted) return;
+            if (await showDialog<bool>(context: context, builder: (_) => LockDialog(student: r, due: due)) == true) _reload(ref);
+          },
+          icon: const Icon(Icons.lock_rounded, size: 18), label: const Text('Lock app')),
         if (canEdit && susp != null) OutlinedButton.icon(onPressed: () async {
-          try { await db.rpc('student_suspend_end', params: {'p_student': r['id']}); _reload(ref); if (context.mounted) toast(context, '${r['full_name']} is back in class ✓'); }
+          try { await db.rpc('student_suspend_end', params: {'p_student': r['id']}); _reload(ref); if (context.mounted) toast(context, 'Unlocked. ${r['full_name']} can use the app again ✓'); }
           catch (e) { if (context.mounted) toast(context, _msg(e)); }
-        }, icon: const Icon(Icons.play_circle_rounded, size: 18), label: const Text('End suspension')),
+        }, icon: const Icon(Icons.play_circle_rounded, size: 18), label: const Text('Unlock')),
         if (canEdit && leaving == null) FilledButton.icon(
           onPressed: () async {
             final done = await showDialog<bool>(context: context, barrierDismissible: false, builder: (_) => _InactiveDialog(student: r, decide: prof['can_decide'] == true));
@@ -631,7 +640,7 @@ class _DetailsTab extends ConsumerWidget {
           _kv(context, 'Staff child', null, auto: true, child: staffChild()),
           _kv(context, 'Address', r['address']),
           _kv(context, 'Last sign-in', login?['at'] == null ? 'Never signed in yet' : '${DateFormat('d MMM yyyy, h:mm a').format(DateTime.parse(login!['at']).toLocal())}${login['platform'] != null ? ' · ${const {'android': 'Android', 'ios': 'iPhone', 'web': 'Web'}[login['platform']] ?? login['platform']}' : ''}', auto: true),
-          _kv(context, 'Status', susp != null ? 'Suspended till ${_dmy(susp['till'])}' : 'Studying here', auto: true),
+          _kv(context, 'Status', susp != null ? 'App locked till ${_dmy(susp['till'])}' : 'Studying here', auto: true),
           if (otherPhones.isNotEmpty) _kv(context, 'Other phones', otherPhones.map((p) => '${p['phone']}${p['label'] != null ? ' (${p['label']})' : ''}').join(', ')),
         ]),
         Padding(padding: const EdgeInsets.only(top: 18, bottom: 8), child: Text('PARENTS', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, letterSpacing: 1.6, color: context.tone(Brand.gold)))),
@@ -696,7 +705,7 @@ class _HistoryTile extends StatelessWidget {
   const _HistoryTile({required this.rows});
   static const _what = {'student.add': 'Admitted', 'student.edit': 'Details changed', 'student.corrected': 'Corrected (Principal approved)', 'student.correction_asked': 'Correction sent to the Principal',
     'student.left': 'Left the school', 'student.inactive': 'Made inactive', 'student.leaving_asked': 'Leaving sent to the Principal', 'student.leaving_declined': 'Leaving not approved',
-    'student.suspended': 'Suspended', 'student.suspension_ended': 'Suspension ended', 'tc.approved': 'TC approved', 'tc.asked': 'TC sent to the Principal', 'student.brought_back': 'Brought back'};
+    'student.suspended': 'App locked', 'student.suspension_ended': 'App unlocked', 'tc.approved': 'TC approved', 'tc.asked': 'TC sent to the Principal', 'student.brought_back': 'Brought back'};
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -847,58 +856,6 @@ class _PastRecord extends ConsumerWidget {
       Panel(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), child: _HistoryTile(rows: [for (final h in (prof['history'] as List?) ?? const []) Map<String, dynamic>.from(h as Map)])),
       NoteBox('Read-only record, kept for ever.${canBack ? ' Re-admit brings the student back into the same class (within 30 days of leaving).' : ''}', icon: Icons.lock_rounded),
     ]);
-  }
-}
-
-// ================================================================== Suspend: for a while, comes back by itself
-class _SuspendDialog extends ConsumerStatefulWidget {
-  final Map<String, dynamic> student;
-  const _SuspendDialog({required this.student});
-  @override
-  ConsumerState<_SuspendDialog> createState() => _SuspendDialogState();
-}
-
-class _SuspendDialogState extends ConsumerState<_SuspendDialog> {
-  static const _reasons = ['Discipline', 'Fees pending', 'Long leave', 'Medical', 'Other'];
-  String reason = 'Discipline'; final other = TextEditingController();
-  DateTime from = DateTime.now(), till = DateTime.now().add(const Duration(days: 3));
-  bool busy = false;
-
-  Future<void> _save() async {
-    final why = reason == 'Other' ? other.text.trim() : reason;
-    if (why.length < 2) { toast(context, 'Please write the reason.'); return; }
-    setState(() => busy = true);
-    try {
-      await db.rpc('student_suspend', params: {'p_student': widget.student['id'], 'p_from': _iso(from), 'p_till': _iso(till), 'p_reason': why});
-      if (!mounted) return;
-      Navigator.pop(context, true);
-      toast(context, '${widget.student['full_name']} is suspended till ${DateFormat('d MMM').format(till)}. Comes back by itself.');
-    } catch (e) { if (mounted) { toast(context, _msg(e)); setState(() => busy = false); } }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    Widget day(String label, DateTime d, ValueChanged<DateTime> set) => Expanded(child: OutlinedButton.icon(onPressed: () async {
-      final x = await showDatePicker(context: context, initialDate: d, firstDate: DateTime.now().subtract(const Duration(days: 30)), lastDate: DateTime.now().add(const Duration(days: 365)));
-      if (x != null) setState(() => set(x));
-    }, icon: const Icon(Icons.event_rounded, size: 18), label: Text('$label ${DateFormat('d MMM yyyy').format(d)}')));
-    return AlertDialog(
-      title: Text('Suspend ${widget.student['full_name']} for a while?'),
-      content: SizedBox(width: 480, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const Text('Temporarily barred, as in MCB. The child is shown as Suspended to the teachers. Nothing is deleted, and the child comes back by itself after the Till date (or earlier with one tap).'),
-        const SizedBox(height: 14),
-        const Text('REASON', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, letterSpacing: .6)),
-        const SizedBox(height: 6),
-        Wrap(spacing: 6, runSpacing: 6, children: [for (final x in _reasons) ChoiceChip(label: Text(x), selected: reason == x, onSelected: (_) => setState(() => reason = x))]),
-        if (reason == 'Other') Padding(padding: const EdgeInsets.only(top: 8), child: TextField(controller: other, decoration: const InputDecoration(labelText: 'Reason'))),
-        const SizedBox(height: 14),
-        Row(children: [day('From', from, (d) { from = d; if (till.isBefore(d)) till = d; }), const SizedBox(width: 8), day('Till', till, (d) => till = d.isBefore(from) ? from : d)]),
-      ])),
-      actions: [
-        TextButton(onPressed: busy ? null : () => Navigator.pop(context, false), child: const Text('Cancel')),
-        FilledButton(style: FilledButton.styleFrom(backgroundColor: Brand.amber), onPressed: busy ? null : _save, child: Text(busy ? 'Please wait…' : 'Suspend')),
-      ],
-    );
   }
 }
 
