@@ -9,6 +9,8 @@ import '../core/theme.dart';
 import 'staff_shell.dart' show Panel;
 
 const langs = ['Kannada', 'Hindi'];
+/// 2nd languages of a grade: French too where the school offers it (Grade IX).
+List<String> langs2(int gno) => frenchGrades.contains(gno) ? const ['Kannada', 'Hindi', 'French'] : langs;
 String otherLang(String l) => l == 'Kannada' ? 'Hindi' : 'Kannada';
 
 /// 2nd language: Grade I – X. 3rd language: Grade I – IX this year, I – X from 2027-28 (the batch moves up).
@@ -63,7 +65,7 @@ class SubjectEdits {
     switch (k) {
       case 'l2':
         _put(r, 'l2', v);
-        if (has3rd(g)) _put(r, 'l3', otherLang(v));
+        if (has3rd(g) && v != 'French') _put(r, 'l3', otherLang(v));   // French: the office picks the 3rd language by hand
       case 'l3':
         _put(r, 'l3', v);
         if (val(r, 'l2') == v) _put(r, 'l2', otherLang(v));
@@ -138,8 +140,8 @@ class SubjectsCell extends StatelessWidget {
     final g = (r['grade_no'] ?? 0) as int;
     Widget k(String t) => Text(t, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: cs.onSurfaceVariant));
     void set(String key, String v) { ed.set(r, key, v); onChange(); }
-    Color lf(String? l) => l == 'Hindi' ? Brand.blue : Brand.amber;
-    Color lb(String? l) => l == 'Hindi' ? Brand.blueTint : Brand.amberTint;
+    Color lf(String? l) => l == 'Hindi' ? Brand.blue : l == 'French' ? Brand.violet : Brand.amber;
+    Color lb(String? l) => l == 'Hindi' ? Brand.blueTint : l == 'French' ? Brand.violetTint : Brand.amberTint;
     if (g >= 11) {
       final gs = streamGroups(r['stream']);
       if (gs.isEmpty) return Text('—', style: TextStyle(color: cs.onSurfaceVariant));
@@ -157,7 +159,7 @@ class SubjectsCell extends StatelessWidget {
     if (!has2nd(g)) return Text('—', style: TextStyle(color: cs.onSurfaceVariant));
     final l2 = ed.val(r, 'l2'), l3 = ed.val(r, 'l3');
     return Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-      k('2nd'), ChipDrop(value: l2, items: langs, fg: lf(l2), bg: lb(l2), onChanged: canEdit ? (v) => set('l2', v) : null),
+      k('2nd'), ChipDrop(value: l2, items: langs2(g), fg: lf(l2), bg: lb(l2), onChanged: canEdit ? (v) => set('l2', v) : null),
       if (has3rd(g)) ...[k('3rd'), ChipDrop(value: l3, items: langs, fg: lf(l3), bg: lb(l3), onChanged: canEdit ? (v) => set('l3', v) : null)],
     ]);
   }
@@ -187,13 +189,13 @@ class FindBySubject extends StatelessWidget {
       final grps = {for (final r in rows) if (ed.val(r, 'grp') != null) ed.val(r, 'grp')!};
       if (grps.length > 1) keys.addAll([for (final g in grps) ('grp|$g', g)]);
       if (rows.any((r) => subjectCode(ed.val(r, 'grp'), ed.val(r, 'el')) == 'PCMB')) keys.add(('code|PCMB', 'PCMB'));
-      const common = {'Physics', 'Chemistry', 'Accountancy', 'Business Studies', 'Economics', 'History', 'Political Science'};
+      const common = {'Physics', 'Chemistry', 'Accountancy', 'Business Studies', 'Economics', 'History', 'Sociology'};
       final subs = <String>{for (final r in rows) ...findableSubjects(ed, r)}.where((s) => !common.contains(s)).toList()
         ..sort((a, b) => electives.indexOf(a).compareTo(electives.indexOf(b)));
       keys.addAll([for (final s in subs) ('s|$s', s)]);
     } else {
       final g3 = rows.any((r) => has3rd((r['grade_no'] ?? 0) as int));
-      keys.addAll([('l2|Kannada', '2nd Kannada'), ('l2|Hindi', '2nd Hindi'), if (g3) ('l3|Kannada', '3rd Kannada'), if (g3) ('l3|Hindi', '3rd Hindi')]);
+      keys.addAll([('l2|Kannada', '2nd Kannada'), ('l2|Hindi', '2nd Hindi'), if (rows.any((r) => ed.val(r, 'l2') == 'French')) ('l2|French', '2nd French'), if (g3) ('l3|Kannada', '3rd Kannada'), if (g3) ('l3|Hindi', '3rd Hindi')]);
     }
     final unset = rows.where((r) => subjectsUnset(ed, r)).length;
     if (unset > 0) keys.add(('none', 'Not set'));
@@ -217,7 +219,7 @@ class FindBySubject extends StatelessWidget {
       ]),
       const SizedBox(height: 8),
       Text(senior
-          ? 'Each student is their group and one elective. PCM + Biology and PCB + Maths both show as PCMB. Commerce and Humanities cannot take Maths or Biology. English is common to all.'
+          ? 'Each student is their group and one elective. PCM + Biology and PCB + Maths both show as PCMB. Commerce takes Applied Maths (not Maths); Humanities is History and Sociology plus one elective. English is common to all.'
           : rows.any((r) => has3rd((r['grade_no'] ?? 0) as int))
               ? 'Choosing the 2nd language sets the 3rd to the other one by itself (Hindi ↔ Kannada). You can still change the 3rd on its own.'
               : 'Grade X: 2nd language only this year (the 3rd language reaches Grade X from 2027-28).',
@@ -256,7 +258,7 @@ class SubjectsBar extends StatelessWidget {
           parts.add(Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [lab('Elective:'), for (final e in allowed) btn('el', e, Brand.green)]));
         }
       } else {
-        parts.add(Wrap(spacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [lab('2nd language:'), for (final l in langs) btn('l2', l, l == 'Hindi' ? Brand.blue : Brand.amber)]));
+        parts.add(Wrap(spacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [lab('2nd language:'), for (final l in (gnos.isNotEmpty && gnos.every(frenchGrades.contains) ? langs2(gnos.first) : langs)) btn('l2', l, l == 'Hindi' ? Brand.blue : l == 'French' ? Brand.violet : Brand.amber)]));
         if (gnos.any(has3rd)) parts.add(Wrap(spacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [lab('3rd:'), for (final l in langs) btn('l3', l, l == 'Hindi' ? Brand.blue : Brand.amber)]));
       }
       parts.add(TextButton(onPressed: busy ? null : onClear, child: const Text('Clear ticks')));
