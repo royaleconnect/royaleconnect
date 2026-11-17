@@ -102,7 +102,7 @@ class _RecordPaymentPageState extends ConsumerState<RecordPaymentPage> {
     final rows = pend?.value ?? const <Map<String, dynamic>>[];
     num amount = 0;
     for (final r in rows) { if (picked.contains(r['id'])) amount += (r['amount'] as num) + ((r['late'] ?? 0) as num); }
-    return StaffPage(title: 'Record a payment', hub: Hub.staffFees,
+    return StaffPage(title: 'Fees · Record a payment', hub: Hub.staffFees,
       subtitle: 'For a bank transfer (NEFT, RTGS, UPI) or a cheque paid to the school’s account. Online payments in the app are recorded by themselves.',
       body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (done != null) Panel(child: Row(children: [
@@ -171,7 +171,7 @@ class _FeeDaySheetPageState extends ConsumerState<FeeDaySheetPage> {
     final cs = Theme.of(context).colorScheme;
     final data = ref.watch(_daySheetProvider(_iso(day)));
     final title = DateFormat('EEEE, d MMMM yyyy').format(day);
-    return StaffPage(title: 'Fee day sheet', hub: Hub.staffFees, subtitle: 'Everything collected on one day, ready to print for the cash book.',
+    return StaffPage(title: 'Fees · Day sheet', hub: Hub.staffFees, subtitle: 'Everything collected on one day, ready to print for the cash book. It is part of Reports.',
       body: data.when(loading: _loading, error: (e, _) => _err(e), data: (rows) {
         num sum(bool Function(Map<String, dynamic>) f) => rows.where(f).fold<num>(0, (a, r) => a + (r['amount'] as num));
         final total = sum((_) => true), online = sum((r) => r['mode'] == 'Online');
@@ -225,13 +225,13 @@ const _kinds = ['Sibling concession', 'Management concession', 'Staff child', 'S
 
 class ConcessionsPage extends ConsumerWidget {
   const ConcessionsPage({super.key});
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => const _ConcessionsBody();
+}
 
-  Future<void> _ask(BuildContext context, WidgetRef ref) async {
-    final ok = await showDialog<bool>(context: context, builder: (_) => const _AskDialog());
-    if (ok == true) ref.invalidate(concessionsProvider);
-  }
-
-  Future<void> _decide(BuildContext context, WidgetRef ref, Map<String, dynamic> r, bool approve) async {
+/// Approve or decline one concession / scholarship (Concessions page and Approvals).
+Future<void> decideConcession(BuildContext context, WidgetRef ref, Map<String, dynamic> r, bool approve) async {
+  {
     final note = TextEditingController();
     final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
       title: Text(approve ? 'Approve ${inr(r['amount'] as num)} for ${r['student']}?' : 'Not approve?'),
@@ -249,12 +249,29 @@ class ConcessionsPage extends ConsumerWidget {
       if (context.mounted) toast(context, approve ? 'Approved ✓ — the fees are updated.' : 'Marked as not approved.');
     } catch (e) { if (context.mounted) toast(context, friendlyError(e)); }
   }
+}
+
+/// Concessions waiting for a decision, for the Approvals page (empty for people who cannot see fees).
+final concessionsWaitingProvider = FutureProvider.autoDispose<({List<Map<String, dynamic>> rows, bool decide})>((ref) async {
+  try {
+    final d = await ref.watch(concessionsProvider.future);
+    return (rows: [for (final r in List<Map<String, dynamic>>.from(d['rows'] ?? const [])) if (r['status'] == 'pending') r], decide: d['can_decide'] == true);
+  } catch (_) { return (rows: const <Map<String, dynamic>>[], decide: false); }
+});
+
+class _ConcessionsBody extends ConsumerWidget {
+  const _ConcessionsBody();
+  Future<void> _ask(BuildContext context, WidgetRef ref) async {
+    final ok = await showDialog<bool>(context: context, builder: (_) => const _AskDialog());
+    if (ok == true) ref.invalidate(concessionsProvider);
+  }
+  Future<void> _decide(BuildContext context, WidgetRef ref, Map<String, dynamic> r, bool approve) => decideConcession(context, ref, r, approve);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     final data = ref.watch(concessionsProvider);
-    return StaffPage(title: 'Concessions', hub: Hub.staffFees,
+    return StaffPage(title: 'Fees · Concessions', hub: Hub.staffFees,
       subtitle: 'Concessions and scholarships for one student at a time. Accounts asks, the Principal decides, and every one is kept with its reason.',
       actions: [if (data.value?['can_ask'] == true) FilledButton.icon(onPressed: () => _ask(context, ref), icon: const Icon(Icons.add_rounded), label: const Text('Ask for a concession'))],
       body: data.when(loading: _loading, error: (e, _) => _err(e), data: (d) {
