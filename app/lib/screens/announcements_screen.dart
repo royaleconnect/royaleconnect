@@ -1,3 +1,4 @@
+import 'part8_family.dart' show lockProvider;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -42,7 +43,9 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
         loading: () => const GoldLoading(),
         error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(32), child: Text(friendlyError(e), textAlign: TextAlign.center))),
         data: (list) {
-          final mine = familyNotices(list, extras, myRoute);   // bus notices for this child only; kept-on-top first
+          final feeLock = ref.watch(lockProvider).value?[ref.watch(sessionProvider).value?.activeStudentId]?['kind'] == 'fees';
+          // bus notices for this child only; kept-on-top first. While the app is locked for fees, only urgent notices are shown.
+          final mine = [for (final n in familyNotices(list, extras, myRoute)) if (!feeLock || n.urgent) n];
           final rows = filter == 'all' ? mine : mine.where((n) => n.category == filter).toList();
           if (rows.isEmpty) return EmptyState(kind: EmptyKind.notices, title: filter == 'all' ? 'No notices yet' : 'Nothing here yet', line: filter == 'all' ? 'New notices from the school appear here, and you get a notification.' : 'Notices of this kind will appear here.');
           return RRefresh(onRefresh: () async { ref.invalidate(noticesProvider); ref.invalidate(noticeExtrasProvider); }, child: ListView.separated(
