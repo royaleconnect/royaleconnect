@@ -1,3 +1,4 @@
+import 'package:go_router/go_router.dart';
 import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -64,11 +65,12 @@ class _SchoolRulesPageState extends ConsumerState<SchoolRulesPage> {
     final s = ref.watch(sessionProvider).value!;
     final cs = Theme.of(context).colorScheme;
     final settings = ref.watch(appSettingsProvider).value;
-    if (!s.hasRole('it_admin')) return StaffPage(title: 'School rules', body: Panel(child: Text('Only IT can open the school’s rules.', style: TextStyle(color: cs.onSurfaceVariant))));
-    return StaffPage(title: 'School rules', hub: Hub.schoolSetup,
-      subtitle: 'For IT only. The school’s own rules, kept here so the school can change them itself. A change is used straight away, everywhere.',
+    if (!s.hasRole('it_admin')) return StaffPage(title: 'Settings', body: Panel(child: Text('Only IT can open the school’s rules.', style: TextStyle(color: cs.onSurfaceVariant))));
+    return StaffPage(title: 'Settings', hub: Hub.schoolSetup,
+      subtitle: 'School rules · for IT only. The school’s own rules, kept here so the school can change them itself. A change is used straight away, everywhere.',
       body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         SizedBox(height: 44, child: ListView(scrollDirection: Axis.horizontal, children: [
+          Padding(padding: const EdgeInsets.only(right: 8), child: ActionChip(avatar: const Icon(Icons.arrow_back_rounded, size: 18), label: const Text('Switches and access'), labelStyle: const TextStyle(fontWeight: FontWeight.w800), onPressed: () => context.pushReplacement('/staff/settings'))),
           for (final (k, t) in _tabs) Padding(padding: const EdgeInsets.only(right: 8), child: ChoiceChip(label: Text(t), selected: tab == k, showCheckmark: false, selectedColor: Brand.crimson,
               labelStyle: TextStyle(fontWeight: FontWeight.w800, color: tab == k ? Colors.white : null), onSelected: (_) => setState(() => tab = k))),
         ])),
@@ -238,7 +240,7 @@ class _SplitState extends State<_Split> {
   }
 }
 
-/// Internal assessment columns for I – V and VI – X.
+/// Internal assessment columns for I – V and VI – X: one row for each part — its name and its marks.
 class _Parts extends StatefulWidget {
   final Map<String, String> settings; final bool busy; final ValueChanged<Map<String, String>> onSave;
   const _Parts({required this.settings, required this.busy, required this.onSave});
@@ -247,29 +249,46 @@ class _Parts extends StatefulWidget {
 }
 
 class _PartsState extends State<_Parts> {
-  late final a = TextEditingController(text: (widget.settings['parts_1_5'] ?? 'PA:5,MA:5,SEA:5,PF:5,AOS:5,PBA:5,CWS:20').replaceAll(',', ', '));
-  late final b = TextEditingController(text: (widget.settings['parts_6_10'] ?? 'PA:5,MA:5,SEA:5,PF:5').replaceAll(',', ', '));
+  late final a = _rows(widget.settings['parts_1_5'] ?? 'PA:5,MA:5,SEA:5,PF:5,AOS:5,PBA:5,CWS:20');
+  late final b = _rows(widget.settings['parts_6_10'] ?? 'PA:5,MA:5,SEA:5,PF:5');
+  List<(TextEditingController, TextEditingController)> _rows(String t) => [
+    for (final x in t.split(',')) if (x.trim().isNotEmpty) (TextEditingController(text: x.split(':').first.trim()), TextEditingController(text: x.contains(':') ? x.split(':')[1].trim() : '')),
+  ];
   @override
-  void dispose() { a.dispose(); b.dispose(); super.dispose(); }
-  /// "PA:5, MA:5" → (clean text, total) or null when it cannot be read
-  (String, num)? _read(String t) {
+  void dispose() { for (final r in [...a, ...b]) { r.$1.dispose(); r.$2.dispose(); } super.dispose(); }
+  /// the rows → ("PA:5,MA:5", total), or null when a row is not filled in properly
+  (String, num)? _read(List<(TextEditingController, TextEditingController)> rows) {
     final out = <String>[]; num sum = 0;
-    for (final x in t.split(',')) {
-      if (x.trim().isEmpty) continue;
-      final p = x.split(':'); final m = p.length == 2 ? num.tryParse(p[1].trim()) : null;
-      if (p[0].trim().isEmpty || m == null || m <= 0) return null;
-      out.add('${p[0].trim().toUpperCase()}:${fmtMark(m)}'); sum += m;
+    for (final r in rows) {
+      final name = r.$1.text.trim().toUpperCase().replaceAll(RegExp(r'[,:]'), ''); final m = num.tryParse(r.$2.text.trim());
+      if (name.isEmpty && r.$2.text.trim().isEmpty) continue;
+      if (name.isEmpty || m == null || m <= 0) return null;
+      out.add('$name:${fmtMark(m)}'); sum += m;
     }
     return out.isEmpty ? null : (out.join(','), sum);
   }
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final ra = _read(a.text), rb = _read(b.text);
-    Widget box(TextEditingController c, String l, (String, num)? r) => Padding(padding: const EdgeInsets.only(bottom: 14), child: TextField(controller: c, onChanged: (_) => setState(() {}),
-        decoration: InputDecoration(labelText: l, helperText: r == null ? 'Write each part as NAME:marks, with commas between them.' : 'Internal ${fmtMark(r.$2)} + Written ${fmtMark(100 - r.$2)} = 100')));
+    final ra = _read(a), rb = _read(b);
+    Widget group(String title, List<(TextEditingController, TextEditingController)> rows, (String, num)? r) => Padding(padding: const EdgeInsets.only(bottom: 18), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
+      const SizedBox(height: 8),
+      for (final (i, x) in rows.indexed) Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [
+        SizedBox(width: 150, child: TextField(controller: x.$1, textCapitalization: TextCapitalization.characters, onChanged: (_) => setState(() {}), decoration: const InputDecoration(labelText: 'Part', isDense: true))),
+        const SizedBox(width: 10),
+        SizedBox(width: 100, child: TextField(controller: x.$2, textAlign: TextAlign.center, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: const InputDecoration(labelText: 'Marks', isDense: true))),
+        IconButton(tooltip: 'Remove', onPressed: rows.length <= 1 ? null : () => setState(() { final y = rows.removeAt(i); y.$1.dispose(); y.$2.dispose(); }), icon: const Icon(Icons.close_rounded, size: 18)),
+      ])),
+      Row(children: [
+        TextButton.icon(onPressed: () => setState(() => rows.add((TextEditingController(), TextEditingController(text: '5')))), icon: const Icon(Icons.add_rounded), label: const Text('Add a part')),
+        const SizedBox(width: 8),
+        Expanded(child: Text(r == null ? 'Each part needs a name and its marks.' : r.$2 >= 100 ? 'The parts must add up to less than 100.' : 'Internal ${fmtMark(r.$2)} + Written ${fmtMark(100 - r.$2)} = 100',
+            style: TextStyle(fontWeight: FontWeight.w800, color: r == null || r.$2 >= 100 ? context.tone(Brand.crimsonDeep) : context.tone(Brand.green)))),
+      ]),
+    ]));
     return Panel(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      box(a, 'Grades I – V', ra), box(b, 'Grades VI – X', rb),
+      group('Grades I – V', a, ra), group('Grades VI – X', b, rb),
       Container(padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: Brand.green.withValues(alpha: .07), borderRadius: BorderRadius.circular(12)),
         child: const Text('PA fills in by itself from the periodic test: Half Yearly PA = PT 1 ÷ 30 × the PA marks, Annual PA = PT 2 ÷ 30 × the PA marks, rounded to a whole number. '
             'If a term has two tests, their average is used. If a student has no test mark (or was absent), the teacher types the PA.', style: TextStyle(fontWeight: FontWeight.w600))),
