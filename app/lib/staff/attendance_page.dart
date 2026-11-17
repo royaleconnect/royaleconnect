@@ -1,3 +1,4 @@
+import '../widgets/hub_tabs.dart';
 import 'package:flutter/material.dart';
 import '../widgets/royal_extras.dart' show ShimmerPage;
 import 'package:flutter/services.dart';
@@ -126,7 +127,7 @@ class _StaffAttendanceScreenState extends ConsumerState<StaffAttendanceScreen> {
     final present = students.length - absent - leave;
     final today = DateUtils.dateOnly(DateTime.now());
 
-    return StaffPage(title: 'Attendance',
+    return StaffPage(title: 'Attendance', hub: Hub.staffAttendance,
       subtitle: canMark || sheet == null ? 'Type who is absent and tap Mark absent — or tap Present / Absent for each child below. Then Save. Families of absent children are told at 10:00.' : 'See who was present and absent. The class teacher marks attendance.',
       body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (list.isNotEmpty || coverLabel != null) Panel(padding: const EdgeInsets.all(12), child: Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: [
