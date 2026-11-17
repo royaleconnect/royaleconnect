@@ -4,6 +4,7 @@ import '../auth/session.dart';
 import 'data.dart';
 import 'data2.dart';
 import 'cache.dart';
+import 'marks_rules.dart';
 
 /// Release A data: school settings (feature switches, who can use what), homework for tomorrow,
 /// Board Toppers and Hall of Fame.
@@ -13,7 +14,13 @@ import 'cache.dart';
 final appSettingsProvider = FutureProvider<Map<String, String>>((ref) async {
   ref.watch(sessionProvider);
   final rows = await db.from('school_setting').select('key,value');
-  return {for (final r in rows) r['key'] as String: (r['value'] ?? '').toString()};
+  final map = {for (final r in rows) r['key'] as String: (r['value'] ?? '').toString()};
+  readSchoolRules(map);   // electives the school can change (School rules)
+  try {   // this year's grading scale
+    final yr = await db.from('academic_year').select('id').eq('is_current', true).maybeSingle();
+    if (yr != null) setGradeScale(List<Map<String, dynamic>>.from(await db.from('grading_scale').select('min_pct,grade_label').eq('academic_year_id', yr['id'])));
+  } catch (_) {}
+  return map;
 });
 
 Map<String, dynamic> _json(String? v) {
