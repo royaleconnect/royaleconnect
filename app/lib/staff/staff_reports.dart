@@ -4,7 +4,9 @@ import '../auth/session.dart';
 import '../core/data.dart';
 import '../core/errors.dart';
 import 'package:intl/intl.dart' show DateFormat;
-import '../core/school_docs.dart' show openReportCardPdf;
+import '../core/school_docs.dart' show openReportCardPdf, openReportCardsPdf;
+import '../core/data3.dart' show appSettingsProvider;
+import '../core/marks_rules.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
 import '../widgets/royal_extras.dart' show ShimmerPage;
@@ -16,12 +18,6 @@ import '../widgets/hub_tabs.dart';
 /// Class teachers fill in everything on the report card except marks (marks come from Marks entry):
 /// attendance, height and weight, co-scholastic grades and remarks. Then preview the PDF and publish to families.
 /// Office / principal can do it for any section. Families see nothing until it is published.
-
-final _coAreasProvider = FutureProvider<List<String>>((ref) async {
-  final r = await db.from('school_setting').select('value').eq('key', 'co_scholastic_areas').maybeSingle();
-  final v = (r?['value'] as String?) ?? 'Art Education,Health & Physical Education,Discipline';
-  return v.split(',').map((x) => x.trim()).where((x) => x.isNotEmpty).toList();
-});
 
 /// Report card names for a grade: one card for each exam of the year (Periodic Test 1, Half Yearly …), in order.
 final _termsProvider = FutureProvider.autoDispose.family<List<(String, String)>, String>((ref, gradeId) async {
@@ -85,6 +81,7 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
   final workingDays = TextEditingController();
   final rows = <String, _Row>{};
   String? loadedFor; bool busy = false;
+  bool? withHeader;   // print with the school's header (off = pre-printed paper)
 
   @override
   void dispose() { for (final r in rows.values) { r.dispose(); } workingDays.dispose(); super.dispose(); }
@@ -202,7 +199,13 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
     final secs = s.isOffice ? secsAll : secsAll.where((x) => x['class_teacher_id'] == s.staff?['id']).toList();
     if (sectionId == null && secs.isNotEmpty) sectionId = secs.first['id'];
     final sec = secs.where((x) => x['id'] == sectionId).firstOrNull;
-    final areas = ref.watch(_coAreasProvider).value ?? const <String>[];
+    // the areas of this class (School rules): co-scholastic, and for VI – VIII the ten life skills too
+    final settings = ref.watch(appSettingsProvider).value;
+    final gno = gradeNoOf('${sec?['grade']?['code'] ?? ''}');
+    final life = lifeSkillsFor(settings, gno);
+    final areas = [...coAreasFor(settings, gno), ...life];
+    final scale = gno >= 11 ? coGrades3 : coGrades;
+    final header = withHeader ?? (settings?['rc_header'] != 'off');
     final termKinds = sec == null ? const <(String, String)>[] : (ref.watch(_termsProvider(sec['grade']['id'])).value ?? const <(String, String)>[]);
     final terms = termKinds.isEmpty ? const <String>['Half Yearly'] : [for (final t in termKinds) t.$1];
     final isTestCard = termKinds.any((t) => t.$1 == term && t.$2 == 'test');
@@ -239,6 +242,15 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
             Text('${rows.length} students · $published published', style: const TextStyle(fontWeight: FontWeight.w800)),
             FilledButton.icon(onPressed: busy ? null : () => _save(areas), icon: const Icon(Icons.save_rounded, size: 18), label: const Text('Save all')),
             OutlinedButton.icon(onPressed: busy || rows.isEmpty ? null : () => _publish(areas), icon: const Icon(Icons.send_rounded, size: 18), label: const Text('Publish to families')),
+            Builder(builder: (_) {
+              final ids = [for (final st in studs.value!) if (rows[st['student']['id']]?.id != null) rows[st['student']['id']]!.id!];
+              return OutlinedButton.icon(onPressed: ids.isEmpty ? null : () => openReportCardsPdf(context, ids, label: '${sec == null ? '' : sectionLabel(sec)} $term', header: header),
+                  icon: const Icon(Icons.print_rounded, size: 18), label: Text('Print the whole class (${ids.length})'));
+            }),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Switch(value: header, onChanged: (v) => setState(() => withHeader = v)),
+              Text(header ? 'With the school’s header' : 'No header (pre-printed paper)', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+            ]),
           ])),
           for (final st in studs.value!) Builder(builder: (_) {
             final id = st['student']['id'] as String;
@@ -256,17 +268,16 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
               Row(children: [
                 Expanded(child: Text('${st['roll_no'] ?? ''}${st['roll_no'] == null ? '' : '. '}${st['student']['full_name']}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
                 Pill(label, fg: fg, bg: bg),
-                if (r.id != null) IconButton(onPressed: () => openReportCardPdf(context, r.id!, name: '${st['student']['full_name']} $term'), icon: const Icon(Icons.picture_as_pdf_rounded), tooltip: 'Preview PDF'),
+                if (r.id != null) IconButton(onPressed: () => openReportCardPdf(context, r.id!, name: '${st['student']['full_name']} $term', header: header), icon: const Icon(Icons.picture_as_pdf_rounded), tooltip: 'Preview PDF'),
               ]),
               const SizedBox(height: 10),
               Wrap(spacing: 10, runSpacing: 10, children: [
                 numBox(r.present, 'Days present'), if (!isTestCard) numBox(r.height, 'Height (cm)'), if (!isTestCard) numBox(r.weight, 'Weight (kg)'),
-                if (!isTestCard) for (final a in areas) SizedBox(width: 190, child: DropdownButtonFormField<String>(
-                  value: (r.co[a] ?? '').isEmpty ? null : r.co[a],
+                if (!isTestCard) for (final a in areas) SizedBox(width: life.contains(a) ? 400 : 190, child: DropdownButtonFormField<String>(
+                  value: scale.containsKey(r.co[a]) ? r.co[a] : null,
                   isDense: true, isExpanded: true,
                   decoration: InputDecoration(labelText: a, isDense: true),
-                  items: const [DropdownMenuItem(value: 'A', child: Text('A · Outstanding')), DropdownMenuItem(value: 'B', child: Text('B · Very good')), DropdownMenuItem(value: 'C', child: Text('C · Good')),
-                    DropdownMenuItem(value: 'D', child: Text('D · Fair')), DropdownMenuItem(value: 'E', child: Text('E · Needs improvement'))],
+                  items: [for (final e in scale.entries) DropdownMenuItem(value: e.key, child: Text('${e.key} · ${e.value}'))],
                   onChanged: locked ? null : (v) => setState(() => r.co[a] = v ?? ''),
                 )),
               ]),
