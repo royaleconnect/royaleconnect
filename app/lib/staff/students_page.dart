@@ -1,3 +1,4 @@
+import '../widgets/hub_tabs.dart';
 import 'part8_extras.dart' show StudentCountCards, LockDialog;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -220,6 +221,7 @@ class _StudentsPageState extends ConsumerState<StudentsPage> {
     final showBar = !past && canEdit && (ticked.isNotEmpty || !ed.isEmpty);
     final tickedRows = allRows.where((r) => ticked.contains(r['id'])).toList();
     final page = StaffPage(
+      hub: past ? null : Hub.staffStudents,
       title: 'Students',
       subtitle: 'The whole school, class by class. Search finds anyone by name, admission number or a parent’s phone.',
       actions: [
