@@ -225,10 +225,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       subtitle: widget.addSibling ? "Enter your other child's admission number and password once." : 'Sign in once and stay signed in until you choose to sign out.',
       topAction: widget.addSibling ? IconButton(onPressed: () => context.pop(), icon: const Icon(Icons.close_rounded, color: Colors.white), tooltip: 'Close') : null,
       formTitle: widget.addSibling ? 'Brother or sister' : 'Parent & student sign-in',
-      formSubtitle: 'Use the admission number and password from the school.',
+      formSubtitle: 'Use your username and password from the school.',
       children: [
         TextField(controller: adm, textCapitalization: TextCapitalization.characters, autofillHints: const [AutofillHints.username],
-            decoration: const InputDecoration(labelText: 'Admission number', hintText: 'e.g. LK/10/2014')),
+            decoration: const InputDecoration(labelText: 'Username', hintText: 'e.g. LK/10/2014', helperText: 'Students and parents: use the admission number.')),
         const SizedBox(height: 6),
         Text('As on the ID card. One per student; add brothers or sisters after signing in.', style: TextStyle(fontSize: 11.5, color: cs.onSurfaceVariant)),
         const SizedBox(height: 16),
