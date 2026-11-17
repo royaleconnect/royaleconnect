@@ -167,7 +167,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         GoRoute(path: '/staff/me', builder: (_, __) => const StaffMeScreen()),
         GoRoute(path: '/staff/desk', builder: (_, __) => const StaffDeskScreen()),
         // Part 8
-        GoRoute(path: '/staff/marks-status', builder: (_, __) => const MarksStatusPage()),
+        GoRoute(path: '/staff/marks-status', builder: (_, __) => const ExamReportsPage(tab: 'status')),   // Marks entered is the first report
         GoRoute(path: '/staff/exam-reports', builder: (_, __) => const ExamReportsPage()),
         GoRoute(path: '/staff/promotion', builder: (_, __) => const PromotionPage()),
         GoRoute(path: '/staff/attendance/register', builder: (_, __) => const AttendanceRegisterPage()),
