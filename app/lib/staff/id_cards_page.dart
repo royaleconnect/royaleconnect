@@ -1,3 +1,4 @@
+import '../widgets/hub_tabs.dart';
 import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:flutter/material.dart';
@@ -262,7 +263,7 @@ class _StaffIdCardsScreenState extends ConsumerState<StaffIdCardsScreen> {
     ));
 
     return StaffPage(
-      title: 'ID cards',
+      title: 'ID cards', hub: Hub.staffIds,
       subtitle: 'Yellow cards for bus students, purple for the others. Only cards with every detail are printed.',
       actions: [
         if (set != null && set.rows.isNotEmpty) OutlinedButton.icon(onPressed: busy ? null : () => _pack(set, scope), icon: const Icon(Icons.folder_zip_rounded, size: 18), label: const Text('Excel / photos pack')),
