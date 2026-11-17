@@ -182,7 +182,7 @@ class _StaffFeesScreenState extends ConsumerState<StaffFeesScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return StaffPage(title: 'Fees & receipts', hub: Hub.staffFees, subtitle: 'Every online payment lands here with its receipt number. Fee heads and plans are loaded from the accounts sheet.',
+    return StaffPage(title: 'Fees', hub: Hub.staffFees, subtitle: 'Every online payment lands here with its receipt number. Fee heads and plans are loaded from the accounts sheet.',
         actions: [OutlinedButton.icon(onPressed: () => context.go('/staff/fees/reports'), icon: const Icon(Icons.table_view_rounded, size: 18), label: const Text('Reports & Excel'))],
         body: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       SegmentedButton<int>(showSelectedIcon: !isNarrow(context), segments: [ButtonSegment(value: 0, label: Text(isNarrow(context) ? 'Ledger' : 'Student ledger')), const ButtonSegment(value: 1, label: Text('Overdue')), ButtonSegment(value: 2, label: Text(isNarrow(context) ? 'Payments' : 'Recent payments'))], selected: {tab}, onSelectionChanged: (v) => setState(() => tab = v.first)),
