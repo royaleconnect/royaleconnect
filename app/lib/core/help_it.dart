@@ -70,7 +70,7 @@ const itHandbookHelp = <HelpItem>[
     'Tap it to see each check and what to do. It checks again every 2 minutes.',
   ], keywords: 'health dot green amber red status system check notifications jobs', route: '/staff', button: 'Open my first page'),
   HelpItem('it-rules', 'IT handbook', 'Where do I change the school’s rules (subjects, marks, grades, report card)?', [
-    'Open School setup → School rules. Only IT sees this page.',
+    'Open School setup → Settings → School rules. Only IT sees this page.',
     'Subjects: the electives of Science, Commerce and Humanities. Sections & streams: each XI–XII section’s stream and its coaching name for the report card.',
     'Marks out of: practical + theory for each XI–XII subject. Internal parts: the columns PA, MA, SEA, PF (and AOS, PBA, CWS for I–V) with their marks.',
     'Co-scholastic: the lines of Part 2 for each grade group. Grading scale: where each grade starts. Report card header: name, address, CBSE logo, header on or off.',
@@ -81,7 +81,7 @@ const itHandbookHelp = <HelpItem>[
     'Students: Students → Add a student, Edit details, or School setup → Add from Excel for many at once.',
     'Staff: School setup → Staff. Classes, subject teachers and fees: School setup → Classes & fees.',
     'Exams: Exams & marks → Add exam, or the calendar-pencil button on an exam to change it.',
-    'Rules: School setup → School rules. Switch a section of the app on or off: School setup → Settings.',
+    'Rules: School setup → Settings → School rules. Switch a section of the app on or off: School setup → Settings.',
     'Year end: Exams & marks → Promotion, then the Year-end checklist on Today from mid-February.',
     'Every page has a small “?” next to its title with the answers for that page.',
   ], keywords: 'handover run app without developer where is everything it guide new it person', route: '/staff/setup', button: 'Open School setup'),
