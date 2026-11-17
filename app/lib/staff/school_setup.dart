@@ -14,7 +14,7 @@ import 'import_excel.dart';
 import 'staff_data.dart';
 import 'staff_shell.dart';
 import 'subjects_ui.dart';
-import '../core/marks_rules.dart' show streamGroups, electivesFor;
+import '../core/marks_rules.dart' show streamGroups, electivesFor, schoolCategories;
 import '../core/cache.dart';
 import '../widgets/hub_tabs.dart';
 
@@ -414,7 +414,7 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
       two(TextField(controller: nationality, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Nationality')),
           TextField(controller: religion, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Religion (office only)'))),
       const SizedBox(height: 10),
-      field('Category (office only)', chips(const ['General', 'OBC', 'SC', 'ST'], category, (v) => category = v)),
+      field('Category (office only)', chips({...schoolCategories, if (category != null) category!}.toList(), category, (v) => category = v)),
       const SizedBox(height: 10),
       if (_gradeNo >= 11 && _stream != null) ...[
         Text('Stream of this section: $_stream', style: TextStyle(fontWeight: FontWeight.w700, color: context.tone(Brand.green))),
@@ -424,7 +424,7 @@ class StudentEditorState extends ConsumerState<StudentEditor> {
                 : field('Group', Text(streamGroups(_stream).first, style: const TextStyle(fontWeight: FontWeight.w800))),
             field('Elective', chips(electivesFor(streamGroups(_stream).length == 1 ? streamGroups(_stream).first : grp), elective, (v) => elective = v))),
       ] else if (_gradeNo <= 10) two(
-          field('2nd language', chips(const ['Kannada', 'Hindi'], lang2, (v) { lang2 = v; if (v != null && has3rd(_gradeNo == 0 ? 1 : _gradeNo)) lang3 = otherLang(v); })),
+          field('2nd language', chips(langs2(_gradeNo), lang2, (v) { lang2 = v; if (v != null && v != 'French' && has3rd(_gradeNo == 0 ? 1 : _gradeNo)) lang3 = otherLang(v); })),
           has3rd(_gradeNo == 0 ? 1 : _gradeNo)
               ? field('3rd language', chips(const ['Kannada', 'Hindi'], lang3, (v) { lang3 = v; if (v != null && lang2 == v) lang2 = otherLang(v); }))
               : field('3rd language', Text('From 2027-28 for Grade X', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)))),
