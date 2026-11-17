@@ -65,7 +65,7 @@ const tourSteps = <String, List<TourStep>>{
   ],
   'office': [
     TourStep('Approvals', 'Password help and certificates still to give. The Principal decides receipt cancellations, TC requests and data corrections.', Icons.inbox_rounded, at: ['nav:/staff/approvals'], optional: true),
-    TourStep('Fees & receipts', 'Record a payment, print the receipt, see who still owes fees and download reports in Excel. Reminders to families go by themselves.', Icons.account_balance_wallet_rounded, at: ['nav:/staff/fees']),
+    TourStep('Fees', 'Record a payment, print the receipt, see who still owes fees and download reports in Excel. Reminders to families go by themselves.', Icons.account_balance_wallet_rounded, at: ['nav:/staff/fees']),
     TourStep('Students', 'Find any student by name, admission number or a parent’s phone. The full record opens with one tap.', Icons.people_alt_rounded, at: ['nav:/staff/students']),
     TourStep('Certificates', 'TC, Study, Bonafide and No dues certificates, filled in from the records, ready to print.', Icons.workspace_premium_rounded, at: ['nav:/staff/certificates'], optional: true),
     TourStep('ID cards', 'Print ID cards class by class. It glows gold when every card is ready.', Icons.badge_rounded, at: ['nav:/staff/id-cards'], optional: true),
@@ -78,7 +78,7 @@ const tourSteps = <String, List<TourStep>>{
     TourStep('Approvals', 'Receipt cancellations, TC requests and data corrections waiting for your yes or no.', Icons.inbox_rounded, at: ['nav:/staff/approvals'], optional: true),
     TourStep('Principal’s Desk', 'Your welcome and event messages to families and staff, shown full screen once to everyone.', Icons.auto_awesome_rounded, at: ['nav:/staff/desk'], optional: true),
     TourStep('School setup', 'Staff, classes & fees, sections on/off, the Bin (bring back anything deleted within 30 days) and branches — all as tabs here.', Icons.tune_rounded, at: ['nav:/staff/setup']),
-    TourStep('Weekly summary', 'Every Monday at 8 am: “Your week at Royale”, five lines about the week and what needs you.', Icons.insights_rounded),
+    TourStep('Weekly summary', 'Every Monday at 8 am: “Your week at Royale”, five lines about the week and what needs you. It is also on Today: Your week.', Icons.insights_rounded),
     TourStep('Help', 'Short answers, and the IT handbook. You can take this tour again from here.', Icons.help_outline_rounded, at: ['nav:/staff/help']),
   ],
 };
