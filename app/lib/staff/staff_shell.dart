@@ -50,11 +50,7 @@ const staffMenu = [
   StaffItem('/staff/moments', 'Class photos', Icons.photo_library_rounded, 'MY CLASS'),
   StaffItem('/staff/students', 'Students', Icons.people_alt_rounded, 'STUDENTS'),
   StaffItem('/staff/class-logins', 'Class logins', Icons.key_rounded, 'MY CLASS', roles: ['class_teacher', 'office', 'it_admin']),
-  StaffItem('/staff/strength', 'Student strength', Icons.groups_rounded, 'STUDENTS', roles: ['accounts', ...officeRoles]),
-  StaffItem('/staff/leaving', 'Leaving check', Icons.assignment_return_rounded, 'STUDENTS', roles: ['accounts', ...officeRoles]),
-  StaffItem('/staff/fees', 'Fees & receipts', Icons.account_balance_wallet_rounded, 'FEES', roles: ['accounts', ...officeRoles]),
-  StaffItem('/staff/fees/reports', 'Fee reports', Icons.table_view_rounded, 'FEES', roles: ['accounts', ...officeRoles]),
-  StaffItem('/staff/fees/dues', 'Fee dues', Icons.pending_actions_rounded, 'FEES', roles: ['accounts', ...officeRoles]),
+  StaffItem('/staff/fees', 'Fees', Icons.account_balance_wallet_rounded, 'FEES', roles: ['accounts', ...officeRoles]),
   StaffItem('/staff/certificates', 'Certificates', Icons.workspace_premium_rounded, 'STUDENTS', roles: ['accounts', ...officeRoles]),
   StaffItem('/staff/id-cards', 'ID cards', Icons.badge_rounded, 'STUDENTS', roles: officeRoles),
   StaffItem('/staff/transport', 'Transport', Icons.directions_bus_rounded, 'STUDENTS', roles: ['transport_incharge', ...officeRoles]),
@@ -63,7 +59,6 @@ const staffMenu = [
   StaffItem('/staff/calendar', 'School calendar', Icons.calendar_month_rounded, 'SCHOOL', roles: officeRoles),
   StaffItem('/staff/feedback', 'Parent feedback', Icons.rate_review_rounded, 'SCHOOL', roles: officeRoles),
   StaffItem('/staff/setup', 'School setup', Icons.tune_rounded, 'SCHOOL', roles: ['accounts', ...officeRoles]),
-  StaffItem('/staff/week', 'Your week', Icons.insights_rounded, 'SCHOOL', roles: ['principal', 'it_admin', 'vice_principal']),
   StaffItem('/staff/diary-check', 'Diary check', Icons.rule_folder_rounded, 'SCHOOL', roles: ['coordinator', ...officeRoles]),
   StaffItem('/staff/me', 'My settings', Icons.settings_rounded, 'ME', locked: true),
   StaffItem('/staff/help', 'Help', Icons.help_outline_rounded, 'ME', locked: true),
@@ -78,20 +73,21 @@ const staffLayouts = <String, List<(String, List<String>)>>{
   'class_teacher': [('TODAY', ['/staff', '/staff/messages', '/staff/announcements']),
     ('MY CLASS', ['/staff/attendance', '/staff/diary', '/staff/leave', '/staff/exams', '/staff/star', '/staff/moments', '/staff/students', '/staff/class-logins']), _honours, _me],
   'coordinator': [('TODAY', ['/staff', '/staff/messages', '/staff/announcements']), ('MY GRADES', ['/staff/attendance', '/staff/diary', '/staff/diary-check', '/staff/exams', '/staff/students']), _honours, _me],
-  'accounts': [('TODAY', ['/staff']), ('FEES', ['/staff/fees', '/staff/fees/reports', '/staff/fees/dues']), ('STUDENTS', ['/staff/students', '/staff/certificates']), _honours, _me],
+  'accounts': [('TODAY', ['/staff']), ('FEES', ['/staff/fees']), ('STUDENTS', ['/staff/students', '/staff/certificates']), _honours, _me],
   'office': [('TODAY', ['/staff', '/staff/approvals', '/staff/messages', '/staff/announcements']),
-    ('STUDENTS', ['/staff/students', '/staff/strength', '/staff/leaving', '/staff/certificates', '/staff/id-cards', '/staff/transport']), ('FEES', ['/staff/fees', '/staff/fees/reports', '/staff/fees/dues']), ('SCHOOL', ['/staff/calendar', '/staff/albums', '/staff/feedback', '/staff/toppers']), _me],
+    ('STUDENTS', ['/staff/students', '/staff/certificates', '/staff/id-cards', '/staff/transport']), ('FEES', ['/staff/fees']), ('SCHOOL', ['/staff/calendar', '/staff/albums', '/staff/feedback', '/staff/toppers']), _me],
   'transport_incharge': [('TODAY', ['/staff', '/staff/announcements']), ('TRANSPORT', ['/staff/transport', '/staff/bus-pins', '/staff/students']), _honours, _me],
   'principal': [('TODAY', ['/staff', '/staff/approvals', '/staff/announcements', '/staff/desk']),
-    ('SCHOOL', ['/staff/students', '/staff/strength', '/staff/leaving', '/staff/attendance', '/staff/diary-check', '/staff/exams', '/staff/toppers', '/staff/feedback', '/staff/week']), _me],
+    ('SCHOOL', ['/staff/students', '/staff/attendance', '/staff/diary-check', '/staff/exams', '/staff/toppers', '/staff/feedback']), _me],
   'vice_principal': [('TODAY', ['/staff', '/staff/approvals', '/staff/announcements']),
-    ('SCHOOL', ['/staff/students', '/staff/strength', '/staff/leaving', '/staff/attendance', '/staff/diary-check', '/staff/exams', '/staff/toppers', '/staff/feedback', '/staff/week']), _me],
+    ('SCHOOL', ['/staff/students', '/staff/attendance', '/staff/diary-check', '/staff/exams', '/staff/toppers', '/staff/feedback']), _me],
   // IT: everything
   'it_admin': [('TODAY', ['/staff', '/staff/approvals', '/staff/messages', '/staff/announcements']),
-    ('STUDENTS', ['/staff/students', '/staff/strength', '/staff/leaving', '/staff/certificates', '/staff/id-cards', '/staff/transport', '/staff/toppers']),
-    ('FEES', ['/staff/fees', '/staff/fees/reports', '/staff/fees/dues']),
-    ('SCHOOL', ['/staff/desk', '/staff/calendar', '/staff/albums', '/staff/feedback', '/staff/setup', '/staff/week']),
-    ('CLASSES', ['/staff/attendance', '/staff/diary', '/staff/diary-check', '/staff/leave', '/staff/exams', '/staff/star', '/staff/moments', '/staff/class-logins', '/staff/bus-pins']), _me],
+    ('STUDENTS', ['/staff/students', '/staff/certificates', '/staff/id-cards', '/staff/transport', '/staff/toppers']),
+    ('FEES', ['/staff/fees']),
+    ('SCHOOL', ['/staff/desk', '/staff/calendar', '/staff/albums', '/staff/feedback', '/staff/setup']),
+    // IT keeps only what it uses for any class; the teachers' own pages can be ticked back in Settings → Who can use what
+    ('CLASSES', ['/staff/attendance', '/staff/exams', '/staff/class-logins']), _me],
 };
 
 /// The 4 pages at the bottom of the phone screen: the daily jobs of the person's highest role.
@@ -102,8 +98,8 @@ const staffBottomBar = <String, List<(String, String)>>{
   'accounts': [('/staff', 'Today'), ('/staff/fees', 'Fees'), ('/staff/students', 'Students'), ('/staff/certificates', 'Certificates')],
   'office': [('/staff', 'Today'), ('/staff/approvals', 'Approvals'), ('/staff/students', 'Students'), ('/staff/announcements', 'Notices')],
   'transport_incharge': [('/staff', 'Today'), ('/staff/transport', 'Transport'), ('/staff/announcements', 'Notices'), ('/staff/students', 'Students')],
-  'principal': [('/staff', 'Today'), ('/staff/approvals', 'Approvals'), ('/staff/announcements', 'Notices'), ('/staff/week', 'Your week')],
-  'vice_principal': [('/staff', 'Today'), ('/staff/approvals', 'Approvals'), ('/staff/announcements', 'Notices'), ('/staff/week', 'Your week')],
+  'principal': [('/staff', 'Today'), ('/staff/approvals', 'Approvals'), ('/staff/announcements', 'Notices'), ('/staff/students', 'Students')],
+  'vice_principal': [('/staff', 'Today'), ('/staff/approvals', 'Approvals'), ('/staff/announcements', 'Notices'), ('/staff/students', 'Students')],
   'it_admin': [('/staff', 'Today'), ('/staff/approvals', 'Approvals'), ('/staff/students', 'Students'), ('/staff/setup', 'Setup')],
 };
 
@@ -115,17 +111,23 @@ const staffSubPages = [
   StaffItem('/staff/users', 'Staff', Icons.badge_rounded, 'SCHOOL', roles: ['it_admin', 'principal']),
   StaffItem('/staff/sections', 'New sections', Icons.view_module_rounded, 'SCHOOL', roles: ['it_admin', 'principal']),
   StaffItem('/staff/bin', 'Bin', Icons.delete_outline_rounded, 'SCHOOL', roles: ['it_admin', 'principal']),
-  StaffItem('/staff/settings', 'School settings', Icons.admin_panel_settings_rounded, 'SCHOOL', roles: ['it_admin'], locked: true),
+  StaffItem('/staff/settings', 'Settings', Icons.admin_panel_settings_rounded, 'SCHOOL', roles: ['it_admin'], locked: true),
   StaffItem('/staff/houses', 'Houses', Icons.flag_rounded, 'STUDENTS'),
   StaffItem('/staff/announcements/report', 'Notices · who read them', Icons.insights_rounded, 'TODAY', roles: officeRoles),
   StaffItem('/staff/year-end', 'Year-end checklist', Icons.event_available_rounded, 'SCHOOL', roles: ['it_admin', 'principal'], locked: true),
+  // tabs of Students and Fees, and the Principal's week (a card on Today)
+  StaffItem('/staff/strength', 'Strength', Icons.groups_rounded, 'STUDENTS', roles: ['accounts', ...officeRoles]),
+  StaffItem('/staff/leaving', 'Leaving check', Icons.assignment_return_rounded, 'STUDENTS', roles: ['accounts', ...officeRoles]),
+  StaffItem('/staff/fees/reports', 'Reports', Icons.table_view_rounded, 'FEES', roles: ['accounts', ...officeRoles]),
+  StaffItem('/staff/fees/dues', 'Dues', Icons.pending_actions_rounded, 'FEES', roles: ['accounts', ...officeRoles]),
+  StaffItem('/staff/week', 'Your week', Icons.insights_rounded, 'SCHOOL', roles: ['principal', 'it_admin', 'vice_principal']),
   // Part 8: pages behind a tab of Exams, Attendance, Fees, ID cards and School setup
-  StaffItem('/staff/marks-status', 'Marks status', Icons.fact_check_rounded, 'MY CLASS'),
-  StaffItem('/staff/exam-reports', 'Exam reports', Icons.leaderboard_rounded, 'MY CLASS'),
+  StaffItem('/staff/marks-status', 'Marks entered', Icons.fact_check_rounded, 'MY CLASS'),
+  StaffItem('/staff/exam-reports', 'Reports', Icons.leaderboard_rounded, 'MY CLASS'),
   StaffItem('/staff/promotion', 'Promotion', Icons.trending_up_rounded, 'MY CLASS', roles: ['class_teacher', ...officeRoles]),
   StaffItem('/staff/attendance/register', 'Attendance register', Icons.table_chart_rounded, 'MY CLASS', roles: ['teacher', 'class_teacher', 'coordinator', ...officeRoles]),
   StaffItem('/staff/fees/record', 'Record a payment', Icons.receipt_long_rounded, 'FEES', roles: ['accounts', 'office', 'it_admin']),
-  StaffItem('/staff/fees/day', 'Fee day sheet', Icons.today_rounded, 'FEES', roles: ['accounts', ...officeRoles]),
+  StaffItem('/staff/fees/day', 'Day sheet', Icons.today_rounded, 'FEES', roles: ['accounts', ...officeRoles]),
   StaffItem('/staff/fees/concessions', 'Concessions', Icons.volunteer_activism_rounded, 'FEES', roles: ['accounts', ...officeRoles]),
   StaffItem('/staff/staff-ids', 'Staff ID cards', Icons.badge_rounded, 'STUDENTS', roles: officeRoles),
   StaffItem('/staff/rules', 'School rules', Icons.rule_rounded, 'SCHOOL', roles: ['it_admin'], locked: true),
@@ -135,7 +137,19 @@ const staffSubPages = [
 const staffHubOf = {'/staff/marks': '/staff/exams', '/staff/reports': '/staff/exams', '/staff/council': '/staff/toppers', '/staff/houses': '/staff/toppers',
   '/staff/users': '/staff/setup', '/staff/sections': '/staff/setup', '/staff/bin': '/staff/setup', '/staff/settings': '/staff/setup', '/staff/announcements/report': '/staff/announcements', '/staff/year-end': '/staff', '/staff/thanks': '/staff',
   '/staff/marks-status': '/staff/exams', '/staff/exam-reports': '/staff/exams', '/staff/promotion': '/staff/exams', '/staff/attendance/register': '/staff/attendance',
-  '/staff/fees/record': '/staff/fees', '/staff/fees/day': '/staff/fees', '/staff/fees/concessions': '/staff/fees', '/staff/staff-ids': '/staff/id-cards', '/staff/rules': '/staff/setup'};
+  '/staff/fees/record': '/staff/fees', '/staff/fees/day': '/staff/fees', '/staff/fees/concessions': '/staff/fees', '/staff/staff-ids': '/staff/id-cards', '/staff/rules': '/staff/setup',
+  '/staff/strength': '/staff/students', '/staff/leaving': '/staff/students', '/staff/fees/reports': '/staff/fees', '/staff/fees/dues': '/staff/fees', '/staff/week': '/staff'};
+
+/// Every page in the order of the menu, each followed by its tabs — for "Who can use what". (page, is a tab)
+List<(StaffItem, bool)> staffAccessOrder() {
+  final out = <(StaffItem, bool)>[]; final used = <String>{};
+  for (final m in staffMenu) {
+    out.add((m, false)); used.add(m.path);
+    for (final t in staffSubPages) { if (staffHubOf[t.path] == m.path) { out.add((t, true)); used.add(t.path); } }
+  }
+  for (final t in staffSubPages) { if (!used.contains(t.path)) out.add((t, false)); }
+  return out;
+}
 
 /// Roles that have this page in their own menu (the normal setting when IT has not changed it).
 List<String> defaultRolesOf(StaffItem m) {
@@ -189,7 +203,9 @@ List<StaffItem> visibleMenu(Session s, [Map<String, String>? settings]) {
   for (final r in staffRoleOrder.where(s.hasRole)) {
     for (final (g, paths) in staffLayouts[r]!) { if (g != 'ME') for (final p in paths) { put(g, p); } }
   }
-  for (final m in staffMenu) { if (m.group != 'ME') put(m.group, m.path); }
+  // a page IT has opened to someone outside its usual role: under a heading that fits them (the office has no "my class")
+  final own = s.hasRole('teacher') || s.hasRole('class_teacher');
+  for (final m in staffMenu) { if (m.group != 'ME') put(!own && m.group == 'MY CLASS' ? 'CLASSES' : m.group, m.path); }
   for (final p in _me.$2) { put('ME', p); }
   // a person who is both class teacher and coordinator: Students once
   return [for (final e in groups.entries) ...e.value];
