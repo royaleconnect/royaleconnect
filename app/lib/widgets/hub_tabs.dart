@@ -7,15 +7,18 @@ import '../staff/staff_shell.dart' show staffCanOpen;
 
 /// Pages that belong together sit behind one menu item, with tabs at the top
 /// (e.g. Calendar · Timetable · Exams). Tabs whose section IT has switched off are not shown.
-enum Hub { calendar, honours, attendance, staffExams, staffHonours, schoolSetup }
+enum Hub { calendar, honours, attendance, staffExams, staffHonours, schoolSetup, staffAttendance, staffFees, staffIds }
 
 const _hubs = <Hub, List<(String, String, String?)>>{   // path, label, feature switch
   Hub.calendar: [('/calendar', 'Calendar', null), ('/timetable', 'Timetable', 'timetable'), ('/exams', 'Exams', null)],
   Hub.honours: [('/star', 'Star of the month', 'star'), ('/toppers', 'Toppers', 'toppers'), ('/council', 'Council', 'council'), ('/houses', 'Houses', 'houses'), ('/fame', 'Hall of Fame', 'fame')],   // Hall of Fame last (used least)
   Hub.attendance: [('/attendance', 'Attendance', null), ('/leave', 'Leave', 'leave')],
-  Hub.staffExams: [('/staff/exams', 'Exams', null), ('/staff/marks', 'Marks entry', null), ('/staff/reports', 'Report cards', null)],
+  Hub.staffExams: [('/staff/exams', 'Exams', null), ('/staff/marks', 'Marks entry', null), ('/staff/marks-status', 'Marks status', null), ('/staff/reports', 'Report cards', null), ('/staff/exam-reports', 'Exam reports', null), ('/staff/promotion', 'Promotion', null)],
+  Hub.staffIds: [('/staff/id-cards', 'Students', null), ('/staff/staff-ids', 'Staff', null)],
+  Hub.staffAttendance: [('/staff/attendance', 'Mark attendance', null), ('/staff/attendance/register', 'Register', null)],
+  Hub.staffFees: [('/staff/fees', 'Fees & receipts', null), ('/staff/fees/record', 'Record a payment', null), ('/staff/fees/day', 'Day sheet', null), ('/staff/fees/concessions', 'Concessions', null)],
   Hub.staffHonours: [('/staff/toppers', 'Toppers & Hall of Fame', null), ('/staff/council', 'Council', 'council'), ('/staff/houses', 'Houses', 'houses')],
-  Hub.schoolSetup: [('/staff/setup', 'Classes & fees', null), ('/staff/users', 'Staff', null), ('/staff/sections', 'New sections', null), ('/staff/bin', 'Bin', null), ('/staff/settings', 'Settings', null)],
+  Hub.schoolSetup: [('/staff/setup', 'Classes & fees', null), ('/staff/users', 'Staff', null), ('/staff/sections', 'New sections', null), ('/staff/bin', 'Bin', null), ('/staff/settings', 'Settings', null), ('/staff/rules', 'School rules', null)],
 };
 
 /// The first page of a hub that is switched on (where the menu item leads).
