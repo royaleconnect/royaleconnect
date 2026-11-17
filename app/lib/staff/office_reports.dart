@@ -1,3 +1,4 @@
+import '../widgets/hub_tabs.dart';
 import 'part8_extras.dart' show StrengthViews, showNoticeReaders;
 import 'part8_fees.dart' show DuesMatrixPanel;
 import 'package:flutter/material.dart';
@@ -120,7 +121,7 @@ class StrengthPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final data = ref.watch(_strengthProvider);
-    return StaffPage(title: 'Student strength', subtitle: 'One number for the whole school, the same on every page — School and Senior Secondary together. Class by class, then by gender, house, transport, category or month.',
+    return StaffPage(title: 'Students · Strength', hub: Hub.staffStudents, subtitle: 'One number for the whole school, the same on every page — School and Senior Secondary together. Class by class, then by gender, house, transport, category or month.',
       actions: [if (data.hasValue) OutlinedButton.icon(onPressed: () => _excel(context, data.value!), icon: const Icon(Icons.download_rounded, size: 18), label: const Text('Excel'))],
       body: data.when(loading: _loading, error: (e, _) => _err(e), data: (d) {
         final rows = [for (final x in (d['rows'] as List)) Map<String, dynamic>.from(x as Map)];
@@ -188,7 +189,7 @@ class _LeavingCheckPageState extends ConsumerState<LeavingCheckPage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final data = ref.watch(_leavingProvider);
-    return StaffPage(title: 'Leaving check', subtitle: 'Students who left this year. Only problems are shown, so nothing is missed.',
+    return StaffPage(title: 'Students · Leaving check', hub: Hub.staffStudents, subtitle: 'Students who left this year. Only problems are shown, so nothing is missed.',
       body: data.when(loading: _loading, error: (e, _) => _err(e), data: (d) {
         final who = [for (final x in (d['who'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)];
         final shown = who.where((w) => filter == '' || (filter == 'tc' && w['tc'] == 'not_taken') || (filter == 'dues' && ((w['due'] ?? 0) as num) > 0)).toList();
@@ -509,7 +510,7 @@ class _FeeDuesPageState extends ConsumerState<FeeDuesPage> {
     final grades = ref.watch(_gradesProvider).value ?? const <Map<String, dynamic>>[];
     final data = ref.watch(_duesSummaryProvider(grade));
     final s = ref.watch(sessionProvider).value;
-    return StaffPage(title: 'Fee dues', subtitle: 'What is still to be paid, fee by fee — this year, online payments that failed, and last year.',
+    return StaffPage(title: 'Fees · Dues', hub: Hub.staffFees, subtitle: 'What is still to be paid, fee by fee — this year, online payments that failed, and last year.',
       actions: [
         if (data.hasValue) OutlinedButton.icon(onPressed: () => _print(data.value!), icon: const Icon(Icons.print_rounded, size: 18), label: const Text('Print')),
         if (data.hasValue) OutlinedButton.icon(onPressed: () => _excel(data.value!), icon: const Icon(Icons.download_rounded, size: 18), label: const Text('Excel')),
