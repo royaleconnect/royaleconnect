@@ -151,7 +151,7 @@ Future<int> remindAnnouncement(String id) async => (await db.rpc('remind_announc
 
 /// [pinnedUntil]: families see it first until that day. [busOnly] / [routeIds]: only bus families (of those routes) among the audience.
 Future<void> postAnnouncement(WidgetRef ref, {required String category, required String title, required String body, required bool all, List<String> gradeIds = const [], List<String> sectionIds = const [], DateTime? scheduledFor, List<Map<String, dynamic>> attachments = const [],
-    DateTime? pinnedUntil, bool busOnly = false, List<String> routeIds = const []}) async {
+    DateTime? pinnedUntil, bool busOnly = false, List<String> routeIds = const [], List<String> studentIds = const []}) async {
   final year = await ref.read(yearProvider.future);
   await db.from('announcement').insert({
     'academic_year_id': year['id'], 'category': category, 'title': title, 'body': body, 'author_id': myId(ref),
@@ -161,6 +161,7 @@ Future<void> postAnnouncement(WidgetRef ref, {required String category, required
     if (pinnedUntil != null) 'pinned_until': _d(pinnedUntil),
     if (busOnly) 'audience_bus_only': true,
     if (routeIds.isNotEmpty) 'audience_route_ids': routeIds,
+    if (studentIds.isNotEmpty) 'audience_student_ids': studentIds,   // only these students, among the classes chosen
   });
 }
 
