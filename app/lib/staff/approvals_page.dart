@@ -1,3 +1,4 @@
+import 'part8_fees.dart' show concessionsWaitingProvider, decideConcession;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -25,7 +26,8 @@ final approvalsCountProvider = Provider.autoDispose<int>((ref) {
   if (m == null) return 0;
   final decide = m['can_decide'] == true;
   final leavings = decide ? (ref.watch(leavingsInboxProvider).value?.length ?? 0) : 0;
-  return leavings + [...['passwords', 'certificates'], if (decide) ...['cancels', 'tcs', 'corrections']]
+  final cw = ref.watch(concessionsWaitingProvider).value;   // concessions and scholarships waiting for the Principal
+  return leavings + (cw != null && cw.decide ? cw.rows.length : 0) + [...['passwords', 'certificates'], if (decide) ...['cancels', 'tcs', 'corrections']]
       .fold<int>(0, (a, k) => a + ((m[k] as List?)?.length ?? 0));
 });
 
@@ -113,7 +115,9 @@ class StaffApprovalsScreen extends ConsumerWidget {
         final rc = inboxList(m, 'cancels'), tc = inboxList(m, 'tcs'), dc = inboxList(m, 'corrections');
         final pw = inboxList(m, 'passwords'), ce = inboxList(m, 'certificates'), mine = inboxList(m, 'my_cancels');
         final lv = ref.watch(leavingsInboxProvider).value ?? const <Map<String, dynamic>>[];
-        final waiting = rc.length + tc.length + dc.length + pw.length + ce.length + (decide ? lv.length : 0);
+        final cw = ref.watch(concessionsWaitingProvider).value;
+        final cons = cw?.rows ?? const <Map<String, dynamic>>[];
+        final waiting = rc.length + tc.length + dc.length + pw.length + ce.length + (decide ? lv.length : 0) + cons.length;
         Widget sub(String t) => Text(t, style: TextStyle(fontSize: 12.5, color: cs.onSurfaceVariant));
         // one card per request: what it is (pill), the details, then Approve / Decline
         Widget card({required String head, required String kind, required Color fg, required Color bg, required List<Widget> lines, VoidCallback? onApprove, VoidCallback? onDecline}) =>
@@ -131,6 +135,12 @@ class StaffApprovalsScreen extends ConsumerWidget {
           ]));
 
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          for (final r in cons) card(head: '${r['student']} · ${r['class'] ?? ''}', kind: '${r['kind']}', fg: Brand.amber, bg: Brand.amberTint, lines: [
+              Text('${inr(r['amount'] as num)} off the fees still to pay', style: const TextStyle(fontWeight: FontWeight.w800)),
+              sub('${r['reason']}${r['asked_by'] != null ? ' · asked by ${r['asked_by']}' : ''}'),
+            ],
+            onApprove: cw!.decide ? () => decideConcession(context, ref, r, true) : null,
+            onDecline: cw.decide ? () => decideConcession(context, ref, r, false) : null),
           if (waiting == 0) Panel(child: Column(children: [
             const Text('✨', style: TextStyle(fontSize: 34)),
             const Text('All done', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
