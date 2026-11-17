@@ -109,7 +109,7 @@ Map<String, String> _defaults(String kind, Map<String, dynamic> p) {
         'category': switch (s('x_category')) { 'SC' || 'ST' || 'OBC' => 'Yes, ${s('x_category')}', 'General' => 'No', _ => '' },
         'first_admission': [firstWhen, if (firstClass.isNotEmpty) 'Class $firstClass'].where((x) => x.isNotEmpty).join(', '),
         'dob_figures': dob == null ? '' : _ddmmyyyy(dob), 'dob_words': dob == null ? '' : dobInWords(dob),
-        'class_figures': fig, 'class_words': words, 'last_exam': '', 'failed': 'No', 'subjects': s('subjects'), 'promotion': '',
+        'class_figures': fig, 'class_words': words, 'last_exam': '', 'failed': s('x_promotion') == 'detained' ? 'Yes' : 'No', 'subjects': s('subjects'), 'promotion': s('x_promotion') == 'detained' ? 'No, not promoted' : '',
         'fees_upto': s('fees_paid_upto'), 'concession': _concession[s('fee_category')] ?? 'No',
         'working_days': s('working_days'), 'present_days': s('present_days'), 'ncc': 'No', 'games': '', 'conduct': 'Good',
         'applied_on': _ddmmyyyy(today), 'issued_on': _ddmmyyyy(today), 'reason': s('leaving_reason'), 'remarks': '',
@@ -180,6 +180,8 @@ Future<Map<String, dynamic>> certificatePrefill(String studentId, String kind) a
       for (final e in x.entries) { if (e.value != null && '${e.value}'.trim().isNotEmpty) r.putIfAbsent('x_${e.key}', () => e.value); }
     }
   } catch (_) {}
+  // Promotion page: passed / detained this year (the TC's "qualified for promotion" line)
+  try { final pr = await db.rpc('promotion_of', params: {'p_student': studentId}); if (pr != null) r['x_promotion'] = '$pr'; } catch (_) {}
   return r;
 }
 
