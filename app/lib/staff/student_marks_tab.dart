@@ -45,6 +45,8 @@ class _StudentMarksTabState extends ConsumerState<StudentMarksTab> {
       final mm = m[p['subject_id']] is Map ? Map<String, dynamic>.from(m[p['subject_id']]) : const <String, dynamic>{};
       marks['${p['subject_id']}|i'] = TextEditingController(text: fmtMark(mm['i'] as num?));
       marks['${p['subject_id']}|e'] = TextEditingController(text: mm['ab'] == true ? 'AB' : fmtMark(mm['e'] as num?));
+      final pv = mm['p'] is Map ? Map<String, dynamic>.from(mm['p'] as Map) : const <String, dynamic>{};
+      for (final c in partsOf(p)) { marks['${p['subject_id']}|p:${c.$1}'] = TextEditingController(text: fmtMark(pv[c.$1] as num?)); }
     }
     co..clear()..addAll({for (final e in (card?['co_scholastic'] as Map? ?? const {}).entries) '${e.key}': '${e.value}'});
     height.text = fmtMark(card?['height_cm'] as num?);
@@ -61,14 +63,31 @@ class _StudentMarksTabState extends ConsumerState<StudentMarksTab> {
       if (p['can'] != true || !takesSubject(d['l2'], d['l3'], '${p['name']}', grp: d['grp'], el: d['el'])) continue;
       final ti = marks['${p['subject_id']}|i']?.text ?? '', te = marks['${p['subject_id']}|e']?.text ?? '';
       final ri = readMark(ti), re = readMark(te);
+      final ps = partsOf(p);
+      final o = old[p['subject_id']] is Map ? Map<String, dynamic>.from(old[p['subject_id']]) : const <String, dynamic>{};
+      if (ps.isNotEmpty) {
+        // the internal marks in their parts; PA that came from the periodic test is not typed
+        final auto = (ex['pa'] is Map ? (ex['pa'] as Map)[p['subject_id']] : null) as num?;
+        final typed = <String, num?>{}; var wrong = re.bad || (re.value != null && re.value! > (p['me'] as num));
+        for (final c in ps) {
+          if (c.$1 == 'PA' && auto != null) continue;
+          final r = readMark(marks['${p['subject_id']}|p:${c.$1}']?.text ?? '');
+          if (r.bad || r.absent || (r.value != null && r.value! > c.$2)) wrong = true;
+          typed[c.$1] = r.value;
+        }
+        if (wrong) { toast(context, '${p['name']}: please check the marks in red.'); return; }
+        final op = o['p'] is Map ? Map<String, dynamic>.from(o['p'] as Map) : const <String, dynamic>{};
+        final changed = re.value != o['e'] || re.absent != (o['ab'] == true) || typed.entries.any((e) => e.value != op[e.key]);
+        if (changed) rows.add({'student': widget.studentId, 'subject': p['subject_id'], 'e': re.value, 'ab': re.absent, 'parts': typed});
+        continue;
+      }
       if (ri.bad || re.bad || (p['mi'] == null && ti.trim().isNotEmpty) ||
           (ri.value != null && p['mi'] != null && ri.value! > (p['mi'] as num)) || (re.value != null && re.value! > (p['me'] as num))) {
         toast(context, '${p['name']}: please check the marks in red.');
         return;
       }
-      final o = old[p['subject_id']] is Map ? Map<String, dynamic>.from(old[p['subject_id']]) : const <String, dynamic>{};
-      final changed = ri.value != o['i'] || re.value != o['e'] || (re.absent || ri.absent) != (o['ab'] == true);
-      if (changed) rows.add({'student': widget.studentId, 'subject': p['subject_id'], 'i': ri.value, 'e': re.value, 'ab': re.absent || ri.absent});
+      final changed = ri.value != o['i'] || re.value != o['e'] || re.absent != (o['ab'] == true);
+      if (changed) rows.add({'student': widget.studentId, 'subject': p['subject_id'], 'i': ri.value, 'e': re.value, 'ab': re.absent});
     }
     setState(() => busy = true);
     try {
@@ -131,7 +150,7 @@ class _StudentMarksTabState extends ConsumerState<StudentMarksTab> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               if (editing) Container(margin: const EdgeInsets.only(bottom: 12), padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(color: Brand.amberTint, borderRadius: BorderRadius.circular(12)),
-                child: Text('Type in any box — marks, grades, height, weight, remarks. Type AB for absent. Press Save when done.',
+                child: Text('Type in any box — marks, grades, height, weight, remarks. Type AB in Written for a student who was absent: the internal marks stay. Press Save when done.',
                     style: TextStyle(color: context.tone(Brand.amber), fontWeight: FontWeight.w700, fontSize: 13))),
               ..._tables(context, d, ex, cs),
             ]),
@@ -163,7 +182,7 @@ class _StudentMarksTabState extends ConsumerState<StudentMarksTab> {
       if (!takesSubject(d['l2'], d['l3'], '${p['name']}', grp: d['grp'], el: d['el']) || cardPart(gno, '${p['part']}', '${p['name']}', d['l3']) != 'main') continue;
       final mm = m[p['subject_id']] is Map ? Map<String, dynamic>.from(m[p['subject_id']]) : null;
       if (mm == null || (mm['i'] == null && mm['e'] == null && mm['ab'] != true)) continue;
-      got += ((mm['i'] ?? 0) as num) + ((mm['e'] ?? 0) as num);
+      got += ((mm['i'] ?? 0) as num) + (mm['ab'] == true ? 0 : ((mm['e'] ?? 0) as num));
       max += ((p['mi'] ?? 0) as num) + ((p['me'] ?? 0) as num);
     }
     return (got, max);
@@ -181,14 +200,16 @@ class _StudentMarksTabState extends ConsumerState<StudentMarksTab> {
       final list = groups[key]!;
       if (list.isEmpty) continue;
       if (title.isNotEmpty) out.add(Padding(padding: const EdgeInsets.fromLTRB(2, 18, 2, 8), child: Text(title.toUpperCase(), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1, color: context.tone(Brand.gold)))));
-      out.add(_table(context, gno, list, m, cs, total: key == 'main' && ex['kind'] != 'test', result: key == 'r3'));   // periodic tests: no total, as on the school's paper
+      out.add(_table(context, gno, list, m, cs, total: key == 'main' && ex['kind'] != 'test', result: key == 'r3', pa: ex['pa'] is Map ? Map<String, dynamic>.from(ex['pa'] as Map) : const {}));   // periodic tests: no total, as on the school's paper
     }
     return out;
   }
 
-  Widget _table(BuildContext context, int gno, List<Map<String, dynamic>> papers, Map<String, dynamic> m, ColorScheme cs, {bool total = false, bool result = false}) {
+  Widget _table(BuildContext context, int gno, List<Map<String, dynamic>> papers, Map<String, dynamic> m, ColorScheme cs, {bool total = false, bool result = false, Map<String, dynamic> pa = const {}}) {
     final two = papers.any((p) => p['mi'] != null);
-    final (li, le) = markLabels(gno, '${papers.first['part']}');
+    final inParts = papers.any((p) => partsOf(p).isNotEmpty);
+    final (li, le) = inParts ? ('Internal', 'Written') : markLabels(gno, '${papers.first['part']}');
+    final under = <int, Widget>{};   // a second line under a subject: its internal parts
     final theoryFirst = li == 'Practical';
     final same = papers.every((p) => p['mi'] == papers.first['mi'] && p['me'] == papers.first['me']);
     String hdr(String l, num? mx) => same && mx != null ? '$l\n/${fmtMark(mx)}' : l;
@@ -200,6 +221,10 @@ class _StudentMarksTabState extends ConsumerState<StudentMarksTab> {
     Widget cell(Map p, String f) {
       final mx = (f == 'i' ? p['mi'] : p['me']) as num?;
       if (mx == null) return const Text('—');
+      if (f == 'i' && partsOf(p).isNotEmpty) {   // the sum of the parts (typed on the line below)
+        final mm = m[p['subject_id']] is Map ? Map<String, dynamic>.from(m[p['subject_id']]) : null;
+        return Text(mm?['i'] == null ? '—' : fmtMark(mm!['i'] as num), style: const TextStyle(fontWeight: FontWeight.w700));
+      }
       if (editing && p['can'] == true) {
         final c = marks['${p['subject_id']}|$f']!;
         return SizedBox(width: 72, child: _Box(c: c, max: mx));
@@ -214,16 +239,30 @@ class _StudentMarksTabState extends ConsumerState<StudentMarksTab> {
     final rows = <List<Widget>>[];
     for (final p in papers) {
       final mm = m[p['subject_id']] is Map ? Map<String, dynamic>.from(m[p['subject_id']]) : null;
-      final has = mm != null && (mm['i'] != null || mm['e'] != null);
-      final t = has ? ((mm['i'] ?? 0) as num) + ((mm['e'] ?? 0) as num) : null;
+      final ab = mm?['ab'] == true;
+      final has = mm != null && (mm['i'] != null || mm['e'] != null || ab);
+      final t = has ? ((mm['i'] ?? 0) as num) + (ab ? 0 : ((mm['e'] ?? 0) as num)) : null;
+      final ps = partsOf(p);
+      if (ps.isNotEmpty) {
+        final pv = mm?['p'] is Map ? Map<String, dynamic>.from(mm!['p'] as Map) : const <String, dynamic>{};
+        final auto = pa[p['subject_id']] as num?;
+        under[rows.length] = Wrap(spacing: 10, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          for (final c in ps) Row(mainAxisSize: MainAxisSize.min, children: [
+            Text('${c.$1} ', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: cs.onSurfaceVariant)),
+            if (editing && p['can'] == true && !(c.$1 == 'PA' && auto != null)) SizedBox(width: 58, child: _Box(c: marks['${p['subject_id']}|p:${c.$1}']!, max: c.$2, allowAb: false))
+            else Text(c.$1 == 'PA' && auto != null ? '${fmtMark(auto)} (from the test)' : pv[c.$1] == null ? '—' : fmtMark(pv[c.$1] as num), style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800)),
+            Text(' /${fmtMark(c.$2)}', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+          ]),
+        ]);
+      }
       final mx = ((p['mi'] ?? 0) as num) + ((p['me'] ?? 0) as num);
       if (t != null) { got += t; max += mx; counted++; }
       rows.add([
         Text('${p['name']}', style: const TextStyle(fontWeight: FontWeight.w800)),
         if (two) ...(theoryFirst ? [cell(p, 'e'), cell(p, 'i')] : [cell(p, 'i'), cell(p, 'e')]) else cell(p, 'e'),
         if (two) Text(t == null ? '—' : fmtMark(t), style: const TextStyle(fontWeight: FontWeight.w900)),
-        Text(t == null || mx == 0 ? '' : cbseGrade(t * 100 / mx), style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
-        if (result) t == null ? const Text('') : Pill(t * 100 / mx >= 33 ? 'Qualified' : 'Re-assessment', fg: t * 100 / mx >= 33 ? Brand.green : Brand.crimsonDeep, bg: t * 100 / mx >= 33 ? Brand.greenTint : Brand.crimsonTint),
+        Text(ab ? 'Absent' : t == null || mx == 0 ? '' : cbseGrade(t * 100 / mx), style: TextStyle(fontWeight: FontWeight.w700, color: cs.onSurfaceVariant)),
+        if (result) t == null || ab ? const Text('') : Pill(t * 100 / mx >= 33 ? 'Qualified' : 'Re-assessment', fg: t * 100 / mx >= 33 ? Brand.green : Brand.crimsonDeep, bg: t * 100 / mx >= 33 ? Brand.greenTint : Brand.crimsonTint),
       ]);
     }
     if (total && counted > 0 && !editing) {
@@ -243,8 +282,11 @@ class _StudentMarksTabState extends ConsumerState<StudentMarksTab> {
           decoration: BoxDecoration(color: total && ri == rows.length - 1 && counted > 0 && !editing ? Brand.gold.withValues(alpha: .06) : null,
               border: Border(top: BorderSide(color: cs.outlineVariant.withValues(alpha: .5)))),
           child: DefaultTextStyle.merge(style: TextStyle(fontWeight: total && ri == rows.length - 1 && counted > 0 && !editing ? FontWeight.w900 : null),
-            child: Row(children: [
-              for (final (i, c) in r.indexed) Expanded(flex: i == 0 ? 4 : 2, child: Align(alignment: i == 0 ? Alignment.centerLeft : Alignment.centerRight, child: c)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                for (final (i, c) in r.indexed) Expanded(flex: i == 0 ? 4 : 2, child: Align(alignment: i == 0 ? Alignment.centerLeft : Alignment.centerRight, child: c)),
+              ]),
+              if (under[ri] != null) Padding(padding: const EdgeInsets.only(top: 6), child: under[ri]!),
             ]))),
       ])));
   }
@@ -260,13 +302,16 @@ class _StudentMarksTabState extends ConsumerState<StudentMarksTab> {
     Widget numBox(TextEditingController c) => SizedBox(width: 90, child: TextField(controller: c, textAlign: TextAlign.center, keyboardType: const TextInputType.numberWithOptions(decimal: true),
         decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 10))));
     final wd = card?['working_days'] ?? att['working'], dp = card?['days_present'] ?? att['present'];
-    final left = Panel(title: 'Co-scholastic · health', trailing: Text('5-point A–E', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)), child: Column(children: [
-      for (final a in areas) line(a, edit
-          ? SizedBox(width: 170, child: DropdownButtonFormField<String>(value: coGrades.containsKey(co[a]) ? co[a] : null, isDense: true, isExpanded: true,
+    final scale = d['scale'] == 3 ? coGrades3 : coGrades;
+    final life = '${d['life'] ?? ''}'.split('|').map((x) => x.trim()).where((x) => x.isNotEmpty).toList();
+    Widget gradeOf(String a) => edit
+          ? SizedBox(width: 170, child: DropdownButtonFormField<String>(value: scale.containsKey(co[a]) ? co[a] : null, isDense: true, isExpanded: true,
               decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8)),
-              items: [for (final e in coGrades.entries) DropdownMenuItem(value: e.key, child: Text('${e.key} · ${e.value}', overflow: TextOverflow.ellipsis))],
+              items: [for (final e in scale.entries) DropdownMenuItem(value: e.key, child: Text('${e.key} · ${e.value}', overflow: TextOverflow.ellipsis))],
               onChanged: (v) => setState(() => co[a] = v ?? '')))
-          : Text('${cardCo[a] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w900))),
+          : Text('${cardCo[a] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w900));
+    final left = Panel(title: 'Co-scholastic · health', trailing: Text(d['scale'] == 3 ? '3-point A–C' : '5-point A–E', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)), child: Column(children: [
+      for (final a in areas) line(a, gradeOf(a)),
       line('Height (cm)', edit ? numBox(height) : Text(card?['height_cm'] == null ? '—' : '${fmtMark(card!['height_cm'] as num)} cm', style: const TextStyle(fontWeight: FontWeight.w800))),
       line('Weight (kg)', edit ? numBox(weight) : Text(card?['weight_kg'] == null ? '—' : '${fmtMark(card!['weight_kg'] as num)} kg', style: const TextStyle(fontWeight: FontWeight.w800))),
       line('Attendance', Text.rich(TextSpan(children: [TextSpan(text: wd == null || wd == 0 ? '—' : '$dp of $wd days', style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -284,15 +329,20 @@ class _StudentMarksTabState extends ConsumerState<StudentMarksTab> {
       edit ? TextField(controller: part, minLines: 1, maxLines: 3, textCapitalization: TextCapitalization.sentences, decoration: box('e.g. First place in the inter-house quiz.'))
            : Text((card?['participation'] ?? '').toString().isEmpty ? '—' : '${card!['participation']}'),
     ]));
-    return LayoutBuilder(builder: (_, c) => c.maxWidth < 760
+    final skills = life.isEmpty ? null : Panel(title: 'Thinking, social and emotional skills', trailing: Text('Part 2B · A–E', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+        child: Column(children: [for (final a in life) line(a, gradeOf(a))]));
+    return LayoutBuilder(builder: (_, c) => Column(children: [
+      c.maxWidth < 760
         ? Column(children: [left, right])
-        : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: left), const SizedBox(width: 14), Expanded(child: right)]));
+        : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: left), const SizedBox(width: 14), Expanded(child: right)]),
+      if (skills != null) skills,
+    ]));
   }
 }
 
 class _Box extends StatefulWidget {
-  final TextEditingController c; final num max;
-  const _Box({required this.c, required this.max});
+  final TextEditingController c; final num max; final bool allowAb;
+  const _Box({required this.c, required this.max, this.allowAb = true});
   @override
   State<_Box> createState() => _BoxState();
 }
@@ -301,7 +351,7 @@ class _BoxState extends State<_Box> {
   @override
   Widget build(BuildContext context) {
     final r = readMark(widget.c.text);
-    final bad = r.bad || (r.value != null && r.value! > widget.max);
+    final bad = r.bad || (r.absent && !widget.allowAb) || (r.value != null && r.value! > widget.max);
     return TextField(controller: widget.c, textAlign: TextAlign.center, textInputAction: TextInputAction.next,
       inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.aAbB]')), LengthLimitingTextInputFormatter(5)],
       style: TextStyle(fontWeight: FontWeight.w800, color: bad ? context.tone(Brand.crimsonDeep) : null),
