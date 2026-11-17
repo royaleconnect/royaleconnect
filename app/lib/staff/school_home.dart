@@ -54,7 +54,7 @@ const activityWords = {
   'staff.add': 'added a staff member', 'staff.dob': 'added a staff birthday', 'staff.edit': 'edited a staff member', 'staff.inactive': 'switched a staff member off', 'student.add': 'added a student',
   'student.back': 'brought a student back', 'student.corrected': 'corrected student details', 'student.correction_asked': 'asked to correct student details', 'student.edit': 'edited student details',
   'student.fee_category': 'changed a fee category', 'student.inactive': 'marked a student inactive', 'student.leaving_asked': 'asked for a student to leave', 'student.left': 'marked a student as left',
-  'student.link': 'linked an old admission', 'student.suspended': 'suspended a student', 'student.suspension_ended': 'ended a suspension', 'tc.approved': 'approved a TC', 'tc.asked': 'asked for a TC',
+  'student.link': 'linked an old admission', 'student.suspended': 'locked a student’s app', 'student.suspension_ended': 'unlocked a student’s app', 'tc.approved': 'approved a TC', 'tc.asked': 'asked for a TC',
   'tc.declined': 'declined a TC', 'trip.end_by_office': 'ended a bus trip', 'trip.take_over': 'took over a bus trip', 'year.move': 'moved classes to the new year',
   'login.staff': 'signed in', 'login.student': 'signed in', 'login.crew': 'signed in (transport)',
 };
