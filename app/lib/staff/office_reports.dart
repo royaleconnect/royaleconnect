@@ -1,3 +1,5 @@
+import 'part8_extras.dart' show StrengthViews, showNoticeReaders;
+import 'part8_fees.dart' show DuesMatrixPanel;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -118,7 +120,7 @@ class StrengthPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final data = ref.watch(_strengthProvider);
-    return StaffPage(title: 'Student strength', subtitle: 'One page for the numbers MCB shows in Branches and Enrollment review — School and Senior Secondary together.',
+    return StaffPage(title: 'Student strength', subtitle: 'One number for the whole school, the same on every page — School and Senior Secondary together. Class by class, then by gender, house, transport, category or month.',
       actions: [if (data.hasValue) OutlinedButton.icon(onPressed: () => _excel(context, data.value!), icon: const Icon(Icons.download_rounded, size: 18), label: const Text('Excel'))],
       body: data.when(loading: _loading, error: (e, _) => _err(e), data: (d) {
         final rows = [for (final x in (d['rows'] as List)) Map<String, dynamic>.from(x as Map)];
@@ -148,11 +150,12 @@ class StrengthPage extends ConsumerWidget {
             StatCard('Joined this year', (t['joined'] ?? 0) as num, sub: 'new admissions · ${d['year']}'),
             StatCard('Left this year', (t['left'] ?? 0) as num, tone: Brand.crimsonDeep, sub: 'see Leaving check'),
             StatCard('Re-joined', (t['rejoined'] ?? 0) as num, sub: 'came back (new admission no.)'),
-            StatCard('Suspended today', (d['suspended'] ?? 0) as num, tone: Brand.amber, sub: '${_n((d['never_logged_in'] ?? 0) as num)} never signed in'),
+            StatCard('App locked today', (d['suspended'] ?? 0) as num, tone: Brand.amber, sub: '${_n((d['never_logged_in'] ?? 0) as num)} never signed in'),
           ]),
           Panel(title: 'Class by class', child: wideTable(context, ReportTable(
             cols: const [('Class', 5, false), ('Boys', 2, true), ('Girls', 2, true), ('On rolls', 2, true), ('Joined', 2, true), ('Re-joined', 2, true), ('Left', 2, true)],
             rows: table, totals: totals), min: 640)),
+          const StrengthViews(),
           const NoteBox('Joined this year = first year in the school. Re-joined = a student who came back with a new admission number (for example Grade XI). Left = moved to Past students this year.'),
         ]);
       }),
@@ -361,7 +364,7 @@ class _NoticeReportPageState extends ConsumerState<NoticeReportPage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final data = ref.watch(_noticeProvider);
-    return StaffPage(title: 'Notices · who read them', subtitle: 'How many families opened each notice, and how many notices of each kind went out every month.',
+    return StaffPage(title: 'Notices · who read them', subtitle: 'How many families opened each notice. Tap a notice to see who read it, with the time, and to remind the rest.',
       body: data.when(loading: _loading, error: (e, _) => _err(e), data: (d) {
         final ns = [for (final x in (d['notices'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)];
         final ms = [for (final x in (d['months'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)];
@@ -395,7 +398,7 @@ class _NoticeReportPageState extends ConsumerState<NoticeReportPage> {
                   Text('${_n(rd)} of ${_n(to)}', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                 ]),
               ];
-            }()]), min: 820))
+            }()], onTap: [for (final n in ns) () => showNoticeReaders(context, '${n['id']}')]), min: 820))
           else Panel(child: Builder(builder: (_) {
             final months = ms.map((m) => m['month'] as String).toSet().toList()..sort((a, b) => b.compareTo(a));
             final cats = noticeCategoryLabels.keys.where((k) => ms.any((m) => m['category'] == k)).toList();
@@ -521,6 +524,7 @@ class _FeeDuesPageState extends ConsumerState<FeeDuesPage> {
           const SizedBox(width: 12),
           Expanded(child: Text('As on ${DateFormat('d MMM yyyy').format(DateTime.now())}', style: TextStyle(fontWeight: FontWeight.w800, color: cs.onSurfaceVariant))),
         ])),
+        if (grade.isEmpty) DuesMatrixPanel(onGrade: (g) => setState(() { grade = g; students = true; })),
         data.when(loading: _loading, error: (e, _) => _err(e), data: (d) {
           final ty = _l(d, 'this_year'), fl = _l(d, 'failed'), ly = _l(d, 'last_year');
           final total = _sum(ty, 'amount') + _sum(fl, 'amount') + _sum(ly, 'amount');
