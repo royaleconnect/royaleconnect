@@ -1,3 +1,4 @@
+import '../core/data3.dart' show appSettingsProvider;
 import 'part8_extras.dart' show TodayExtras;
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -66,6 +67,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
         const TourTarget('staff-health', child: HealthDot()),
         OutlinedButton.icon(onPressed: () => showDialog(context: context, builder: (c) => const Dialog(child: SizedBox(width: 520, child: SingleChildScrollView(padding: EdgeInsets.all(8), child: _ViewAsFamily())))),
             icon: const Icon(Icons.family_restroom_rounded, size: 18), label: const Text('View as family')),
+        if (staffCanOpen(s, ref.watch(appSettingsProvider).value, '/staff/week')) OutlinedButton.icon(onPressed: () => context.go('/staff/week'), icon: const Icon(Icons.insights_rounded, size: 18), label: const Text('Your week')),
         FilledButton.icon(onPressed: () => _monthly(context), icon: const Icon(Icons.picture_as_pdf_rounded, size: 18), label: const Text('Monthly report')),
       ],
       body: dash.when(
