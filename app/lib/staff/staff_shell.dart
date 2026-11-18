@@ -199,7 +199,7 @@ List<StaffItem> visibleMenu(Session s, [Map<String, String>? settings]) {
   // groups and order: the highest role's menu first, then pages from the person's other roles, then pages IT has opened to them
   final groups = <String, List<StaffItem>>{};
   final placed = <String>{};
-  void put(String g, String p) { final m = allowed[p]; if (m == null || placed.contains(p)) return; placed.add(p); (groups[g] ??= []).add(m); }
+  void put(String g, String p) { final m = allowed[p]; if (m == null || placed.contains(p)) return; placed.add(p); (groups[g] ??= []).add(m.group == g ? m : StaffItem(m.path, m.label, m.icon, g, roles: m.roles, locked: m.locked)); }   // the heading is the one of this person's menu
   for (final r in staffRoleOrder.where(s.hasRole)) {
     for (final (g, paths) in staffLayouts[r]!) { if (g != 'ME') for (final p in paths) { put(g, p); } }
   }
