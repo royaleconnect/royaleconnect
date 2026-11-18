@@ -50,7 +50,7 @@ class AdminDashboard extends ConsumerStatefulWidget {
 class _AdminDashboardState extends ConsumerState<AdminDashboard> {
   Timer? tick;
   @override
-  void initState() { super.initState(); tick = Timer.periodic(const Duration(seconds: 60), (_) { ref.invalidate(adminDashProvider); ref.invalidate(glanceProvider); ref.invalidate(schoolHomeProvider); }); }
+  void initState() { super.initState(); tick = Timer.periodic(const Duration(minutes: 5), (_) { ref.invalidate(adminDashProvider); ref.invalidate(glanceProvider); ref.invalidate(schoolHomeProvider); }); }
   @override
   void dispose() { tick?.cancel(); super.dispose(); }
 
