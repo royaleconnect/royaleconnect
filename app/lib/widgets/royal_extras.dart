@@ -83,6 +83,10 @@ class ShimmerPage extends StatefulWidget {
 
 class _ShimmerPageState extends State<ShimmerPage> with SingleTickerProviderStateMixin {
   late final AnimationController c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500));
+  bool _slow = false;   // after a few seconds, say so (a page must never look frozen)
+  late final Timer _slowTimer = Timer(const Duration(seconds: 6), () { if (mounted) setState(() => _slow = true); });
+  @override
+  void initState() { super.initState(); _slowTimer; }
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -90,7 +94,7 @@ class _ShimmerPageState extends State<ShimmerPage> with SingleTickerProviderStat
     if (on && !c.isAnimating) { c.repeat(); } else if (!on) { c.stop(); }
   }
   @override
-  void dispose() { c.dispose(); super.dispose(); }
+  void dispose() { _slowTimer.cancel(); c.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
@@ -98,7 +102,9 @@ class _ShimmerPageState extends State<ShimmerPage> with SingleTickerProviderStat
     final hi = dark ? const Color(0xFF4A3D25) : const Color(0xFFF9EDCF);
     Widget block(double h, {double? w}) => Container(height: h, width: w, margin: const EdgeInsets.only(bottom: 14),
         decoration: BoxDecoration(color: base, borderRadius: BorderRadius.circular(16)));
-    return Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: RepaintBoundary(child: AnimatedBuilder(animation: c, builder: (_, __) {
+    return Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (_slow) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text('Still loading… this is taking longer than usual.', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Theme.of(context).colorScheme.onSurfaceVariant))),
+      RepaintBoundary(child: AnimatedBuilder(animation: c, builder: (_, __) {
       final m = -0.5 + c.value * 2;
       return ShaderMask(blendMode: BlendMode.srcATop,
         shaderCallback: (r) => LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [base, hi, base],
@@ -108,7 +114,8 @@ class _ShimmerPageState extends State<ShimmerPage> with SingleTickerProviderStat
           for (var i = 0; i < widget.cards; i++) block(i == 0 ? 96 : 140),
         ]),
       );
-    })));
+    })),
+    ]));
   }
 }
 
