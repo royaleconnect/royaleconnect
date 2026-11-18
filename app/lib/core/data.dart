@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../auth/session.dart';
 import 'config.dart';
+import 'guarded_client.dart';
 import 'data2.dart' show enrolmentProvider;
 import 'cache.dart';
 import 'offline.dart';
@@ -16,7 +17,9 @@ Future<void> openStorageFile(String path) async {
 
 /// Thin data layer over PostgREST. Every query is already filtered by RLS; the app only shapes it.
 /// The client is rebuilt whenever the session token changes, so every request carries it.
-SupabaseClient db = SupabaseClient(AppConfig.supabaseUrl, AppConfig.supabaseAnonKey);
+/// One connection for the whole app: reads get a time limit and one more try (see [GuardedClient]).
+final _http = GuardedClient();
+SupabaseClient db = SupabaseClient(AppConfig.supabaseUrl, AppConfig.supabaseAnonKey, httpClient: _http);
 /// True while an admin is using "View as family": the database refuses every change, so the app does not try.
 bool viewOnlyMode = false;
 
@@ -29,7 +32,7 @@ void pingAppSeen(String token) {
 }
 
 void setDbToken(String? token) {
-  db = SupabaseClient(AppConfig.supabaseUrl, AppConfig.supabaseAnonKey, headers: token == null ? const {} : {'Authorization': 'Bearer $token'});
+  db = SupabaseClient(AppConfig.supabaseUrl, AppConfig.supabaseAnonKey, headers: token == null ? const {} : {'Authorization': 'Bearer $token'}, httpClient: _http);
 }
 
 String _today() => DateTime.now().toIso8601String().substring(0, 10);
