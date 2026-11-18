@@ -1,6 +1,7 @@
 /// Turns any error into one short, kind sentence for parents and staff — never raw technical text.
 String friendlyError(Object? e) {
   final t = '$e'.toLowerCase();
+  if (t.contains('timeoutexception')) return 'This is taking too long. Please open the page again in a moment.';
   if (t.contains('socketexception') || t.contains('failed host lookup') || t.contains('network') || t.contains('clientexception') ||
       t.contains('xmlhttprequest') || t.contains('connection') || t.contains('timeout')) {
     return 'No internet right now. Please check your connection and try again.';
