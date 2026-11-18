@@ -10,10 +10,10 @@ final sessionKeyProvider = Provider<String>((ref) {
   return '${s.kind}|${s.staff?['id']}|${s.crew?['id']}|${s.activeStudentId}|${s.viewOnly}|${s.students.map((e) => e.id).join(',')}';
 });
 
-/// Keeps a screen's data for a few minutes after the screen is closed. Going back to the screen shows that data at once
+/// Keeps a screen's data for half an hour after the screen is closed. Going back to the screen shows that data at once
 /// (no loading shimmer) while fresh data is fetched quietly behind it and replaces it a moment later.
 extension CacheFor on AutoDisposeRef<Object?> {
-  void cacheFor([Duration keep = const Duration(minutes: 3)]) {
+  void cacheFor([Duration keep = const Duration(minutes: 30)]) {
     watch(sessionKeyProvider);
     final link = keepAlive();
     Timer? t;
