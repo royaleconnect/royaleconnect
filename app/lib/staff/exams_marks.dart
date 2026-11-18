@@ -42,9 +42,10 @@ String outOf(int gno, Map p) {
 }
 
 // ================================================================== the year's exams
+bool _examsRefreshed = false;
 final examsYearProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   ref.cacheFor();
-  try { await db.rpc('exams_refresh'); } catch (_) {}
+  if (!_examsRefreshed) { _examsRefreshed = true; try { await db.rpc('exams_refresh'); } catch (_) { _examsRefreshed = false; } }   // once each time the app is opened
   final years = await ref.watch(liveYearIdsProvider.future);
   final data = await db.from('exam')
       .select('id,name,term,kind,sort,auto,marks_due,starts_on,ends_on,max_marks,note,published_at,grade:grade_id(id,code,name,sort_order),'
